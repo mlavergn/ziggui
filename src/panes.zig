@@ -81,15 +81,15 @@ const DiffModel = struct {
         const hunk = self.hunk_of[index - self.first];
         const selected = hunk != null and self.selected != null and hunk.? == self.selected.?;
         const bar = zigui.Rectangle(if (selected) t.accent else zigui.Color.transparent).frameWidth(3);
-        const gutter_w = @as(f32, @floatFromInt(self.digits)) * 7.5 + 6;
+        const gutter_width = @as(f32, @floatFromInt(self.digits)) * 7.5 + 6;
         const body: zigui.View = switch (line.kind) {
             .hunkHeader, .fileHeader, .note => zigui.Text(Self.expandTabs(line.text)).mono().size(diff_px)
                 .foreground(if (line.kind == .fileHeader) t.label else t.secondary_label)
                 .weight(if (line.kind == .fileHeader) .semibold else .regular)
                 .truncated(),
             else => zigui.HStack(.{
-                Self.numberCell(line.old, gutter_w, t.secondary_label),
-                Self.numberCell(line.new, gutter_w, t.secondary_label),
+                Self.numberCell(line.old, gutter_width, t.secondary_label),
+                Self.numberCell(line.new, gutter_width, t.secondary_label),
                 zigui.Text(switch (line.kind) {
                     .added => "+",
                     .removed => "-",
@@ -175,26 +175,26 @@ const Table = struct {
 /// - `T`: the row builder's context type.
 /// - `ctx`: the row builder's context.
 /// - `count`: how many rows.
-/// - `row_h`: each row's height, in points.
+/// - `row_height`: each row's height, in points.
 /// - `scroll`: the list's scroll position.
-/// - `rowFn`: makes row `i`; it is framed to `row_h` and the list's width.
+/// - `rowFn`: makes row `i`; it is framed to `row_height` and the list's width.
 /// - Returns: the list.
 pub fn VirtualList(
     comptime T: type,
     ctx: *const T,
     count: usize,
-    row_h: f32,
+    row_height: f32,
     scroll: *zigui.ScrollState,
     comptime rowFn: fn (*const T, usize) zigui.View,
 ) zigui.View {
-    const range = mod.RowRange.visible(count, row_h, scroll);
+    const range = mod.RowRange.visible(count, row_height, scroll);
     const shown = range.end - range.start;
     const kids = zigui.buildAlloc().alloc(zigui.View, shown + 2) catch @panic("oom");
-    kids[0] = zigui.Empty().frameHeight(@as(f32, @floatFromInt(range.start)) * row_h);
+    kids[0] = zigui.Empty().frameHeight(@as(f32, @floatFromInt(range.start)) * row_height);
     for (0..shown) |k| {
-        kids[k + 1] = rowFn(ctx, range.start + k).frameHeight(row_h).frameMaxWidth();
+        kids[k + 1] = rowFn(ctx, range.start + k).frameHeight(row_height).frameMaxWidth();
     }
-    kids[shown + 1] = zigui.Empty().frameHeight(@as(f32, @floatFromInt(count - range.end)) * row_h);
+    kids[shown + 1] = zigui.Empty().frameHeight(@as(f32, @floatFromInt(count - range.end)) * row_height);
     const body = zigui.view.makeStackFromSlice(.vertical, 0, .leading, kids).frameMaxWidth();
     return zigui.ScrollViewState(scroll, body).frameMaxWidth().frameMaxHeight();
 }
@@ -213,8 +213,8 @@ pub fn VirtualList(
 pub fn DiffView(lines: []const mod.DiffLine, selected: ?usize, scroll: *zigui.ScrollState, on_hunk: ?mod.IndexCallback) zigui.View {
     const model = zigui.buildAlloc().create(DiffModel) catch @panic("oom");
     model.* = .{ .lines = lines, .selected = selected, .on_hunk = on_hunk, .tokens = mod.buildTokens() };
-    model.indexHunks(mod.RowRange.visible(lines.len, mod.diff_row_h, scroll));
-    return VirtualList(DiffModel, model, lines.len, mod.diff_row_h, scroll, DiffModel.row);
+    model.indexHunks(mod.RowRange.visible(lines.len, mod.diff_row_height, scroll));
+    return VirtualList(DiffModel, model, lines.len, mod.diff_row_height, scroll, DiffModel.row);
 }
 
 /// A table's header row, matching `TableRow`'s cells: put it over a
@@ -284,13 +284,13 @@ test "a DiffView builds only the rows in view, and taps name the hunk" {
         }
     };
     var probe: Probe = .{};
-    var scroll: zigui.ScrollState = .{ .offset = 60 * mod.diff_row_h, .viewport_h = 10 * mod.diff_row_h };
+    var scroll: zigui.ScrollState = .{ .offset = 60 * mod.diff_row_height, .viewport_h = 10 * mod.diff_row_height };
     canvas.begin(zigui.macos.light);
     const view = DiffView(lines, 1, &scroll, mod.IndexCallback.init(Probe, &probe, Probe.onHunk));
     canvas.end();
-    var frame = try canvas.render(view, 300, @intFromFloat(10 * mod.diff_row_h));
+    var frame = try canvas.render(view, 300, @intFromFloat(10 * mod.diff_row_height));
     defer frame.deinit();
-    try std.testing.expectEqual(@as(f32, 5000) * mod.diff_row_h, scroll.content_h);
+    try std.testing.expectEqual(@as(f32, 5000) * mod.diff_row_height, scroll.content_h);
     // Row 60 is at the top, in hunk 1 (rows 50..99).
     try std.testing.expect(canvas.tap(.{ .x = 150, .y = 5 }));
     try std.testing.expectEqual(@as(?usize, 1), probe.hunk);

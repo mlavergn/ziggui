@@ -4,7 +4,7 @@
 
 ## Overview
 
-ziggui is the GUI dependency for apps built on [zigui](https://github.com/mlavergn/zigui). It re-exports zigui's views and adds the ones zigui lacks: chat pieces, a virtual list, a diff view, table rows, and draggable split views. Widget names follow SwiftUI's where SwiftUI has one. A component gallery shows every widget.
+ziggui is the GUI dependency for apps built on [zigui](https://github.com/mlavergn/zigui). It re-exports zigui's views and adds the ones zigui lacks: chat pieces, a virtual list, a diff view, table rows, draggable split views, and for Linux and Windows a menu bar (click a title, point at the next, or tap Alt) and a title bar with the platform's window buttons, drawn in place of the system's. Widget names follow SwiftUI's where SwiftUI has one. A component gallery shows every widget.
 
 ## Requirements
 
