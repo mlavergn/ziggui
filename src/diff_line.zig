@@ -3,7 +3,7 @@ const log = std.log.scoped(.ziggui_diff_line);
 const zigui = @import("zigui");
 
 /// The height of one diff row, in points.
-pub const diff_row_h: f32 = 18;
+pub const diff_row_height: f32 = 18;
 
 /// What a `DiffLine` is.
 pub const DiffLineKind = enum {
@@ -77,7 +77,7 @@ pub const DiffLine = struct {
     /// - `index`: the hunk.
     pub fn revealHunk(scroll: *zigui.ScrollState, lines: []const Self, index: usize) void {
         const at = Self.hunkRow(lines, index) orelse return;
-        scroll.offset = @as(f32, @floatFromInt(at)) * diff_row_h;
+        scroll.offset = @as(f32, @floatFromInt(at)) * diff_row_height;
     }
 };
 
@@ -105,5 +105,5 @@ test "diff hunks are counted and located across files" {
     try std.testing.expectEqual(@as(?usize, null), DiffLine.hunkRow(&lines, 2));
     var scroll: zigui.ScrollState = .{};
     DiffLine.revealHunk(&scroll, &lines, 1);
-    try std.testing.expectEqual(5 * diff_row_h, scroll.offset);
+    try std.testing.expectEqual(5 * diff_row_height, scroll.offset);
 }

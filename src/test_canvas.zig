@@ -33,6 +33,12 @@ pub const TestCanvas = struct {
     /// The tap regions the last `render` registered.
     hits: std.ArrayList(zigui.HitRegion) = .empty,
 
+    /// The `onHover` regions the last `render` registered.
+    hovers: std.ArrayList(zigui.HoverRegion) = .empty,
+
+    /// The overlays (popovers, sheets, alerts) the last `render` drew.
+    overlays: std.ArrayList(zigui.OverlayReq) = .empty,
+
     /// Makes a canvas.
     ///
     /// - `allocator`: allocator for the canvas, its caches and its frames.
@@ -69,6 +75,8 @@ pub const TestCanvas = struct {
     pub fn begin(self: *Self, theme: zigui.Theme) void {
         _ = self.arena.reset(.retain_capacity);
         self.hits = .empty;
+        self.hovers = .empty;
+        self.overlays = .empty;
         self.theme = theme;
         zigui.setThemeTokens(theme);
         zigui.beginBuild(self.arena.allocator());
@@ -93,6 +101,8 @@ pub const TestCanvas = struct {
         const arena = self.arena.allocator();
         var ctx = zigui.Context.init(self.theme, &self.cache, arena, &self.hits);
         ctx.icon_cache = &self.icon_cache;
+        ctx.hover_regions = &self.hovers;
+        ctx.overlays = &self.overlays;
         var canvas = zigui.Canvas.init(arena);
         const full: zigui.Rect = .{ .x = 0, .y = 0, .width = @floatFromInt(width), .height = @floatFromInt(height) };
         try zigui.render(&ctx, view, full, &canvas);
@@ -110,6 +120,17 @@ pub const TestCanvas = struct {
     /// - Returns: whether a region took the tap.
     pub fn tap(self: *const Self, point: zigui.Point) bool {
         return zigui.dispatchTap(self.hits.items, point);
+    }
+
+    /// Moves the pointer over the last frame from `from` to `to`, as a mouse
+    /// motion would: views whose frame it entered or left hear of it (`onHover`).
+    ///
+    /// - `self`: the canvas.
+    /// - `from`: where the pointer was, or null outside the window.
+    /// - `to`: where it is now, or null outside the window.
+    /// - Returns: whether any `onHover` callback fired.
+    pub fn hover(self: *const Self, from: ?zigui.Point, to: ?zigui.Point) bool {
+        return zigui.dispatchHover(self.hovers.items, from, to);
     }
 };
 

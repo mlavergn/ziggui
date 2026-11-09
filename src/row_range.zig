@@ -19,16 +19,16 @@ pub const RowRange = struct {
     /// Which rows of a list are in view at `scroll`'s offset, plus overscan.
     ///
     /// - `count`: how many rows.
-    /// - `row_h`: each row's height, in points.
+    /// - `row_height`: each row's height, in points.
     /// - `scroll`: the list's scroll position.
     /// - Returns: the rows to build.
-    pub fn visible(count: usize, row_h: f32, scroll: *const zigui.ScrollState) Self {
-        if (count == 0 or row_h <= 0) return .{ .start = 0, .end = 0 };
+    pub fn visible(count: usize, row_height: f32, scroll: *const zigui.ScrollState) Self {
+        if (count == 0 or row_height <= 0) return .{ .start = 0, .end = 0 };
         const viewport = if (scroll.viewport_h > 0) scroll.viewport_h else 1200;
-        const max_offset = @max(0, @as(f32, @floatFromInt(count)) * row_h - viewport);
+        const max_offset = @max(0, @as(f32, @floatFromInt(count)) * row_height - viewport);
         const offset = std.math.clamp(scroll.offset, 0, max_offset);
-        const first: usize = @intFromFloat(@floor(offset / row_h));
-        const last: usize = @intFromFloat(@ceil((offset + viewport) / row_h));
+        const first: usize = @intFromFloat(@floor(offset / row_height));
+        const last: usize = @intFromFloat(@ceil((offset + viewport) / row_height));
         const self = Self{ .start = @min(count, first -| overscan), .end = @min(count, last + overscan) };
         return self;
     }

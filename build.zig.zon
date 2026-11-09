@@ -1,7 +1,7 @@
 .{
     .name = .ziggui,
     .description = "Zig Cross Platform GUI Module",
-    .version = "0.0.4",
+    .version = "0.1.0",
     .fingerprint = 0x216dc68257d008b,
     .minimum_zig_version = "0.17.0",
     .paths = .{

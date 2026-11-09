@@ -39,6 +39,10 @@ pub const Divider = zigui.Divider;
 pub const Empty = zigui.Empty;
 /// Content built from the size it is laid out at.
 pub const GeometryReader = zigui.GeometryReader;
+/// The window's size in points, as the frame being built is laid out at.
+pub const viewport = zigui.viewport;
+/// Sets the window size `viewport` reports; the app runtime calls it, and headless frames do.
+pub const setViewport = zigui.setViewport;
 /// A scrolling viewport with a fixed offset.
 pub const ScrollView = zigui.ScrollView;
 /// A scrolling viewport whose offset lives in a `ScrollState`.
@@ -81,6 +85,10 @@ pub const IconName = zigui.IconName;
 pub const Rectangle = zigui.Rectangle;
 /// A filled circle.
 pub const Circle = zigui.Circle;
+/// An image of RGBA pixels (`.scaledToFit()` to draw it at a frame's size).
+pub const Image = zigui.Image;
+/// The RGBA8 pixels an `Image` draws, rows top-down.
+pub const ImagePixels = zigui.canvas.Image;
 
 // -----------------------------------------------------------------------------
 // zigui: controls and focus
@@ -189,6 +197,12 @@ pub const render = zigui.render;
 pub const HitRegion = zigui.HitRegion;
 /// Replays a tap on a frame's regions.
 pub const dispatchTap = zigui.dispatchTap;
+/// What `View.onHover` calls: true on entering a view, false on leaving it.
+pub const HoverCallback = zigui.HoverCallback;
+/// An `onHover` region registered while painting.
+pub const HoverRegion = zigui.HoverRegion;
+/// Replays a pointer move on a frame's `onHover` regions.
+pub const dispatchHover = zigui.dispatchHover;
 /// A popover or sheet waiting to be drawn.
 pub const OverlayReq = zigui.OverlayReq;
 /// The draw commands a frame emits.
@@ -243,7 +257,7 @@ pub const DiffLineKind = @import("diff_line.zig").DiffLineKind;
 /// One row of a `DiffView` (`hunkCount`, `hunkRow` and `revealHunk` work on a diff).
 pub const DiffLine = @import("diff_line.zig").DiffLine;
 /// The height of one diff row, in points.
-pub const diff_row_h = @import("diff_line.zig").diff_row_h;
+pub const diff_row_height = @import("diff_line.zig").diff_row_height;
 /// A list that builds only the rows in view.
 pub const VirtualList = @import("panes.zig").VirtualList;
 /// A unified diff over a `VirtualList`.
@@ -264,10 +278,52 @@ pub const HSplitView = @import("split.zig").HSplitView;
 pub const VSplitView = @import("split.zig").VSplitView;
 
 // -----------------------------------------------------------------------------
+// ziggui: keys
+
+/// The SDL3 keycodes and modifier bits zigui's key handlers pass, mirrored so key handling stays headless.
+pub const SdlKey = @import("sdl_key.zig").SdlKey;
+
+// -----------------------------------------------------------------------------
+// ziggui: menu bar
+
+/// One entry of a `MenuBarMenu`.
+pub const MenuBarItem = @import("menu_bar_menu.zig").MenuBarItem;
+/// One menu of a `MenuBar`: a title and its entries (`fold` makes the narrow bar's `☰`).
+pub const MenuBarMenu = @import("menu_bar_menu.zig").MenuBarMenu;
+/// How a `MenuBar` is drawn (the titles' color on a colored title bar).
+pub const MenuBarOptions = @import("menu_bar_options.zig").MenuBarOptions;
+/// A menu bar's menus, every one and folded into one `☰`, picked by width (`MenuBarState.shown`).
+pub const MenuBarMenus = @import("menu_bar_menus.zig").MenuBarMenus;
+/// A key an open `MenuBar` reads (`fromKeycode` reads an SDL key event, `toKeycode` makes one).
+pub const MenuBarKey = @import("menu_bar_state.zig").MenuBarKey;
+/// A `MenuBar`'s state: the open menu, the highlighted entry, an Alt tap under way; takes the app's raw key and mouse events.
+pub const MenuBarState = @import("menu_bar_state.zig").MenuBarState;
+/// A menu bar drawn in the window, for systems without a global one.
+pub const MenuBar = @import("menu_bar.zig").MenuBar;
+/// A `MenuBar`'s height, in points.
+pub const menu_bar_height = @import("menu_bar.zig").menu_bar_height;
+
+// -----------------------------------------------------------------------------
+// ziggui: title bar
+
+/// Which platform's window buttons `WindowButtons` draws.
+pub const WindowButtonStyle = @import("title_bar.zig").WindowButtonStyle;
+/// What `WindowButtons` do: minimize, maximize or restore, close.
+pub const WindowActions = @import("window_actions.zig").WindowActions;
+/// An app-drawn title bar: leading content, a centered middle, trailing content.
+pub const TitleBar = @import("title_bar.zig").TitleBar;
+/// Minimize, maximize or restore, and close, in the platform's look.
+pub const WindowButtons = @import("title_bar.zig").WindowButtons;
+/// A `TitleBar`'s height, in points.
+pub const title_bar_height = @import("title_bar.zig").title_bar_height;
+
+// -----------------------------------------------------------------------------
 // Test Fixtures
 
 /// A headless frame for the unit tests.
 pub const TestCanvas = @import("test_canvas.zig").TestCanvas;
+/// Two menus for the menu bar's unit tests, counting their choices.
+pub const TestMenus = @import("test_menus.zig").TestMenus;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -284,5 +340,14 @@ test {
     _ = @import("panes.zig");
     _ = @import("split_state.zig");
     _ = @import("split.zig");
+    _ = @import("sdl_key.zig");
+    _ = @import("menu_bar_menu.zig");
+    _ = @import("menu_bar_options.zig");
+    _ = @import("menu_bar_state.zig");
+    _ = @import("menu_bar_menus.zig");
+    _ = @import("menu_bar.zig");
+    _ = @import("window_actions.zig");
+    _ = @import("title_bar.zig");
     _ = @import("test_canvas.zig");
+    _ = @import("test_menus.zig");
 }

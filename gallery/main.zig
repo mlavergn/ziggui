@@ -9,7 +9,7 @@ pub const std_options: std.Options = .{
     .log_level = if (gallery.is_debug) .debug else .warn,
 };
 
-/// The command line: `ziggui-gallery [--section <n>] [--accent <n>] [--dark] [--screenshot <out.bmp>]`.
+/// The command line: `ziggui-gallery [--section <n>] [--accent <n>] [--menu <n>] [--dark] [--screenshot <out.bmp>]`.
 const Args = struct {
     const Self = @This();
 
@@ -27,6 +27,9 @@ const Args = struct {
 
     /// Open in the dark appearance instead of following the OS.
     dark: bool = false,
+
+    /// The Menu Bar panel's menu to open, for a screenshot of it.
+    menu: ?usize = null,
 
     /// Draw one frame to this BMP instead of opening a window.
     screenshot: ?[]const u8 = null,
@@ -50,6 +53,12 @@ const Args = struct {
                 args.section = std.fmt.parseInt(i64, argv[index], 10) catch |err| blk: {
                     log.warn("ignoring --section {s} [{t}]", .{ argv[index], err });
                     break :blk 0;
+                };
+            } else if (std.mem.eql(u8, arg, "--menu") and index + 1 < argv.len) {
+                index += 1;
+                args.menu = std.fmt.parseInt(usize, argv[index], 10) catch |err| blk: {
+                    log.warn("ignoring --menu {s} [{t}]", .{ argv[index], err });
+                    break :blk null;
                 };
             } else if (std.mem.eql(u8, arg, "--accent") and index + 1 < argv.len) {
                 index += 1;
@@ -86,6 +95,7 @@ pub fn main(init: std.process.Init) !void {
     shown.section.set(args.section);
     shown.accent.set(args.accent);
     shown.dark.set(args.dark);
+    if (args.menu) |menu| if (menu < shown.barMenus().len) shown.menu_bar.open(menu);
 
     if (args.screenshot) |out| {
         const rgba = try gallery.Screenshot.render(allocator, shown, Args.screenshot_width, Args.screenshot_height);
@@ -125,6 +135,9 @@ const Window = struct {
         Self.follow_os = follow;
 
         ziggui_app.setThemeProvider(Self.theme);
+        ziggui_app.setKeyHandler(Self.onKey);
+        ziggui_app.setKeyUpHandler(Self.onKeyUp);
+        ziggui_app.setMouseHandler(Self.onMouse);
         try ziggui_app.run(allocator, gallery.Gallery, target, .{
             .title = "ziggui — Gallery",
             .width = 980,
@@ -133,6 +146,36 @@ const Window = struct {
             .min_height = 420,
             .theme = target.theme(),
         }, gallery.Gallery.body, null);
+    }
+
+    /// A key went down: the Menu Bar panel's Alt tap and menu keys.
+    ///
+    /// - `keycode`: its `SDL_Keycode`.
+    /// - `mods`: its `SDL_Keymod` mask.
+    /// - Returns: true when the menu used it.
+    fn onKey(keycode: u32, mods: u16) bool {
+        const target = Self.shown orelse return false;
+        return target.menuKeyDown(keycode, mods);
+    }
+
+    /// A key came up: Alt ends a tap.
+    ///
+    /// - `keycode`: its `SDL_Keycode`.
+    /// - `mods`: its `SDL_Keymod` mask.
+    fn onKeyUp(keycode: u32, mods: u16) void {
+        _ = mods;
+        const target = Self.shown orelse return;
+        target.menuKeyUp(keycode);
+    }
+
+    /// A mouse event: a press cancels an Alt tap; none is consumed.
+    ///
+    /// - `event`: the event.
+    /// - Returns: false, so zigui handles it as usual.
+    fn onMouse(event: ziggui_app.MouseEvent) bool {
+        const target = Self.shown orelse return false;
+        if (event.kind == .down) target.menu_bar.pointerDown();
+        return false;
     }
 
     /// The theme provider: the gallery's selection, the OS appearance on the first frame.

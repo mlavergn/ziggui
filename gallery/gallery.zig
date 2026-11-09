@@ -19,6 +19,12 @@ pub const Section = enum {
     /// The split views.
     split,
 
+    /// The menu bar.
+    menuBar,
+
+    /// The app-drawn title bar and window buttons.
+    titleBar,
+
     /// Every section, as sidebar rows.
     pub const items = blk: {
         const values = @typeInfo(Self).@"enum".field_values;
@@ -39,6 +45,8 @@ pub const Section = enum {
             .chat => "Chat",
             .panes => "Panes",
             .split => "Split Views",
+            .menuBar => "Menu Bar",
+            .titleBar => "Title Bar",
         };
     }
 
@@ -51,6 +59,8 @@ pub const Section = enum {
             .chat => .message_square,
             .panes => .table,
             .split => .layout_panel_left,
+            .menuBar => .menu,
+            .titleBar => .app_window,
         };
     }
 
@@ -107,7 +117,7 @@ const file_columns = [_]ziggui.DataColumn{
 const file_count: usize = 10_000;
 
 /// The height of one of the Panes panel's table rows, in points.
-const file_row_h: f32 = 24;
+const file_row_height: f32 = 24;
 
 /// How many of the sample diff's rows show at once; the rest scroll.
 const diff_rows_shown: f32 = 10;
@@ -130,6 +140,61 @@ const sample_diff = [_]ziggui.DiffLine{
     .{ .kind = .removed, .text = "pub fn Disclosure(header: View, expanded: bool) View {", .old = 60 },
     .{ .kind = .added, .text = "pub fn DisclosureGroup(header: View, expanded: bool) View {", .new = 60 },
     .{ .kind = .note, .text = "\\ No newline at end of file" },
+};
+
+/// A Menu Bar panel entry's choice: says which entry was chosen.
+const BarChoice = struct {
+    const Self = @This();
+
+    /// The gallery the panel shows the choice in.
+    gallery: *Gallery,
+
+    /// The entry's title.
+    title: []const u8,
+
+    /// Records the choice.
+    ///
+    /// - `self`: the entry.
+    fn choose(self: *Self) void {
+        self.gallery.menu_choice = self.title;
+    }
+};
+
+/// The Menu Bar panel's menus: titles and entries, `ctrl+` keys as off macOS.
+const bar_menus = [_]struct { []const u8, []const ziggui.MenuBarItem }{
+    .{ "File", &.{
+        .{ .title = "New Window", .key_text = "ctrl+N" },
+        .{ .title = "Open Folder…", .key_text = "ctrl+O" },
+        .{},
+        .{ .title = "Save", .key_text = "ctrl+S", .enabled = false },
+        .{},
+        .{ .title = "Settings…", .key_text = "ctrl+," },
+        .{},
+        .{ .title = "Quit", .key_text = "ctrl+Q" },
+    } },
+    .{ "Edit", &.{
+        .{ .title = "Undo", .key_text = "ctrl+Z", .enabled = false },
+        .{},
+        .{ .title = "Cut", .key_text = "ctrl+X" },
+        .{ .title = "Copy", .key_text = "ctrl+C" },
+        .{ .title = "Paste", .key_text = "ctrl+V" },
+    } },
+    .{ "View", &.{
+        .{ .title = "Zoom In", .key_text = "ctrl+=" },
+        .{ .title = "Zoom Out", .key_text = "ctrl+-" },
+        .{},
+        .{ .title = "Next Pane", .key_text = "tab" },
+    } },
+    .{ "Help", &.{
+        .{ .title = "Search" },
+    } },
+};
+
+/// How many entries the Menu Bar panel's menus hold, separators included.
+const bar_item_count = blk: {
+    var count: usize = 0;
+    for (bar_menus) |menu| count += menu[1].len;
+    break :blk count;
 };
 
 /// The ziggui component gallery: a sidebar of sections, one panel per
@@ -178,6 +243,27 @@ pub const Gallery = struct {
 
     /// The Split Views panel's row divider.
     rows: ziggui.SplitState = .{ .initial_ratio = 0.5, .min_first = 60, .min_second = 60 },
+
+    /// The Menu Bar panel's bar.
+    menu_bar: ziggui.MenuBarState = .{},
+
+    /// The Menu Bar panel's last chosen entry.
+    menu_choice: []const u8 = "Nothing chosen yet.",
+
+    /// The Menu Bar panel's entries, their actions pointing at this gallery (`barMenus`).
+    bar_items: [bar_item_count]ziggui.MenuBarItem = undefined,
+
+    /// What each of `bar_items` does.
+    bar_choices: [bar_item_count]BarChoice = undefined,
+
+    /// The Menu Bar panel's menus, over `bar_items`.
+    bar_menus: [bar_menus.len]ziggui.MenuBarMenu = undefined,
+
+    /// The Title Bar panel's two bars' menus (the second one folded).
+    title_menus: [2]ziggui.MenuBarState = .{ .{}, .{} },
+
+    /// What the Title Bar panel's window buttons last did.
+    window_said: []const u8 = "No window button pressed yet.",
 
     /// Constructs a gallery on its first section, light, in the first theme
     /// family with its own accent.
@@ -237,6 +323,50 @@ pub const Gallery = struct {
             self.detail(th),
             th.colors.sidebar_background orelse th.colors.secondary_background,
         );
+    }
+
+    /// The Menu Bar panel's menus, each entry's action recording its title
+    /// in `menu_choice`. Rebuilt in place on each call (no allocation), so
+    /// the actions point at the gallery where it is now.
+    ///
+    /// - `self`: the gallery.
+    /// - Returns: the menus, in `self`.
+    pub fn barMenus(self: *Self) []const ziggui.MenuBarMenu {
+        var at: usize = 0;
+        for (bar_menus, 0..) |menu, index| {
+            const first = at;
+            for (menu[1]) |item| {
+                self.bar_choices[at] = .{ .gallery = self, .title = item.title };
+                self.bar_items[at] = item;
+                if (item.title.len > 0) self.bar_items[at].action = ziggui.actionCtx(BarChoice, &self.bar_choices[at], BarChoice.choose);
+                at += 1;
+            }
+            self.bar_menus[index] = .{ .title = menu[0], .items = self.bar_items[first..at], .width = 220 };
+        }
+        return &self.bar_menus;
+    }
+
+    /// A key went down (zigui's raw event), for the Menu Bar panel's bar:
+    /// `MenuBarState.keyDown` (Alt may start a tap; the open menu's keys).
+    ///
+    /// - `self`: the gallery.
+    /// - `keycode`: the event's `SDL_Keycode`.
+    /// - `mods`: its `SDL_Keymod` mask.
+    /// - Returns: true when the menu used it.
+    pub fn menuKeyDown(self: *Self, keycode: u32, mods: u16) bool {
+        if (Section.at(self.section.get()) != .menuBar) return false;
+        return self.menu_bar.keyDown(self.barMenus(), keycode, mods);
+    }
+
+    /// A key came up (zigui's raw event): Alt after a tap opens the Menu Bar
+    /// panel's first menu, or closes the open one. Taken on every section,
+    /// so an Alt released after a click away is known to be up; no tap can
+    /// be under way there, since only the panel's key-downs start one.
+    ///
+    /// - `self`: the gallery.
+    /// - `keycode`: the event's `SDL_Keycode`.
+    pub fn menuKeyUp(self: *Self, keycode: u32) void {
+        _ = self.menu_bar.keyUp(self.barMenus(), keycode);
     }
 
     /// Folds or unfolds the Chat panel's tool call.
@@ -341,6 +471,8 @@ pub const Gallery = struct {
             .chat => self.chatPanel(th),
             .panes => self.panesPanel(th),
             .split => self.splitPanel(th),
+            .menuBar => self.menuBarPanel(th),
+            .titleBar => self.titleBarPanel(th),
         };
     }
 
@@ -391,11 +523,11 @@ pub const Gallery = struct {
         return ziggui.VStack(.{
             Self.card(th, "Table rows over a virtual list (10,000 rows)", ziggui.VStack(.{
                 ziggui.TableHeader(&file_columns),
-                ziggui.VirtualList(Self, self, file_count, file_row_h, &self.files_scroll, Self.fileRow).frameHeight(150),
+                ziggui.VirtualList(Self, self, file_count, file_row_height, &self.files_scroll, Self.fileRow).frameHeight(150),
             }).spacing(0)),
             Self.card(th, "DiffView (tap a row to select its hunk)", ziggui.VStack(.{
                 ziggui.DiffView(&sample_diff, self.hunk_selected, &self.diff_scroll, on_hunk),
-            }).spacing(0).frameHeight(diff_rows_shown * ziggui.diff_row_h)),
+            }).spacing(0).frameHeight(diff_rows_shown * ziggui.diff_row_height)),
         }).spacing(16);
     }
 
@@ -439,6 +571,79 @@ pub const Gallery = struct {
             .frameMaxWidth()
             .frameHeight(260)
             .border(th.colors.separator, 1));
+    }
+
+    /// The Menu Bar panel: a bar over a window's worth of space, and the last choice.
+    ///
+    /// - `self`: the gallery.
+    /// - `th`: the theme this frame draws with.
+    /// - Returns: the panel's view.
+    fn menuBarPanel(self: *Self, th: ziggui.Theme) ziggui.View {
+        return Self.card(th, "MenuBar (click a title, point at the next; Alt opens the first menu)", ziggui.VStack(.{
+            ziggui.MenuBar(&self.menu_bar, self.barMenus(), .{}),
+            ziggui.Divider(),
+            ziggui.VStack(.{
+                Self.leading(ziggui.Text(self.menu_choice).foreground(th.colors.secondary_label)),
+                ziggui.Spacer(),
+            }).padding(12).frameHeight(260),
+        }).spacing(0).border(th.colors.separator, 1));
+    }
+
+    /// The Title Bar panel: a title bar with Windows' buttons, then a narrow
+    /// one with GNOME's and its menus folded, both over the theme family's
+    /// own bar; the buttons say what they would do.
+    ///
+    /// - `self`: the gallery.
+    /// - `th`: the theme this frame draws with.
+    /// - Returns: the panel's view.
+    fn titleBarPanel(self: *Self, th: ziggui.Theme) ziggui.View {
+        const fg = th.titleBarForeground();
+        const actions: ziggui.WindowActions = .{
+            .minimize = ziggui.actionCtx(Self, self, Self.minimizeTapped),
+            .maximize = ziggui.actionCtx(Self, self, Self.maximizeTapped),
+            .close = ziggui.actionCtx(Self, self, Self.closeTapped),
+        };
+        const folded = ziggui.MenuBarMenu.fold(ziggui.buildAlloc(), self.barMenus()) catch @panic("oom");
+        return ziggui.VStack(.{
+            Self.card(th, "TitleBar with Windows' buttons (the theme colors the bar)", ziggui.TitleBar(
+                ziggui.HStack(.{
+                    ziggui.Icon(.boxes, 16, fg).paddingInsets(.{ .leading = 10 }),
+                    ziggui.MenuBar(&self.title_menus[0], self.barMenus(), .{ .foreground = fg, .fill = false }),
+                }).spacing(4),
+                "~/src/mlavergn/ziggui",
+                ziggui.WindowButtons(.windows, false, actions),
+            ).border(th.colors.separator, 1)),
+            Self.card(th, "Narrow, with GNOME's buttons and the menus folded", Self.leading(ziggui.TitleBar(
+                ziggui.HStack(.{
+                    ziggui.Icon(.boxes, 16, fg).paddingInsets(.{ .leading = 10 }),
+                    ziggui.MenuBar(&self.title_menus[1], folded, .{ .foreground = fg, .fill = false }),
+                }).spacing(4),
+                "~/src/mlavergn/ziggui",
+                ziggui.WindowButtons(.gnome, true, actions),
+            ).frameWidth(360).border(th.colors.separator, 1))),
+            Self.leading(ziggui.Text(self.window_said).foreground(th.colors.secondary_label)),
+        }).spacing(16);
+    }
+
+    /// The Title Bar panel's minimize button: says it was pressed.
+    ///
+    /// - `self`: the gallery.
+    fn minimizeTapped(self: *Self) void {
+        self.window_said = "Minimize";
+    }
+
+    /// The Title Bar panel's maximize or restore button: says it was pressed.
+    ///
+    /// - `self`: the gallery.
+    fn maximizeTapped(self: *Self) void {
+        self.window_said = "Maximize or restore";
+    }
+
+    /// The Title Bar panel's close button: says it was pressed.
+    ///
+    /// - `self`: the gallery.
+    fn closeTapped(self: *Self) void {
+        self.window_said = "Close";
     }
 
     /// A split view's sample pane: a title and a line of text, top-leading.
@@ -551,6 +756,36 @@ test "the panel callbacks fold the tool call and select a row and a hunk" {
     try std.testing.expectEqual(@as(usize, 7), shown.file_selected);
     shown.selectHunk(2);
     try std.testing.expectEqual(@as(usize, 2), shown.hunk_selected);
+}
+
+test "the Menu Bar panel's entries record the choice, and Alt opens the first menu there only" {
+    const allocator = std.testing.allocator;
+
+    var shown = try Gallery.init(allocator);
+    defer shown.deinit();
+
+    const down = ziggui.MenuBarKey.down.toKeycode();
+    // Off its section, Alt is left alone.
+    try std.testing.expect(!shown.menuKeyDown(ziggui.SdlKey.left_alt, 0));
+    shown.menuKeyUp(ziggui.SdlKey.left_alt);
+    try std.testing.expect(!shown.menu_bar.isOpen());
+
+    shown.section.set(@backingInt(Section.menuBar));
+    try std.testing.expect(!shown.menuKeyDown(ziggui.SdlKey.left_alt, 0));
+    shown.menuKeyUp(ziggui.SdlKey.left_alt);
+    try std.testing.expectEqual(@as(?usize, 0), shown.menu_bar.menu);
+    const rgba = try gallery.Screenshot.render(allocator, &shown, gallery.test_width, gallery.test_height);
+    defer allocator.free(rgba);
+    // Down past New Window to Open Folder…, then choose it.
+    try std.testing.expect(shown.menuKeyDown(down, 0));
+    try std.testing.expect(shown.menuKeyDown(ziggui.MenuBarKey.enter.toKeycode(), 0));
+    try std.testing.expectEqualStrings("Open Folder…", shown.menu_choice);
+    try std.testing.expect(!shown.menu_bar.isOpen());
+    // Alt with another key between is not a tap.
+    _ = shown.menuKeyDown(ziggui.SdlKey.left_alt, 0);
+    _ = shown.menuKeyDown('x', 0);
+    shown.menuKeyUp(ziggui.SdlKey.left_alt);
+    try std.testing.expect(!shown.menu_bar.isOpen());
 }
 
 test "an accent recolors the accent and selection; the first keeps the theme's own" {
