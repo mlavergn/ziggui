@@ -4,7 +4,7 @@
 
 ## Overview
 
-ziggui draws declarative, SwiftUI-shaped view trees (`VStack`, `Toggle`, `NavigationSplitView`, `GeometryReader`, …) with five native-looking theme families (macOS, Windows 10, Windows 2000, KDE Plasma, Material). Layout, text, themes and a software rasterizer are pure Zig and test headless; on screen, rendering goes through SDL_GPU (Metal, Vulkan, D3D12) with an automatic software fallback. Beyond the standard views it has chat pieces, a virtual list that also scrolls sideways, a diff view, table rows, draggable split views, a hover popover, and for Linux and Windows an in-window menu bar and a title bar with the platform's window buttons. Names follow SwiftUI's where SwiftUI has one. A component gallery shows every view.
+ziggui draws declarative, SwiftUI-shaped view trees (`VStack`, `Toggle`, `NavigationSplitView`, `GeometryReader`, …) with five native-looking theme families (macOS, Windows 10, Windows 2000, KDE Plasma, Material). Layout, text, themes and a software rasterizer are pure Zig and test headless; on screen, rendering goes through SDL_GPU (Metal, Vulkan, D3D12) with an automatic software fallback. Beyond the standard views it has chat pieces, a virtual list that also scrolls sideways, a diff view (long lines scroll sideways or wrap), table rows, draggable split views, a hover popover, and for Linux and Windows an in-window menu bar and a title bar with the platform's window buttons. Names follow SwiftUI's where SwiftUI has one. A component gallery shows every view.
 
 Since 1.0.0 ziggui includes what used to be the separate zigui library, and builds SDL 3.4.20 itself from the official release.
 

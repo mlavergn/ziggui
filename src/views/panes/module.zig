@@ -12,8 +12,12 @@ pub const RowRange = @import("row_range.zig").RowRange;
 pub const diff_row_height = @import("diff_line.zig").diff_row_height;
 /// What a `DiffLine` is.
 pub const DiffLineKind = @import("diff_line.zig").DiffLineKind;
-/// One row of a `DiffView` (`hunkCount`, `hunkRow` and `revealHunk` work on a diff).
+/// One row of a `DiffView` (`hunkCount`, `hunkRow` and `revealHunk` work on a diff; `wrap` and `wrapColumns` wrap one to a width, `anchorAt` and `offsetAt` keep a scroll position across a re-wrap).
 pub const DiffLine = @import("diff_line.zig").DiffLine;
+/// Where a scroll offset over a diff's rows falls, kept across a re-wrap (`DiffLine.anchorAt`, `DiffLine.offsetAt`).
+pub const DiffAnchor = @import("diff_line.zig").DiffAnchor;
+/// How a `DiffView` lays out a row (text size, cells, tabs, gutter), shared with `DiffLine.wrap`.
+pub const DiffLayout = @import("diff_layout.zig").DiffLayout;
 /// A list that builds only the rows in view.
 pub const VirtualList = @import("panes.zig").VirtualList;
 /// A `VirtualList` that also scrolls sideways, as wide as its widest row.
@@ -56,6 +60,8 @@ pub const StackBuilder = @import("../module.zig").StackBuilder;
 pub const TestCanvas = @import("../module.zig").TestCanvas;
 /// One line of text (from the views module).
 pub const Text = @import("../module.zig").Text;
+/// Steps over UTF-8 as the renderer draws it (`nextCodepointEnd`), from the views module.
+pub const TextLines = @import("../module.zig").TextLines;
 /// A node of the view tree (from the views module).
 pub const View = @import("../module.zig").View;
 
@@ -69,5 +75,6 @@ test {
     _ = @import("index_callback.zig");
     _ = @import("row_range.zig");
     _ = @import("diff_line.zig");
+    _ = @import("diff_layout.zig");
     _ = @import("panes.zig");
 }
