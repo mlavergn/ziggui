@@ -16,8 +16,12 @@ pub const is_debug = builtin.mode == .debug;
 pub const Section = @import("gallery.zig").Section;
 /// The component gallery: its state and the view tree it builds each frame.
 pub const Gallery = @import("gallery.zig").Gallery;
-/// Renders the gallery to an image with no window.
-pub const Screenshot = @import("screenshot.zig").Screenshot;
+/// What the gallery asks of the window it runs in; `main.zig` fills it from `ziggui.App`.
+pub const Platform = @import("platform.zig").Platform;
+/// The panels folded in from zigui's showcase, and their state.
+pub const Showcase = @import("showcase.zig").Showcase;
+/// A plain-text editor with a find bar and a path dialog, folded in from zigui's edit example.
+pub const Editor = @import("editor.zig").Editor;
 
 // -----------------------------------------------------------------------------
 // Test Fixtures
