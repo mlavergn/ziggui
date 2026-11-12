@@ -21,7 +21,7 @@
 VERSION := $(shell sed -n -E 's/^[[:space:]]*\.version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' build.zig.zon)
 
 # The Zig source roots `format` and `lint` walk (see ../styleguide/Makefile.in).
-ZIG_DIRS := src gallery
+ZIG_DIRS := src gallery build
 
 # ---------------------------------------------
 # Primary workflows
@@ -45,7 +45,7 @@ dist:
 
 # Build and launch the gallery (every ziggui component, with theme and
 # light/dark switchers) in a window. SDL3 is fetched and built by Zig on first
-# use. ReleaseFast because zigui's software fallback is ~10x slower in Debug.
+# use. ReleaseFast because the software fallback is ~10x slower in Debug.
 # Pass arguments with `make demo ARGS="--dark"`.
 demo:
 	zig build run-gallery -Doptimize=ReleaseFast -- $(ARGS)
