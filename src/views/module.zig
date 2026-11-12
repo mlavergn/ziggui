@@ -386,8 +386,12 @@ pub const RowRange = @import("panes/module.zig").RowRange;
 pub const diff_row_height = @import("panes/module.zig").diff_row_height;
 /// What a `DiffLine` is.
 pub const DiffLineKind = @import("panes/module.zig").DiffLineKind;
-/// One row of a `DiffView` (`hunkCount`, `hunkRow` and `revealHunk` work on a diff).
+/// One row of a `DiffView` (`hunkCount`, `hunkRow` and `revealHunk` work on a diff; `wrap` and `wrapColumns` wrap one to a width, `anchorAt` and `offsetAt` keep a scroll position across a re-wrap).
 pub const DiffLine = @import("panes/module.zig").DiffLine;
+/// Where a scroll offset over a diff's rows falls, kept across a re-wrap (`DiffLine.anchorAt`, `DiffLine.offsetAt`).
+pub const DiffAnchor = @import("panes/module.zig").DiffAnchor;
+/// How a `DiffView` lays out a row (text size, cells, tabs, gutter), shared with `DiffLine.wrap`.
+pub const DiffLayout = @import("panes/module.zig").DiffLayout;
 /// A list that builds only the rows in view.
 pub const VirtualList = @import("panes/module.zig").VirtualList;
 /// A `VirtualList` that also scrolls sideways, as wide as its widest row.

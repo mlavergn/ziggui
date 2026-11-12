@@ -650,8 +650,12 @@ pub const RowRange = views.RowRange;
 pub const diff_row_height = views.diff_row_height;
 /// What a `DiffLine` is.
 pub const DiffLineKind = views.DiffLineKind;
-/// One row of a `DiffView` (`hunkCount`, `hunkRow` and `revealHunk` work on a diff).
+/// One row of a `DiffView` (`hunkCount`, `hunkRow` and `revealHunk` work on a diff; `wrap` and `wrapColumns` wrap one to a width, `anchorAt` and `offsetAt` keep a scroll position across a re-wrap).
 pub const DiffLine = views.DiffLine;
+/// Where a scroll offset over a diff's rows falls, kept across a re-wrap (`DiffLine.anchorAt`, `DiffLine.offsetAt`).
+pub const DiffAnchor = views.DiffAnchor;
+/// How a `DiffView` lays out a row (text size, cells, tabs, gutter), shared with `DiffLine.wrap`.
+pub const DiffLayout = views.DiffLayout;
 /// A list that builds only the rows in view.
 pub const VirtualList = views.VirtualList;
 /// A `VirtualList` that also scrolls sideways, as wide as its widest row.

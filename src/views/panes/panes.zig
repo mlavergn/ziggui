@@ -1,6 +1,7 @@
 //! Panes for list | detail browsers: a list that builds only the rows in view
 //! (scrolling sideways too, for rows wider than the pane), a unified diff over
-//! it, and table rows sized to a shared set of columns.
+//! it (its lines run on, or wrap when the caller wraps them), and table rows
+//! sized to a shared set of columns.
 //! All pure composition over ziggui's `ScrollViewState` and stacks; the types
 //! they take (`IndexCallback`, `RowRange`, `DiffLine`) have files of their own.
 
@@ -11,12 +12,6 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_panes);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
-
-/// The size of a diff's monospaced text.
-const diff_font_size: f32 = 12;
-
-/// Spaces a tab expands to in a diff row.
-const diff_tab: []const u8 = "    ";
 
 /// A hunk or file header's row, where the hunk the rows below belong to changes.
 const DiffMark = struct {
@@ -84,16 +79,16 @@ const DiffIndex = struct {
         var longest: usize = 0;
         self.widest = 0;
         for (lines, 0..) |line, at| {
-            switch (line.kind) {
+            if (!line.continued) switch (line.kind) {
                 .hunkHeader => {
                     self.marks.append(std.heap.page_allocator, .{ .row = at, .hunk = next }) catch @panic("oom");
                     next += 1;
                 },
                 .fileHeader => self.marks.append(std.heap.page_allocator, .{ .row = at, .hunk = null }) catch @panic("oom"),
                 else => {},
-            }
+            };
             widest = @max(widest, @max(line.old orelse 0, line.new orelse 0));
-            const cells = DiffModel.columns(line.text);
+            const cells = mod.DiffLayout.columns(line.text);
             if (cells > longest) {
                 longest = cells;
                 self.widest = at;
@@ -122,9 +117,10 @@ const DiffIndex = struct {
         return hunk_of;
     }
 
-    /// What tells one diff from another: every line's kind, numbers and
-    /// text. Hashing is several times cheaper than the pass it saves, and a
-    /// diff rebuilt at the same address (an arena reused) is still told apart.
+    /// What tells one diff from another: every line's kind, numbers, text
+    /// and whether it is continued. Hashing is several times cheaper than
+    /// the pass it saves, and a diff rebuilt at the same address (an arena
+    /// reused) is still told apart.
     ///
     /// - `lines`: the diff.
     /// - Returns: the key.
@@ -132,7 +128,7 @@ const DiffIndex = struct {
         var hasher = std.hash.Wyhash.init(0xd1ff);
         hasher.update(std.mem.asBytes(&lines.len));
         for (lines) |line| {
-            const fields = [_]usize{ @backingInt(line.kind), if (line.old) |old| @as(usize, old) + 1 else 0, if (line.new) |new| @as(usize, new) + 1 else 0, @intFromPtr(line.text.ptr), line.text.len };
+            const fields = [_]usize{ @backingInt(line.kind), if (line.old) |old| @as(usize, old) + 1 else 0, if (line.new) |new| @as(usize, new) + 1 else 0, @intFromPtr(line.text.ptr), line.text.len, @intFromBool(line.continued) };
             hasher.update(std.mem.asBytes(&fields));
             hasher.update(line.text);
         }
@@ -197,24 +193,25 @@ const DiffModel = struct {
         // to size the list, may lie outside them.
         const hunk = if (index >= self.first and index - self.first < self.hunk_of.len) self.hunk_of[index - self.first] else null;
         const selected = hunk != null and self.selected != null and hunk.? == self.selected.?;
-        const bar = mod.Rectangle(if (selected) tokens.accent else renderer.Color.transparent).frameWidth(3);
-        const gutter_width = @as(f32, @floatFromInt(self.digits)) * 7.5 + 6;
+        const bar = mod.Rectangle(if (selected) tokens.accent else renderer.Color.transparent).frameWidth(mod.DiffLayout.bar_width);
+        const gutter_width = mod.DiffLayout.gutterWidth(self.digits);
         const body: mod.View = switch (line.kind) {
-            .hunkHeader, .fileHeader, .note => mod.Text(Self.expandTabs(line.text)).mono().size(diff_font_size)
+            .hunkHeader, .fileHeader, .note => mod.Text(Self.expandTabs(line.text)).mono().size(mod.DiffLayout.font_size)
                 .foreground(if (line.kind == .fileHeader) tokens.label else tokens.secondary_label)
                 .weight(if (line.kind == .fileHeader) .semibold else .regular),
             else => mod.HStack(.{
                 Self.numberCell(line.old, gutter_width, tokens.secondary_label),
                 Self.numberCell(line.new, gutter_width, tokens.secondary_label),
-                mod.Text(switch (line.kind) {
+                // A continued row has no marker: it is the line above, wrapped.
+                mod.Text(if (line.continued) " " else switch (line.kind) {
                     .added => "+",
                     .removed => "-",
                     else => " ",
-                }).mono().size(diff_font_size).foreground(Self.lineColor(line.kind, tokens)).frameWidth(12),
-                mod.Text(Self.expandTabs(line.text)).mono().size(diff_font_size).foreground(Self.lineColor(line.kind, tokens)),
-            }).spacing(4),
+                }).mono().size(mod.DiffLayout.font_size).foreground(Self.lineColor(line.kind, tokens)).frameWidth(mod.DiffLayout.marker_width),
+                mod.Text(Self.expandTabs(line.text)).mono().size(mod.DiffLayout.font_size).foreground(Self.lineColor(line.kind, tokens)),
+            }).spacing(mod.DiffLayout.cell_spacing),
         };
-        var row_view = mod.HStack(.{ bar, body.frameMaxWidth().frameAlign(.leading) }).spacing(6).frameMaxWidth();
+        var row_view = mod.HStack(.{ bar, body.frameMaxWidth().frameAlign(.leading) }).spacing(mod.DiffLayout.bar_spacing).frameMaxWidth();
         row_view = switch (line.kind) {
             .added => row_view.background(tokens.added.withAlpha(0.12)),
             .removed => row_view.background(tokens.removed.withAlpha(0.12)),
@@ -236,7 +233,7 @@ const DiffModel = struct {
     /// - Returns: the cell.
     fn numberCell(line_number: ?u32, width: f32, color: renderer.Color) mod.View {
         const text = if (line_number) |number| mod.BuildScope.shared().allocator().print("{d}", .{number}) catch @panic("oom") else "";
-        return mod.Text(text).mono().size(diff_font_size - 1).foreground(color).frameWidth(width).frameAlign(.trailing);
+        return mod.Text(text).mono().size(mod.DiffLayout.number_size).foreground(color).frameWidth(width).frameAlign(.trailing);
     }
 
     /// The text color of a diff line.
@@ -252,25 +249,12 @@ const DiffModel = struct {
         };
     }
 
-    /// How many monospaced cells a line takes: its code points, a tab as
-    /// `diff_tab`'s spaces. Invalid UTF-8 counts by bytes.
-    ///
-    /// - `line`: the line.
-    /// - Returns: the cell count.
-    fn columns(line: []const u8) usize {
-        const tabs = std.mem.count(u8, line, "\t");
-        const points = std.unicode.utf8CountCodepoints(line) catch line.len;
-        return points + tabs * (diff_tab.len - 1);
-    }
-
-    /// Text with each tab as spaces (the font has no glyph for a tab).
+    /// Text with each tab as spaces (`DiffLayout.expandTabs`), in the build arena.
     ///
     /// - `text`: the text.
-    /// - Returns: the expanded text in the build arena, or `text` itself when it
-    ///   has no tab.
+    /// - Returns: the expanded text, or `text` itself when it has no tab.
     fn expandTabs(text: []const u8) []const u8 {
-        if (std.mem.findScalar(u8, text, '\t') == null) return text;
-        return std.mem.replaceOwned(u8, mod.BuildScope.shared().allocator(), text, "\t", diff_tab) catch @panic("oom");
+        return mod.DiffLayout.expandTabs(mod.BuildScope.shared().allocator(), text) catch @panic("oom");
     }
 };
 
@@ -395,6 +379,13 @@ pub fn VirtualListBoth(
 /// only the rows in view (`VirtualListBoth`), so a long diff is cheap. A line
 /// wider than the pane runs on and the diff scrolls sideways to it, the gutter
 /// with it; set `scroll.offset_x` to 0 to show a new diff from its left edge.
+/// To wrap instead, pass `DiffLine.wrap(arena, lines, DiffLine.wrapColumns(digits,
+/// scroll.viewport_width))`, `digits` being `DiffLayout.digitsOf(lines)`: its
+/// continued rows draw with no line numbers or marker, and keep their line's
+/// hunk. Both read the whole diff, so keep the wrapped rows until the diff or
+/// the column count changes, never wrap per frame; when they change, carry
+/// `scroll.offset` over with `DiffLine.anchorAt` (old rows) and
+/// `DiffLine.offsetAt` (new rows), or the rows above it move it to other text.
 ///
 /// The pass over the whole diff (the gutter's width, the widest line, where
 /// hunks start) is kept between frames for the diff shown last, known by a
@@ -531,6 +522,58 @@ test "a DiffView runs long lines on and scrolls sideways as far as the widest" {
     var third = try canvas.render(view, 300, height);
     third.deinit();
     try std.testing.expectEqual(@as(f32, 0), fits.maxOffsetX());
+}
+
+test "a DiffView over lines wrapped to its width has nothing to scroll across" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const long: [400]u8 = @splat('x');
+    const lines = [_]mod.DiffLine{
+        .{ .kind = .hunkHeader, .text = "@@ -1200,2 +1200,2 @@" },
+        .{ .kind = .removed, .text = &long, .old = 1234 },
+        .{ .kind = .added, .text = "y", .new = 1234 },
+    };
+    const Probe = struct {
+        const Self = @This();
+        hunk: ?usize = null,
+        fn onHunk(self: *Self, index: usize) void {
+            self.hunk = index;
+        }
+    };
+    var probe: Probe = .{};
+    const width: u32 = 300;
+    const height: u32 = @intFromFloat(20 * mod.diff_row_height);
+
+    // Run on, the long line scrolls across.
+    var scroll: mod.ScrollState = .{ .viewport_height = 20 * mod.diff_row_height };
+    canvas.begin(renderer.MacosTheme.light);
+    var view = DiffView(&lines, null, &scroll, null);
+    canvas.end();
+    var first = try canvas.render(view, width, height);
+    first.deinit();
+    try std.testing.expect(scroll.maxOffsetX() > 0);
+
+    // Wrapped to the width the last frame measured, it does not.
+    const columns = mod.DiffLine.wrapColumns(mod.DiffLayout.digitsOf(&lines), scroll.viewport_width);
+    try std.testing.expect(columns > 1);
+    const rows = try mod.DiffLine.wrap(arena.allocator(), &lines, columns);
+    try std.testing.expect(rows.len > lines.len);
+    var wrapped: mod.ScrollState = .{ .viewport_height = 20 * mod.diff_row_height };
+    for (0..2) |_| {
+        canvas.begin(renderer.MacosTheme.light);
+        view = DiffView(rows, 0, &wrapped, mod.IndexCallback.init(Probe, &probe, Probe.onHunk));
+        canvas.end();
+        var frame = try canvas.render(view, width, height);
+        frame.deinit();
+    }
+    try std.testing.expectEqual(@as(f32, 0), wrapped.maxOffsetX());
+    try std.testing.expectEqual(@as(f32, @floatFromInt(rows.len)) * mod.diff_row_height, wrapped.content_height);
+    // A continued row taps as its line's hunk.
+    try std.testing.expect(rows[2].continued);
+    try std.testing.expect(canvas.tap(.{ .x = 150, .y = 2.5 * mod.diff_row_height }));
+    try std.testing.expectEqual(@as(?usize, 0), probe.hunk);
 }
 
 test "a DiffView finds each row's hunk as a pass over the whole diff does" {
