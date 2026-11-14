@@ -316,6 +316,19 @@ const AppSteps = struct {
 const Gallery = struct {
     const Self = @This();
 
+    /// The `gallery_config` options the gallery barrel reads: where the
+    /// fixtures it shows live, found from the build root so the gallery
+    /// finds them from any working directory.
+    ///
+    /// - `b`: ziggui's build graph.
+    /// - Returns: the options step.
+    fn configOptions(b: *std.Build) *std.Build.Step.Options {
+        const gallery_options = b.addOptions();
+        const fixtures = b.root.joinString(b.graph.arena, "fixtures/file_browser") catch @panic("OOM");
+        gallery_options.addOption([]const u8, "fixtures_path", fixtures);
+        return gallery_options;
+    }
+
     /// Declares the gallery executable and its `gallery` and `run-gallery` steps.
     ///
     /// The executable builds the gallery on the app `ziggui`, which links SDL3.
@@ -334,6 +347,7 @@ const Gallery = struct {
             .optimize = config.optimize,
             .imports = &.{.{ .name = config.name, .module = app_module }},
         });
+        gallery_module.addOptions("gallery_config", Self.configOptions(b));
 
         const gallery = b.addExecutable(.{
             .name = config.gallery_name,
@@ -543,6 +557,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = config.optimize,
         .imports = &.{.{ .name = config.name, .module = modules.core }},
     });
+    gallery_module.addOptions("gallery_config", Gallery.configOptions(b));
 
     const filters: []const []const u8 = if (test_filter) |filter| b.dupeStrings(&.{filter}) else &.{};
     if (b.dep_prefix.len == 0) try AppSteps.declare(b, config, filters);

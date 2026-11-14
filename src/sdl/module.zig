@@ -24,6 +24,8 @@ pub const AppConfig = @import("app_config.zig").AppConfig;
 pub const AppError = @import("app_error.zig").AppError;
 /// A window or tray icon as RGBA8 pixels.
 pub const WindowIcon = @import("window_icon.zig").WindowIcon;
+/// Where the main window is and how big.
+pub const WindowFrame = @import("window_frame.zig").WindowFrame;
 /// The event loop `App.run` drives for one app state type.
 pub const EventLoop = @import("event_loop.zig").EventLoop;
 /// A mouse event in the main window, in points.

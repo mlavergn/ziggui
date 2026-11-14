@@ -59,6 +59,17 @@ pub const TextFieldState = struct {
     /// Whether the field has the keyboard focus.
     focused: bool = false,
 
+    /// A one-line field's sideways scroll, in points: kept by its painter
+    /// across frames, so the text moves only when the caret leaves the view.
+    scroll_x: f32 = 0,
+
+    /// True for a `.secure()` field (a password): its text is never copied,
+    /// cut, or given to accessibility, and is wiped from memory it leaves.
+    /// Set by the field's painter each frame; an app that fills the field
+    /// with a stored secret before its first frame sets it first, so the
+    /// buffer's growth wipes as it goes.
+    secure: bool = false,
+
     /// True for a `TextEditor` (multi-line). The event loop then inserts a
     /// newline on Enter (instead of submitting) and routes Up/Down/Home/End/Tab.
     /// Set by the editor's painter each frame.
@@ -104,6 +115,7 @@ pub const TextFieldState = struct {
         mod.PointerInput.shared().forget(self);
         mod.TextContextMenu.shared().forget(self);
         mod.Focus.shared().forget(self);
+        std.crypto.secureZero(u8, self.buffer.allocatedSlice());
         self.buffer.deinit(self.allocator);
     }
 
@@ -121,8 +133,12 @@ pub const TextFieldState = struct {
     /// - `string`: the new text, copied.
     /// - Returns: nothing; propagates allocation failure.
     pub fn setText(self: *Self, string: []const u8) std.mem.Allocator.Error!void {
+        // The old text goes from memory, not only from view: the whole buffer,
+        // since bytes deleted earlier linger past the text's end.
+        std.crypto.secureZero(u8, self.buffer.allocatedSlice());
         self.buffer.clearRetainingCapacity();
-        try self.buffer.appendSlice(self.allocator, string);
+        try self.reserve(string.len);
+        self.buffer.appendSliceAssumeCapacity(string);
         self.caret = self.buffer.items.len;
         self.selection_anchor = null;
         self.preferred_column = null;
@@ -151,12 +167,15 @@ pub const TextFieldState = struct {
         return self.selectionRange() != null;
     }
 
-    /// The selected text.
+    /// The selected text, for copying. A secure field's is always empty, so
+    /// no copy path (ziggui's keys and menu, or an app's own Edit menu) can
+    /// hand a password to the clipboard.
     ///
     /// - `self`: the field.
-    /// - Returns: a slice into the buffer, empty when nothing is selected;
-    ///   borrowed, valid only until the next mutation.
+    /// - Returns: a slice into the buffer, empty when nothing is selected or
+    ///   the field is secure; borrowed, valid only until the next mutation.
     pub fn selectedText(self: *const Self) []const u8 {
+        if (self.secure) return self.buffer.items[0..0];
         const range = self.selectionRange() orelse return self.buffer.items[0..0];
         return self.buffer.items[range.start..range.end];
     }
@@ -235,7 +254,8 @@ pub const TextFieldState = struct {
     /// - Returns: nothing; propagates allocation failure.
     pub fn insert(self: *Self, string: []const u8) std.mem.Allocator.Error!void {
         _ = self.deleteSelection();
-        try self.buffer.insertSlice(self.allocator, self.caret, string);
+        try self.reserve(string.len);
+        self.buffer.insertSliceAssumeCapacity(self.caret, string);
         self.caret += string.len;
         self.selection_anchor = null;
         self.preferred_column = null;
@@ -331,6 +351,26 @@ pub const TextFieldState = struct {
         self.preferred_column = null;
     }
 
+    /// Moves the caret to the text's start (⌘↑ on macOS).
+    ///
+    /// - `self`: the field.
+    /// - `extend`: Shift is held: grow the selection.
+    pub fn moveToStart(self: *Self, extend: bool) void {
+        self.beginExtend(extend);
+        self.caret = 0;
+        self.preferred_column = null;
+    }
+
+    /// Moves the caret to the text's end (⌘↓ on macOS).
+    ///
+    /// - `self`: the field.
+    /// - `extend`: Shift is held: grow the selection.
+    pub fn moveToEnd(self: *Self, extend: bool) void {
+        self.beginExtend(extend);
+        self.caret = self.buffer.items.len;
+        self.preferred_column = null;
+    }
+
     /// Moves the caret up a line, keeping the preferred column.
     ///
     /// - `self`: the field.
@@ -377,6 +417,23 @@ pub const TextFieldState = struct {
             .line = lines.lineIndex(self.caret) + 1,
             .column = lines.column(self.caret) + 1,
         };
+    }
+
+    /// Makes room for `extra` more bytes. A secure field grows by copying and
+    /// wiping the old buffer, so no copy of the text is freed unwiped.
+    ///
+    /// - `self`: the field.
+    /// - `extra`: the bytes to make room for.
+    /// - Returns: nothing; propagates allocation failure.
+    fn reserve(self: *Self, extra: usize) std.mem.Allocator.Error!void {
+        const needed = self.buffer.items.len + extra;
+        if (needed <= self.buffer.capacity) return;
+        if (!self.secure) return self.buffer.ensureTotalCapacity(self.allocator, needed);
+        var grown: std.ArrayList(u8) = try .initCapacity(self.allocator, @max(needed, self.buffer.capacity * 2));
+        grown.appendSliceAssumeCapacity(self.buffer.items);
+        std.crypto.secureZero(u8, self.buffer.allocatedSlice());
+        self.buffer.deinit(self.allocator);
+        self.buffer = grown;
     }
 
     /// Anchors a selection at the caret when Shift is held, or drops it.
@@ -480,6 +537,21 @@ test "TextFieldState: multi-line up/down keeps the preferred column" {
     try std.testing.expectEqual(@as(usize, 14), field.caret);
 }
 
+test "TextFieldState: to the text's start and end, Shift selecting" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("hello\nworld");
+    field.caret = 3;
+    field.moveToEnd(false);
+    try std.testing.expectEqual(@as(usize, 11), field.caret);
+    try std.testing.expect(!field.hasSelection());
+    field.moveToStart(true);
+    try std.testing.expectEqual(@as(usize, 0), field.caret);
+    try std.testing.expectEqualStrings("hello\nworld", field.selectedText());
+    field.moveToEnd(false);
+    try std.testing.expect(!field.hasSelection());
+}
+
 test "TextFieldState: forward delete and revision tracking" {
     var field = TextFieldState.init(std.testing.allocator);
     defer field.deinit();
@@ -537,4 +609,33 @@ test "TextFieldState: a bad UTF-8 byte is stepped and deleted alone" {
     try field.setText("\xe2abc");
     field.selectWordAt(0); // the bad byte and the letters are one word
     try std.testing.expectEqualStrings("\xe2abc", field.selectedText());
+}
+
+test "TextFieldState: a secure field keeps its text as it grows" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    field.secure = true;
+    try field.setText("ab");
+    for (0..40) |_| try field.insert("c");
+    try std.testing.expectEqual(@as(usize, 42), field.text().len);
+    try std.testing.expectEqualStrings("abcc", field.text()[0..4]);
+    try field.setText("short");
+    try std.testing.expectEqualStrings("short", field.text());
+}
+
+test "TextFieldState: a secure field hands out no selection, and setText wipes deleted bytes" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    field.secure = true;
+    try field.setText("hunter2");
+    field.selectAll();
+    try std.testing.expectEqualStrings("", field.selectedText());
+    // "er2" deleted, then the field cleared: nothing of it is left in the buffer.
+    field.caret = 4;
+    field.selection_anchor = 7;
+    _ = field.deleteSelection();
+    try field.setText("");
+    const memory = field.buffer.allocatedSlice();
+    try std.testing.expect(std.mem.indexOf(u8, memory, "hunt") == null);
+    try std.testing.expect(std.mem.indexOf(u8, memory, "er2") == null);
 }

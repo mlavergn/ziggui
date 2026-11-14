@@ -65,8 +65,7 @@ pub const PointerInput = struct {
     /// - `self`: the pointer input.
     /// - `callback`: the drag handler.
     pub fn armDrag(self: *Self, callback: mod.DragCallback) void {
-        self.area_drag = callback;
-        self.area_last = self.press_point;
+        self.arm(callback, self.press_point);
     }
 
     /// Sets what runs when an armed drag ends.
@@ -77,7 +76,8 @@ pub const PointerInput = struct {
         self.drag_end = hook;
     }
 
-    /// Ends an in-progress mouse drag (the app calls this on mouse-up).
+    /// Ends an in-progress mouse drag (the app calls this on mouse-up): an
+    /// armed drag's own `end` runs, then the drag-end hook.
     ///
     /// - `self`: the pointer input.
     pub fn endDrag(self: *Self) void {
@@ -86,7 +86,10 @@ pub const PointerInput = struct {
             span.dragging = false;
             if (span.anchor == span.head) selection.current = null;
         }
-        if (self.area_drag != null) if (self.drag_end) |hook| hook();
+        if (self.area_drag) |armed| {
+            if (armed.end) |end| end(armed.context);
+            if (self.drag_end) |hook| hook();
+        }
         self.text_drag = null;
         self.slider_drag = null;
         self.area_drag = null;
@@ -151,7 +154,10 @@ pub const PointerInput = struct {
         }
     }
 
-    /// Dispatches a tap at `point` to the top-most enabled hit region containing it.
+    /// Dispatches a tap at `point` to the top-most enabled hit region containing
+    /// it. A plain tap (a callback or a selection) that arms no drag of its own
+    /// also arms the nearest `onDrag` region beneath it under the point, so a
+    /// tappable row inside a draggable one taps and can be dragged.
     ///
     /// - `self`: the pointer input.
     /// - `regions`: the frame's hit regions.
@@ -167,6 +173,7 @@ pub const PointerInput = struct {
             if (region.action == .secondary) continue;
             if (!region.disabled and region.rect.contains(point)) {
                 self.perform(region.action, point);
+                if (self.passesDrag(region.action)) self.armBeneath(regions[0..index], point, region.rect);
                 return true;
             }
         }
@@ -399,6 +406,59 @@ pub const PointerInput = struct {
         return false;
     }
 
+    /// Arms `callback` as the drag under way from `point`, telling it so (`begin`).
+    ///
+    /// - `self`: the pointer input.
+    /// - `callback`: the drag handler.
+    /// - `point`: where the drag starts.
+    fn arm(self: *Self, callback: mod.DragCallback, point: renderer.Point) void {
+        self.area_drag = callback;
+        self.area_last = point;
+        if (callback.begin) |begin| begin(callback.context, callback.tag);
+    }
+
+    /// Whether a tap that ran `action` leaves the press free to arm an
+    /// `onDrag` region beneath it: a plain tap that started no drag of its own.
+    /// A toggle or a stepper changes on the press, so pressing one to drag its
+    /// row would change it too: they keep the press to themselves.
+    ///
+    /// - `self`: the pointer input.
+    /// - `action`: the tapped region's action, just performed.
+    /// - Returns: whether to look beneath it.
+    fn passesDrag(self: *const Self, action: mod.HitAction) bool {
+        if (self.area_drag != null or self.text_drag != null or self.slider_drag != null) return false;
+        return switch (action) {
+            .callback, .select => true,
+            else => false,
+        };
+    }
+
+    /// Arms the nearest draggable view beneath a tapped region, when the tapped
+    /// region is part of it: a tap on a sheet's button, or on a context menu's
+    /// full-frame dismiss area, over a draggable row never drags the row.
+    ///
+    /// - `self`: the pointer input.
+    /// - `regions`: the regions beneath the tapped one, in paint order.
+    /// - `point`: the press.
+    /// - `tapped`: the tapped region's rect.
+    fn armBeneath(self: *Self, regions: []const mod.HitRegion, point: renderer.Point, tapped: renderer.Rect) void {
+        var index = regions.len;
+        while (index > 0) {
+            index -= 1;
+            const region = regions[index];
+            if (region.disabled or !region.rect.contains(point)) continue;
+            switch (region.action) {
+                .drag => |armed| {
+                    if (region.rect.containsRect(tapped, 0.5)) self.arm(armed, point);
+                    return;
+                },
+                // A sheet's or popover's scrim: nothing under it takes the press.
+                .dismiss => return,
+                else => {},
+            }
+        }
+    }
+
     /// Does what a tapped region does.
     ///
     /// - `self`: the pointer input.
@@ -429,10 +489,7 @@ pub const PointerInput = struct {
                 self.text_drag = click.state;
             },
             .select => |selected| selected.binding.set(selected.value),
-            .drag => |armed| {
-                self.area_drag = armed;
-                self.area_last = point;
-            },
+            .drag => |armed| self.arm(armed, point),
             .textSelect => |hit| {
                 const at = hit.indexAt(point);
                 mod.TextSelection.shared().current = .{ .key = hit.key, .anchor = at, .head = at, .dragging = true };
@@ -485,4 +542,128 @@ test "view: dispatchScrollXY sends sideways deltas only to horizontal regions" {
     // Down still goes to the region under the point, as dispatchScroll does.
     try std.testing.expect(input.scrollBoth(&regions, .{ .x = 50, .y = 50 }, 0, -1));
     try std.testing.expect(vertical.offset > 50);
+}
+
+test "an armed drag hears its press, its moves and, once, its end" {
+    const Probe = struct {
+        const Self = @This();
+        tag: ?usize = null,
+        travel: f32 = 0,
+        ends: u32 = 0,
+        fn begin(context: ?*anyopaque, tag: usize) void {
+            const self: *Self = @ptrCast(@alignCast(context.?));
+            self.tag = tag;
+        }
+        fn move(context: ?*anyopaque, delta_x: f32, delta_y: f32) void {
+            const self: *Self = @ptrCast(@alignCast(context.?));
+            self.travel += delta_x + delta_y;
+        }
+        fn end(context: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(context.?));
+            self.ends += 1;
+        }
+    };
+    var probe: Probe = .{};
+    const regions = [_]mod.HitRegion{
+        .{ .rect = .{ .x = 0, .y = 0, .width = 100, .height = 20 }, .action = .{ .drag = .{ .context = &probe, .function = Probe.move, .begin = Probe.begin, .end = Probe.end, .tag = 7 } }, .disabled = false },
+    };
+    const input = PointerInput.shared();
+    defer input.endDrag();
+    try std.testing.expect(input.tap(&regions, .{ .x = 10, .y = 10 }));
+    try std.testing.expectEqual(@as(?usize, 7), probe.tag);
+    input.drag(&regions, .{ .x = 10, .y = 16 });
+    try std.testing.expectEqual(@as(f32, 6), probe.travel);
+    input.endDrag();
+    input.endDrag();
+    try std.testing.expectEqual(@as(u32, 1), probe.ends);
+}
+
+test "a tap on a tappable view inside a draggable one taps it and arms the drag" {
+    const Probe = struct {
+        const Self = @This();
+        taps: u32 = 0,
+        travel: f32 = 0,
+        ends: u32 = 0,
+        fn tapped(self: *Self) void {
+            self.taps += 1;
+        }
+        fn move(context: ?*anyopaque, delta_x: f32, delta_y: f32) void {
+            const self: *Self = @ptrCast(@alignCast(context.?));
+            self.travel += delta_x + delta_y;
+        }
+        fn end(context: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(context.?));
+            self.ends += 1;
+        }
+    };
+    var probe: Probe = .{};
+    const outer: renderer.Rect = .{ .x = 0, .y = 0, .width = 100, .height = 40 };
+    const regions = [_]mod.HitRegion{
+        .{ .rect = outer, .action = .{ .drag = .{ .context = &probe, .function = Probe.move, .end = Probe.end } }, .disabled = false },
+        .{ .rect = .{ .x = 0, .y = 0, .width = 100, .height = 20 }, .action = .{ .callback = mod.Callback.init(Probe, &probe, Probe.tapped) }, .disabled = false },
+    };
+    const input = PointerInput.shared();
+    defer input.endDrag();
+    // On the tappable part: the tap runs, and the press drags.
+    try std.testing.expect(input.tap(&regions, .{ .x = 10, .y = 10 }));
+    try std.testing.expectEqual(@as(u32, 1), probe.taps);
+    input.drag(&regions, .{ .x = 10, .y = 15 });
+    try std.testing.expectEqual(@as(f32, 5), probe.travel);
+    input.endDrag();
+    try std.testing.expectEqual(@as(u32, 1), probe.ends);
+    // Outside the draggable view, a tap arms nothing.
+    try std.testing.expect(!input.tap(&regions, .{ .x = 10, .y = 90 }));
+    try std.testing.expect(input.area_drag == null);
+}
+
+test "a tap on an overlay above a draggable view never arms its drag" {
+    const Probe = struct {
+        const Self = @This();
+        taps: u32 = 0,
+        fn tapped(self: *Self) void {
+            self.taps += 1;
+        }
+        fn move(_: ?*anyopaque, _: f32, _: f32) void {}
+    };
+    var probe: Probe = .{};
+    var shown: renderer.State(bool) = .init(std.testing.allocator, true);
+    defer shown.deinit();
+    const row: renderer.Rect = .{ .x = 0, .y = 0, .width = 100, .height = 40 };
+    const input = PointerInput.shared();
+    defer input.endDrag();
+    // A sheet: its scrim, then its button, both over the row.
+    const sheet = [_]mod.HitRegion{
+        .{ .rect = row, .action = .{ .drag = .{ .context = &probe, .function = Probe.move } }, .disabled = false },
+        .{ .rect = .{ .x = 0, .y = 0, .width = 400, .height = 400 }, .action = .{ .dismiss = shown.binding() }, .disabled = false },
+        .{ .rect = .{ .x = 5, .y = 5, .width = 300, .height = 30 }, .action = .{ .callback = mod.Callback.init(Probe, &probe, Probe.tapped) }, .disabled = false },
+    };
+    try std.testing.expect(input.tap(&sheet, .{ .x = 10, .y = 10 }));
+    try std.testing.expectEqual(@as(u32, 1), probe.taps);
+    try std.testing.expect(input.area_drag == null);
+    // A context menu's full-frame dismiss area over the row.
+    const menu = [_]mod.HitRegion{
+        .{ .rect = row, .action = .{ .drag = .{ .context = &probe, .function = Probe.move } }, .disabled = false },
+        .{ .rect = .{ .x = 0, .y = 0, .width = 400, .height = 400 }, .action = .{ .callback = mod.Callback.init(Probe, &probe, Probe.tapped) }, .disabled = false },
+    };
+    try std.testing.expect(input.tap(&menu, .{ .x = 10, .y = 10 }));
+    try std.testing.expect(input.area_drag == null);
+}
+
+test "a toggle inside a draggable view flips on the press but never arms the drag" {
+    const Probe = struct {
+        const Self = @This();
+        fn move(_: ?*anyopaque, _: f32, _: f32) void {}
+    };
+    var probe: Probe = .{};
+    var on: renderer.State(bool) = .init(std.testing.allocator, false);
+    defer on.deinit();
+    const input = PointerInput.shared();
+    defer input.endDrag();
+    const regions = [_]mod.HitRegion{
+        .{ .rect = .{ .x = 0, .y = 0, .width = 100, .height = 40 }, .action = .{ .drag = .{ .context = &probe, .function = Probe.move } }, .disabled = false },
+        .{ .rect = .{ .x = 60, .y = 10, .width = 30, .height = 20 }, .action = .{ .toggle = on.binding() }, .disabled = false },
+    };
+    try std.testing.expect(input.tap(&regions, .{ .x = 70, .y = 20 }));
+    try std.testing.expect(on.get());
+    try std.testing.expect(input.area_drag == null);
 }

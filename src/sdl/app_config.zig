@@ -19,6 +19,17 @@ pub const AppConfig = struct {
     /// The initial height, in points.
     height: u32 = 600,
 
+    /// The window's left edge at launch, in points (desktop coordinates), or
+    /// null to center it. Ignored with `y` null, or when the frame would show
+    /// on no display (one since unplugged).
+    x: ?i32 = null,
+
+    /// The window's top edge at launch, in points, or null to center it.
+    y: ?i32 = null,
+
+    /// Open maximized (the frame above is then the restored one).
+    maximized: bool = false,
+
     /// Minimum window width the user can resize to (0 = no limit). Applied via
     /// SDL_SetWindowMinimumSize after the window is created.
     min_width: u32 = 0,

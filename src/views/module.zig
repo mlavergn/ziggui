@@ -1,7 +1,7 @@
 //! The views: the view engine (`core/`), rich text and editing state
 //! (`text/`), the controls and containers built on it, window plumbing, and
 //! ziggui's own widgets (chat, panes, split views, hover popover, menu bar,
-//! status line), behind one import. Everything is a view, as in SwiftUI, and
+//! status line, forms), behind one import. Everything is a view, as in SwiftUI, and
 //! the widgets follow SwiftUI's names where SwiftUI has one.
 //!
 //! The root `ziggui` barrel re-exports every name here, flat; this barrel
@@ -256,6 +256,16 @@ pub const Icon = @import("controls/module.zig").Icon;
 pub const IconButton = @import("controls/module.zig").IconButton;
 /// A view that paints itself through a callback.
 pub const Drawing = @import("controls/module.zig").Drawing;
+/// A push button with its keyboard shortcut in a key cap after the label.
+pub const ButtonKeyed = @import("controls/module.zig").ButtonKeyed;
+/// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
+pub const BadgeTone = @import("controls/module.zig").BadgeTone;
+/// A short label on a soft ground in its tone's strong color.
+pub const Badge = @import("controls/module.zig").Badge;
+/// A keyboard key's glyph in a small cap.
+pub const KeyCap = @import("controls/module.zig").KeyCap;
+/// A segmented control of equal segments, a neutral thumb on a track.
+pub const SegmentedControl = @import("controls/module.zig").SegmentedControl;
 
 // -----------------------------------------------------------------------------
 // Containers (containers/)
@@ -334,6 +344,20 @@ pub const SortColumn = @import("containers/module.zig").SortColumn;
 pub const DataColumn = @import("containers/module.zig").DataColumn;
 /// A table of view rows with sortable headers.
 pub const DataTable = @import("containers/module.zig").DataTable;
+/// The colors a `SelectableRow`'s content is drawn in (`selectionText`).
+pub const SelectableRowStyle = @import("containers/module.zig").SelectableRowStyle;
+/// A list row showing its selection and whether its list has the focus.
+pub const SelectableRow = @import("containers/module.zig").SelectableRow;
+/// A finished reorder: `from`, `to` (`apply` makes it on a slice).
+pub const ReorderMove = @import("containers/module.zig").ReorderMove;
+/// What a list of `ReorderableRow`s drags (`dropIndex`, `isDragging`, `takeMove`, `cancel`).
+pub const ReorderState = @import("containers/module.zig").ReorderState;
+/// A list row dragged up or down to reorder its list.
+pub const ReorderableRow = @import("containers/module.zig").ReorderableRow;
+/// A pane's title block: a title, a one-line description, an accessory.
+pub const PaneHeader = @import("containers/module.zig").PaneHeader;
+/// A settings row: a label and its description, a control at the far edge.
+pub const SettingRow = @import("containers/module.zig").SettingRow;
 
 // -----------------------------------------------------------------------------
 // Window plumbing and the title bar (window/)
@@ -454,6 +478,36 @@ pub const KeyHint = @import("status_line/module.zig").KeyHint;
 pub const status_line_height = @import("status_line/module.zig").status_line_height;
 /// A window's status line: the keys that work now, as `key action` pairs.
 pub const StatusLine = @import("status_line/module.zig").StatusLine;
+/// The most hints a `KeyHintBar` shows.
+pub const key_hint_bar_limit = @import("status_line/module.zig").key_hint_bar_limit;
+/// A bar of the keys that work now, each a key cap followed by its action.
+pub const KeyHintBar = @import("status_line/module.zig").KeyHintBar;
+
+// -----------------------------------------------------------------------------
+// Forms (forms/)
+
+/// One row of a `KeyValueEditor`: its name and value fields, on the heap.
+pub const KeyValueRow = @import("forms/module.zig").KeyValueRow;
+/// What a `KeyValueEditor` edits: name/value rows (`setPairs`, `pairs`, `add`, `remove`, `count`).
+pub const KeyValueState = @import("forms/module.zig").KeyValueState;
+/// An editor of name/value rows with an Add button.
+pub const KeyValueEditor = @import("forms/module.zig").KeyValueEditor;
+/// What a `TokenField` edits: the tokens and their input (`setTokens`, `tokens`, `commit`, `remove`).
+pub const TokenFieldState = @import("forms/module.zig").TokenFieldState;
+/// A field of short tokens: capsules, then an input that commits on Enter.
+pub const TokenField = @import("forms/module.zig").TokenField;
+/// What a `FileNode` is: a folder or a file.
+pub const FileNodeKind = @import("forms/module.zig").FileNodeKind;
+/// One entry of a `FileBrowser`'s folder.
+pub const FileNode = @import("forms/module.zig").FileNode;
+/// What a `FileBrowser` shows (`open`, `up`, `enter`, `move`, `select`, `pickAlloc`).
+pub const FileBrowserState = @import("forms/module.zig").FileBrowserState;
+/// A local file and folder picker drawn in the window.
+pub const FileBrowser = @import("forms/module.zig").FileBrowser;
+/// A search field: a magnifying glass, the text, and a clear button.
+pub const SearchField = @import("forms/module.zig").SearchField;
+/// A composed field's look: the raised ground, a strong hairline border, a 6pt corner.
+pub const FieldChrome = @import("forms/module.zig").FieldChrome;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -473,6 +527,7 @@ test {
     _ = @import("hover/module.zig");
     _ = @import("menu_bar/module.zig");
     _ = @import("status_line/module.zig");
+    _ = @import("forms/module.zig");
     _ = @import("view_engine_test.zig");
     _ = @import("integration_test.zig");
 }

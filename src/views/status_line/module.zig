@@ -1,4 +1,5 @@
-//! A window's status line: the keys that work now, as `key action` pairs.
+//! A window's status line: the keys that work now, as `key action` pairs
+//! (`StatusLine`) or as key caps and actions (`KeyHintBar`).
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_status_line_module);
@@ -9,6 +10,10 @@ pub const KeyHint = @import("key_hint.zig").KeyHint;
 pub const status_line_height = @import("status_line.zig").status_line_height;
 /// A window's status line: the keys that work now, as `key action` pairs.
 pub const StatusLine = @import("status_line.zig").StatusLine;
+/// The most hints a `KeyHintBar` shows.
+pub const key_hint_bar_limit = @import("key_hint_bar.zig").key_hint_bar_limit;
+/// A bar of the keys that work now, each a key cap followed by its action.
+pub const KeyHintBar = @import("key_hint_bar.zig").KeyHintBar;
 
 // -----------------------------------------------------------------------------
 // From the views module
@@ -17,6 +22,8 @@ pub const StatusLine = @import("status_line.zig").StatusLine;
 pub const BuildScope = @import("../module.zig").BuildScope;
 /// Children side by side (from the views module).
 pub const HStack = @import("../module.zig").HStack;
+/// A keyboard key's glyph in a small cap (from the views module).
+pub const KeyCap = @import("../module.zig").KeyCap;
 /// Flexible space in a stack (from the views module).
 pub const Spacer = @import("../module.zig").Spacer;
 /// Builds stack views from tuples or slices (`fromSlice` keeps its slice), from the views module.
@@ -37,4 +44,5 @@ test {
     _ = log;
     _ = @import("key_hint.zig");
     _ = @import("status_line.zig");
+    _ = @import("key_hint_bar.zig");
 }

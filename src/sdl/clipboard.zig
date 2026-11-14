@@ -77,7 +77,11 @@ pub const Clipboard = struct {
     /// - `field`: the focused field.
     pub fn paste(field: *views.TextFieldState) void {
         const pasted = Self.text(field.allocator) orelse return;
-        defer field.allocator.free(pasted);
+        // The pasted copy may be a password: wiped before it is freed.
+        defer {
+            std.crypto.secureZero(u8, pasted);
+            field.allocator.free(pasted);
+        }
         field.insert(pasted) catch |err| log.debug("clipboard text not pasted [{t}]", .{err});
     }
 };

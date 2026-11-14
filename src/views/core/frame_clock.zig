@@ -29,6 +29,10 @@ pub const FrameClock = struct {
     /// The process's clock.
     var shared_clock: Self = .{};
 
+    /// Wakes the app's event loop from any thread: installed by the SDL
+    /// runtime while its loop runs (`App.wake`), null headless and in tests.
+    var wake_handler: ?*const fn () void = null;
+
     /// The process's frame clock.
     ///
     /// - Returns: the shared clock.
@@ -43,6 +47,26 @@ pub const FrameClock = struct {
     /// - `milliseconds`: the frame's time.
     pub fn setTime(self: *Self, milliseconds: u64) void {
         self.time_ms = milliseconds;
+    }
+
+    /// Installs what `wake` calls; the SDL runtime sets it as its loop starts
+    /// and clears it as the loop ends.
+    ///
+    /// - `self`: the clock.
+    /// - `handler`: wakes the event loop from any thread; null for none.
+    pub fn setWakeHandler(self: *Self, handler: ?*const fn () void) void {
+        _ = self;
+        wake_handler = handler;
+    }
+
+    /// Asks for a frame, from any thread: a worker finished something the
+    /// window should show (a folder listing), and an idle loop draws nothing
+    /// until an event comes. A no-op headless.
+    ///
+    /// - `self`: the clock.
+    pub fn wake(self: *const Self) void {
+        _ = self;
+        if (wake_handler) |handler| handler();
     }
 
     /// The millisecond clock the app last set with `setTime`, for views

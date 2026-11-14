@@ -65,6 +65,10 @@ pub const Context = struct {
     hit_regions: *std.ArrayList(mod.HitRegion),
     /// The inherited text and glyph color.
     foreground: renderer.Color,
+    /// The color the view being painted asked for with its own `.foreground()`,
+    /// or null (never inherited): a `.plain` button draws its label in it (a
+    /// red "Delete…" with no fill).
+    tint: ?renderer.Color = null,
     /// The inherited text size.
     font_size: f32,
     /// The inherited opacity.

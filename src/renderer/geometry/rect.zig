@@ -113,6 +113,18 @@ pub const Rect = struct {
             point.y >= self.minY() and point.y < self.maxY();
     }
 
+    /// Whether `other` lies wholly inside, give or take `slack` on each edge
+    /// (layout's float rounding).
+    ///
+    /// - `self`: the outer rect.
+    /// - `other`: the rect tested.
+    /// - `slack`: how far past an edge still counts as inside.
+    /// - Returns: true when it is inside.
+    pub fn containsRect(self: *const Self, other: Self, slack: f32) bool {
+        return other.minX() >= self.minX() - slack and other.maxX() <= self.maxX() + slack and
+            other.minY() >= self.minY() - slack and other.maxY() <= self.maxY() + slack;
+    }
+
     /// Whether two rects overlap.
     ///
     /// - `self`: the first rect.

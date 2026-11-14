@@ -450,6 +450,16 @@ pub const Icon = views.Icon;
 pub const IconButton = views.IconButton;
 /// A view that paints itself through a callback.
 pub const Drawing = views.Drawing;
+/// A push button with its keyboard shortcut in a key cap after the label.
+pub const ButtonKeyed = views.ButtonKeyed;
+/// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
+pub const BadgeTone = views.BadgeTone;
+/// A short label on a soft ground in its tone's strong color.
+pub const Badge = views.Badge;
+/// A keyboard key's glyph in a small cap.
+pub const KeyCap = views.KeyCap;
+/// A segmented control of equal segments, a neutral thumb on a track.
+pub const SegmentedControl = views.SegmentedControl;
 
 // -----------------------------------------------------------------------------
 // Containers
@@ -528,6 +538,20 @@ pub const SortColumn = views.SortColumn;
 pub const DataColumn = views.DataColumn;
 /// A table of view rows with sortable headers.
 pub const DataTable = views.DataTable;
+/// The colors a `SelectableRow`'s content is drawn in (`selectionText`).
+pub const SelectableRowStyle = views.SelectableRowStyle;
+/// A list row showing its selection and whether its list has the focus.
+pub const SelectableRow = views.SelectableRow;
+/// A finished reorder: `from`, `to` (`apply` makes it on a slice).
+pub const ReorderMove = views.ReorderMove;
+/// What a list of `ReorderableRow`s drags: `ReorderState.init()`, `dropIndex`, `isDragging`, `takeMove`, `cancel`.
+pub const ReorderState = views.ReorderState;
+/// A list row dragged up or down to reorder its list: `ReorderableRow(content, &state, index, count, row_height)`.
+pub const ReorderableRow = views.ReorderableRow;
+/// A pane's title block: a title, a one-line description, an accessory.
+pub const PaneHeader = views.PaneHeader;
+/// A settings row: a label and its description, a control at the far edge.
+pub const SettingRow = views.SettingRow;
 
 // -----------------------------------------------------------------------------
 // Text editing
@@ -582,6 +606,8 @@ pub const AppConfig = if (config.with_sdl) sdl.AppConfig else void;
 pub const AppError = if (config.with_sdl) sdl.AppError else void;
 /// A window or tray icon as RGBA8 pixels (app build only).
 pub const WindowIcon = if (config.with_sdl) sdl.WindowIcon else void;
+/// The main window's position and size, in points (app build only).
+pub const WindowFrame = if (config.with_sdl) sdl.WindowFrame else void;
 /// The event loop `App.run` drives for one app state type (app build only).
 pub const EventLoop = if (config.with_sdl) sdl.EventLoop else void;
 /// A main-window mouse event in points, as `App.setMouseHandler` sees it (app build only).
@@ -716,6 +742,36 @@ pub const KeyHint = views.KeyHint;
 pub const status_line_height = views.status_line_height;
 /// A window's status line: the keys that work now, as `key action` pairs.
 pub const StatusLine = views.StatusLine;
+/// The most hints a `KeyHintBar` shows.
+pub const key_hint_bar_limit = views.key_hint_bar_limit;
+/// A bar of the keys that work now, each a key cap followed by its action.
+pub const KeyHintBar = views.KeyHintBar;
+
+// -----------------------------------------------------------------------------
+// Forms
+
+/// One row of a `KeyValueEditor`: its name and value fields, on the heap.
+pub const KeyValueRow = views.KeyValueRow;
+/// What a `KeyValueEditor` edits: name/value rows (`setPairs`, `pairs`, `add`, `remove`, `count`).
+pub const KeyValueState = views.KeyValueState;
+/// An editor of name/value rows with an Add button.
+pub const KeyValueEditor = views.KeyValueEditor;
+/// What a `TokenField` edits: the tokens and their input (`setTokens`, `tokens`, `commit`, `remove`).
+pub const TokenFieldState = views.TokenFieldState;
+/// A field of short tokens: capsules, then an input that commits on Enter.
+pub const TokenField = views.TokenField;
+/// What a `FileNode` is: a folder or a file.
+pub const FileNodeKind = views.FileNodeKind;
+/// One entry of a `FileBrowser`'s folder.
+pub const FileNode = views.FileNode;
+/// What a `FileBrowser` shows (`open`, `up`, `enter`, `move`, `select`, `pickAlloc`).
+pub const FileBrowserState = views.FileBrowserState;
+/// A local file and folder picker drawn in the window.
+pub const FileBrowser = views.FileBrowser;
+/// A search field: a magnifying glass, the text, and a clear button.
+pub const SearchField = views.SearchField;
+/// A composed field's look: the raised ground, a strong hairline border, a 6pt corner.
+pub const FieldChrome = views.FieldChrome;
 
 // -----------------------------------------------------------------------------
 // Testing

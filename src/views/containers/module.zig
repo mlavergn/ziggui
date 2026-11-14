@@ -1,7 +1,7 @@
 //! The containers: stacks, spacers, dividers, scroll views, the geometry
-//! reader, lists, grids, tabs, navigation, menus, sidebars, radio groups and
-//! tables. View constructors over the view engine in `core/`, and the types
-//! they take.
+//! reader, lists, grids, tabs, navigation, menus, sidebars, radio groups,
+//! tables, selectable and reorderable rows, pane headers and setting rows. View constructors
+//! over the view engine in `core/`, and the types they take.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_containers_module);
@@ -80,6 +80,20 @@ pub const SortColumn = @import("sort_column.zig").SortColumn;
 pub const DataColumn = @import("data_column.zig").DataColumn;
 /// A table of view rows with sortable headers.
 pub const DataTable = @import("data_table.zig").DataTable;
+/// The colors a `SelectableRow`'s content is drawn in (`selectionText`).
+pub const SelectableRowStyle = @import("selectable_row_style.zig").SelectableRowStyle;
+/// A list row showing its selection and whether its list has the focus.
+pub const SelectableRow = @import("selectable_row.zig").SelectableRow;
+/// A finished reorder: `from`, `to` (`apply` makes it on a slice).
+pub const ReorderMove = @import("reorder_state.zig").ReorderMove;
+/// What a list of `ReorderableRow`s drags (`dropIndex`, `isDragging`, `takeMove`, `cancel`).
+pub const ReorderState = @import("reorder_state.zig").ReorderState;
+/// A list row dragged up or down to reorder its list.
+pub const ReorderableRow = @import("reorderable_row.zig").ReorderableRow;
+/// A pane's title block: a title, a one-line description, an accessory.
+pub const PaneHeader = @import("pane_header.zig").PaneHeader;
+/// A settings row: a label and its description, a control at the far edge.
+pub const SettingRow = @import("setting_row.zig").SettingRow;
 
 /// A node of the view tree (from the views module).
 pub const View = @import("../module.zig").View;
@@ -93,10 +107,20 @@ pub const ScrollState = @import("../module.zig").ScrollState;
 pub const Binding = @import("../module.zig").Binding;
 /// A type-erased tap handler (from the views module).
 pub const Callback = @import("../module.zig").Callback;
+/// What `View.onDrag` calls (from the views module).
+pub const DragCallback = @import("../module.zig").DragCallback;
+/// Routes pointer events to a frame's regions (from the views module).
+pub const PointerInput = @import("../module.zig").PointerInput;
 /// The icon font's glyph names (from the views module).
 pub const IconName = @import("../module.zig").IconName;
 /// One line of text (from the views module).
 pub const Text = @import("../module.zig").Text;
+/// Text that wraps to the width it is given (from the views module).
+pub const WrappedText = @import("../module.zig").WrappedText;
+/// A filled rectangle (from the views module).
+pub const Rectangle = @import("../module.zig").Rectangle;
+/// A headless frame for the unit tests (from the views module).
+pub const TestCanvas = @import("../module.zig").TestCanvas;
 /// An icon from the icon font (from the views module).
 pub const Icon = @import("../module.zig").Icon;
 /// A filled circle (from the views module).
@@ -138,4 +162,10 @@ test {
     _ = @import("sort_column.zig");
     _ = @import("data_column.zig");
     _ = @import("data_table.zig");
+    _ = @import("selectable_row_style.zig");
+    _ = @import("selectable_row.zig");
+    _ = @import("reorder_state.zig");
+    _ = @import("reorderable_row.zig");
+    _ = @import("pane_header.zig");
+    _ = @import("setting_row.zig");
 }

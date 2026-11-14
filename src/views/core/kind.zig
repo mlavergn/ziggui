@@ -90,6 +90,10 @@ pub const ButtonData = struct {
 
     /// Optional leading glyph (the native `Label("…", systemImage:)` button).
     icon: ?renderer.Icon = null,
+
+    /// Optional keyboard shortcut drawn as a key cap after the label
+    /// (`ButtonKeyed`: "Save ↩", "Cancel esc").
+    shortcut: ?[]const u8 = null,
 };
 
 /// A switch.

@@ -123,6 +123,11 @@ pub const App = struct {
     /// Whether the I-beam is showing.
     text_cursor: bool = false,
 
+    /// The main window's frame when it was last neither maximized, minimized
+    /// nor full screen (`noteWindowFrame`); what `windowFrame` reports while
+    /// it is maximized. Null until the window opens.
+    restored_frame: ?mod.WindowFrame = null,
+
     /// The process's app.
     var shared_app: Self = .{};
 
@@ -228,6 +233,30 @@ pub const App = struct {
     pub fn isMaximized(self: *const Self) bool {
         const window = self.window orelse return false;
         return (sdl_c.SDL_GetWindowFlags(window) & sdl_c.SDL_WINDOW_MAXIMIZED) != 0;
+    }
+
+    /// The main window's frame to remember, in points: where it is and how
+    /// big, or, while it is maximized, where it was and how big before (the
+    /// frame `AppConfig.x`/`y`/`width`/`height` take with `maximized`).
+    ///
+    /// - `self`: the app.
+    /// - Returns: the frame; null with no window.
+    pub fn windowFrame(self: *const Self) ?mod.WindowFrame {
+        const window = self.window orelse return null;
+        if (self.isMaximized()) if (self.restored_frame) |restored| return restored;
+        return Self.currentFrame(window);
+    }
+
+    /// Records `window`'s frame as its restored one, unless it is maximized,
+    /// minimized or full screen. The event loop calls it as the main window
+    /// opens, moves and resizes.
+    ///
+    /// - `self`: the app.
+    /// - `window`: the main window.
+    pub fn noteWindowFrame(self: *Self, window: *sdl_c.SDL_Window) void {
+        const flags = sdl_c.SDL_GetWindowFlags(window);
+        if ((flags & (sdl_c.SDL_WINDOW_MAXIMIZED | sdl_c.SDL_WINDOW_MINIMIZED | sdl_c.SDL_WINDOW_FULLSCREEN)) != 0) return;
+        self.restored_frame = Self.currentFrame(window) orelse return;
     }
 
     /// Asks to close the main window, as its OS close button does: with
@@ -429,11 +458,14 @@ pub const App = struct {
     /// Prepares what every `SDL_Init` here needs first, since SDL reads it only
     /// when it starts (a tray or status item may start it before `run`): with a
     /// quit handler, SDL's signal handlers stay off, as a handler may refuse a
-    /// quit (see `setQuitHandler`); and a UTF-8 locale (see `useUtf8Locale`).
+    /// quit (see `setQuitHandler`); on macOS a Ctrl-click is a right click, as
+    /// everywhere on the Mac, so it opens context menus (`onSecondaryTap`) and
+    /// never reaches a tap with Ctrl held; and a UTF-8 locale (see `useUtf8Locale`).
     ///
     /// - `self`: the app.
     pub fn beforeSdlInit(self: *const Self) void {
         if (self.hooks.quit != null) _ = sdl_c.SDL_SetHint(sdl_c.SDL_HINT_NO_SIGNAL_HANDLERS, "1");
+        if (mod.os_tag == .macos) _ = sdl_c.SDL_SetHint(sdl_c.SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, "1");
         Self.useUtf8Locale();
     }
 
@@ -492,6 +524,20 @@ pub const App = struct {
         const index: usize = @intFromBool(over_text);
         if (self.cursors[index] == null) self.cursors[index] = sdl_c.SDL_CreateSystemCursor(if (over_text) sdl_c.SDL_SYSTEM_CURSOR_TEXT else sdl_c.SDL_SYSTEM_CURSOR_DEFAULT);
         if (self.cursors[index]) |cursor| _ = sdl_c.SDL_SetCursor(cursor);
+    }
+
+    /// `window`'s frame as it is now, in points.
+    ///
+    /// - `window`: the window.
+    /// - Returns: the frame; null when SDL cannot say.
+    fn currentFrame(window: *sdl_c.SDL_Window) ?mod.WindowFrame {
+        var x: c_int = 0;
+        var y: c_int = 0;
+        var width: c_int = 0;
+        var height: c_int = 0;
+        if (!sdl_c.SDL_GetWindowPosition(window, &x, &y)) return null;
+        if (!sdl_c.SDL_GetWindowSize(window, &width, &height)) return null;
+        return .{ .x = x, .y = y, .width = @intCast(@max(width, 0)), .height = @intCast(@max(height, 0)) };
     }
 
     /// Gives the C library a UTF-8 character-type locale before SDL talks to the

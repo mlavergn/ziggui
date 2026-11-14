@@ -31,6 +31,9 @@ pub const ViewPainter = struct {
         child_context.opacity = context.opacity * view.modifiers.opacity;
         if (view.modifiers.disabled) child_context.disabled = true;
         if (view.modifiers.foreground) |foreground| child_context.foreground = foreground;
+        // The tint is this view's own `.foreground()`, never an ancestor's, so
+        // a color set on a pane or a row leaves its plain buttons as they are.
+        child_context.tint = view.modifiers.foreground;
         child_context.applyFontModifiers(view);
         // An accessibility-hidden view drops itself and its whole subtree from the
         // a11y tree by clearing the sink for this branch.
@@ -69,6 +72,7 @@ pub const ViewPainter = struct {
 
         // Descend through the layout wrappers introduced by padding/frame.
         var content_layout = layout;
+        if (view.modifiers.fixed_width) content_layout = content_layout.children[0];
         if (view.modifiers.frame != null) content_layout = content_layout.children[0];
         if (view.modifiers.padding != null) content_layout = content_layout.children[0];
 
@@ -200,7 +204,8 @@ pub const ViewPainter = struct {
                 try mod.TextViewPainter.paintTextField(context, view, field, rect, canvas);
                 // The buffer is copied only for an accessibility pass, not every paint.
                 if (context.a11y != null) {
-                    const value = try context.arena.dupe(u8, field.state.text());
+                    // A secure field's value is never exposed.
+                    const value = if (field.state.secure) "" else try context.arena.dupe(u8, field.state.text());
                     try context.emitAccessibility(view, rect, .textField, field.placeholder, value);
                 }
             },
