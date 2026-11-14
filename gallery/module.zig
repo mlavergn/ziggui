@@ -22,6 +22,8 @@ pub const Platform = @import("platform.zig").Platform;
 pub const Showcase = @import("showcase.zig").Showcase;
 /// A plain-text editor with a find bar and a path dialog, folded in from zigui's edit example.
 pub const Editor = @import("editor.zig").Editor;
+/// The design-kit panels (badges, key caps, keyed buttons, segmented controls, forms, rows), and their state.
+pub const Kit = @import("kit.zig").Kit;
 
 // -----------------------------------------------------------------------------
 // Test Fixtures
@@ -31,6 +33,10 @@ pub const test_width: u32 = 480;
 
 /// The height, in points, the tests draw the gallery at.
 pub const test_height: u32 = 320;
+
+/// The folder the File Browser section opens: `fixtures/file_browser`, whose
+/// fixed contents keep that section's screenshot the same on every run.
+pub const fixtures_path: []const u8 = @import("gallery_config").fixtures_path;
 
 // -----------------------------------------------------------------------------
 // Unit Tests

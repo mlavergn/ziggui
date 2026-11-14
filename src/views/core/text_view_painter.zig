@@ -26,6 +26,9 @@ const LinkTarget = struct {
 pub const TextViewPainter = struct {
     const Self = @This();
 
+    /// What a secure field draws for each character: a bullet (three UTF-8 bytes).
+    const secure_dot = "\u{2022}";
+
     /// Paints a rich paragraph: each run in its span's face and color, with
     /// backgrounds, underlines, strikes, link regions and (when selectable) the
     /// selection.
@@ -123,6 +126,8 @@ pub const TextViewPainter = struct {
         // Keep the focused field's submit callback current so `Focus.submit` (fired
         // from the event loop on Enter) can reach it without the view tree.
         if (focused) field.state.on_submit = view.modifiers.on_submit;
+        // A secure field's state refuses copy, cut and accessibility (`TextFieldState.secure`).
+        field.state.secure = view.modifiers.secure;
         // The theme draws the input surface (background + border).
         if (!view.modifiers.chromeless) try context.theme.painter.field(context.surface(canvas), rect, radius, .{ .focused = focused });
 
@@ -134,43 +139,61 @@ pub const TextViewPainter = struct {
         const real = field.state.text();
         var content = real;
         if (view.modifiers.secure) {
-            const count = std.unicode.utf8CountCodepoints(real) catch real.len;
-            const dots = try context.arena.alloc(u8, count * 3);
-            for (0..count) |index| @memcpy(dots[index * 3 ..][0..3], "\u{2022}");
+            const dots = try context.arena.alloc(u8, Self.secureOffset(real, real.len));
+            var index: usize = 0;
+            while (index < dots.len) : (index += secure_dot.len) @memcpy(dots[index..][0..secure_dot.len], secure_dot);
             content = dots;
         }
         const secure = view.modifiers.secure;
+        const shaper = renderer.TextShaper.init(context.cache.face);
+
+        // One line, scrolled sideways only as far as keeps the caret in view:
+        // the offset stays on the state across frames, so a caret moving
+        // inside the visible part leaves the text still, as a native field
+        // does. Unfocused, the start shows. Everything inside is clipped to
+        // the field, so neither the text nor the selection runs past it.
+        const caret_at = if (secure) Self.secureOffset(real, field.state.caret) else field.state.caret;
+        const caret_offset = shaper.measureLineWidth(content[0..caret_at], pixel_size);
+        const visible_width = @max(1, rect.width - inset * 2);
+        const scroll_x: f32 = if (focused) Self.followCaret(field.state.scroll_x, caret_offset, shaper.measureLineWidth(content, pixel_size), visible_width) else 0;
+        field.state.scroll_x = scroll_x;
+        const origin_x = rect.x + inset - scroll_x;
+        try canvas.pushClip(.{ .x = rect.x + inset / 2, .y = rect.y, .width = @max(0, rect.width - inset), .height = rect.height }, 0);
 
         // Selection highlight, drawn behind the text so the glyphs stay readable.
-        if (focused and !secure) {
+        // A secure field's selection is over the real text; it highlights the
+        // dots standing for those characters (`secureOffset`).
+        if (focused) {
             if (field.state.selectionRange()) |selection| {
-                const highlight_start = rect.x + inset + renderer.TextShaper.init(context.cache.face).measureLineWidth(content[0..selection.start], pixel_size);
-                const highlight_end = rect.x + inset + renderer.TextShaper.init(context.cache.face).measureLineWidth(content[0..selection.end], pixel_size);
+                const start = if (secure) Self.secureOffset(real, selection.start) else selection.start;
+                const end = if (secure) Self.secureOffset(real, selection.end) else selection.end;
+                const highlight_start = origin_x + shaper.measureLineWidth(content[0..start], pixel_size);
+                const highlight_end = origin_x + shaper.measureLineWidth(content[0..end], pixel_size);
                 try canvas.fillRect(.{ .x = highlight_start, .y = text_y, .width = @max(1, highlight_end - highlight_start), .height = line_height }, context.theme.colors.selection.multiplyAlpha(opacity));
             }
         }
 
         if (content.len == 0 and field.placeholder.len > 0) {
-            context.drawText(canvas, field.placeholder, pixel_size, context.theme.colors.tertiary_label.multiplyAlpha(opacity), .{ .x = rect.x + inset, .y = text_y }) catch |err| log.debug("text not drawn [{t}]", .{err});
+            context.drawText(canvas, field.placeholder, pixel_size, context.theme.colors.tertiary_label.multiplyAlpha(opacity), .{ .x = origin_x, .y = text_y }) catch |err| log.debug("text not drawn [{t}]", .{err});
         } else {
-            context.drawText(canvas, content, pixel_size, context.foreground.multiplyAlpha(opacity), .{ .x = rect.x + inset, .y = text_y }) catch |err| log.debug("text not drawn [{t}]", .{err});
+            context.drawText(canvas, content, pixel_size, context.foreground.multiplyAlpha(opacity), .{ .x = origin_x, .y = text_y }) catch |err| log.debug("text not drawn [{t}]", .{err});
         }
         // caret
         if (focused and mod.Focus.shared().caretVisible()) {
-            const caret_at = if (secure) (std.unicode.utf8CountCodepoints(real[0..field.state.caret]) catch field.state.caret) * 3 else field.state.caret;
-            const caret_x = rect.x + inset + renderer.TextShaper.init(context.cache.face).measureLineWidth(content[0..caret_at], pixel_size);
+            const caret_x = origin_x + caret_offset;
             try canvas.line(.{ .x = caret_x, .y = text_y + 2 }, .{ .x = caret_x, .y = text_y + line_height - 2 }, 1, context.theme.colors.accent.multiplyAlpha(opacity));
         }
+        try canvas.popClip();
         // A `textClick` region (not a bare `.focus`) so a single-line field also
         // supports click-to-place-caret, drag-selection, and double-click word
-        // selection — its one line starts at the text origin with no scroll.
+        // selection — its one line starts at the scrolled text origin.
         try context.hit_regions.append(context.arena, .{
             .rect = rect,
             .action = if (secure) .{ .focus = field.state } else .{ .textClick = .{
                 .state = field.state,
                 .face = context.cache.face,
                 .pixel_size = pixel_size,
-                .origin = .{ .x = rect.x + inset, .y = text_y },
+                .origin = .{ .x = origin_x, .y = text_y },
                 .scroll_y = 0,
                 .line_height = line_height,
             } },
@@ -380,6 +403,37 @@ pub const TextViewPainter = struct {
         if (context.scroll_regions) |regions| try regions.append(context.arena, .{ .rect = rect, .state = editor.scroll });
     }
 
+    /// A one-line field's sideways scroll after the caret moved: unchanged
+    /// while the caret is in view, else just far enough to bring it in, and
+    /// never past the text's end.
+    ///
+    /// - `previous`: the scroll the field had, in points.
+    /// - `caret`: the caret's offset from the text's start, in points.
+    /// - `content_width`: the whole text's width, in points.
+    /// - `visible_width`: how much of it the field shows, in points.
+    /// - Returns: the scroll, in points.
+    fn followCaret(previous: f32, caret: f32, content_width: f32, visible_width: f32) f32 {
+        var scroll = previous;
+        if (caret < scroll) scroll = caret;
+        if (caret > scroll + visible_width) scroll = caret - visible_width;
+        return std.math.clamp(scroll, 0, @max(0, content_width - visible_width));
+    }
+
+    /// Where byte `offset` of a secure field's real text falls in its dots:
+    /// one dot per codepoint, a byte that does not decode counting as one,
+    /// as the caret steps.
+    ///
+    /// - `real`: the field's text.
+    /// - `offset`: a byte offset into it.
+    /// - Returns: the byte offset into the dots.
+    fn secureOffset(real: []const u8, offset: usize) usize {
+        const lines = mod.TextLines.init(real);
+        var count: usize = 0;
+        var index: usize = 0;
+        while (index < offset) : (count += 1) index = lines.nextCodepointEnd(index);
+        return count * secure_dot.len;
+    }
+
     /// Draws a single editor line, rendering tabs as gaps to the next tab stop
     /// (drawing text between tabs run-by-run) so caret/selection x's line up with it.
     ///
@@ -464,4 +518,49 @@ test "a soft-wrap editor's rows: an empty last line after a newline, never none"
     try std.testing.expectEqual(@as(usize, 2), (try TextViewPainter.editorRows(allocator, &closed, "abc\n")).len);
     // Nothing wrapped: one empty row, so the caret has a row.
     try std.testing.expectEqual(@as(usize, 1), (try TextViewPainter.editorRows(allocator, &.{}, "")).len);
+}
+
+test "a one-line field keeps a long text and its selection inside itself, the caret in view" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    var state = mod.TextFieldState.init(std.testing.allocator);
+    defer state.deinit();
+    defer mod.Focus.shared().clear();
+    try state.setText("Marc_LAVERGNE_marc_at_cloneable_dot_ai_2026-10-01_a_name_far_wider_than_its_field");
+    mod.Focus.shared().set(&state);
+    state.selectAll();
+
+    canvas.begin(renderer.MacosTheme.light);
+    const field = mod.HStack(.{ mod.TextField("", &state).frameWidth(160), mod.Spacer() });
+    canvas.end();
+    var frame = try canvas.render(field, 400, 30);
+    defer frame.deinit();
+    // Past the field's right edge the window shows, not the selection.
+    const outside = frame.at(300, 15);
+    const selection = renderer.MacosTheme.light.colors.selection;
+    try std.testing.expect(@abs(outside.b - selection.b) > 0.05 or @abs(outside.r - selection.r) > 0.05);
+    // Inside, the selection fills the field.
+    const inside = frame.at(80, 15);
+    try std.testing.expect(@abs(inside.b - outside.b) > 0.05 or @abs(inside.r - outside.r) > 0.05);
+}
+
+test "a secure field's dot offsets count codepoints, a bad byte as one" {
+    // "é" is two bytes, one dot; 0xff does not decode, one dot.
+    const real = "a\u{e9}\xffb";
+    try std.testing.expectEqual(@as(usize, 0), TextViewPainter.secureOffset(real, 0));
+    try std.testing.expectEqual(@as(usize, 6), TextViewPainter.secureOffset(real, 3));
+    try std.testing.expectEqual(@as(usize, 12), TextViewPainter.secureOffset(real, real.len));
+}
+
+test "a one-line field's scroll holds while the caret moves in view, and follows it out" {
+    // 100pt of 400pt shown, scrolled to the end.
+    try std.testing.expectEqual(@as(f32, 300), TextViewPainter.followCaret(0, 400, 400, 100));
+    // A caret moved left but still in view: the text stays put.
+    try std.testing.expectEqual(@as(f32, 300), TextViewPainter.followCaret(300, 340, 400, 100));
+    // Past the left edge: just far enough to show it.
+    try std.testing.expectEqual(@as(f32, 250), TextViewPainter.followCaret(300, 250, 400, 100));
+    // Text shortened under the scroll: never past its end.
+    try std.testing.expectEqual(@as(f32, 20), TextViewPainter.followCaret(300, 120, 120, 100));
+    // Short text never scrolls.
+    try std.testing.expectEqual(@as(f32, 0), TextViewPainter.followCaret(0, 80, 80, 100));
 }

@@ -64,6 +64,21 @@ pub const Section = enum {
     /// A plain-text editor: toolbar, find bar, status bar, path dialog.
     editor,
 
+    /// Badges, key caps, keyed buttons, segmented controls, a key-hint bar.
+    badges,
+
+    /// Setting rows, a key/value editor, a token field, a search field.
+    forms,
+
+    /// A pane header and selectable rows.
+    rows,
+
+    /// Rows dragged up and down to reorder a list.
+    reorder,
+
+    /// A file and folder picker drawn in the window.
+    files,
+
     /// Every section, as sidebar rows.
     pub const items = blk: {
         const values = @typeInfo(Self).@"enum".field_values;
@@ -99,6 +114,11 @@ pub const Section = enum {
             .navigation => "Navigation",
             .geometry => "Geometry",
             .editor => "Editor",
+            .badges => "Badges & Keys",
+            .forms => "Forms",
+            .rows => "Rows & Headers",
+            .reorder => "Reorder",
+            .files => "File Browser",
         };
     }
 
@@ -126,6 +146,11 @@ pub const Section = enum {
             .navigation => .send,
             .geometry => .ruler,
             .editor => .fileText,
+            .badges => .tag,
+            .forms => .listChecks,
+            .rows => .list,
+            .reorder => .gripVertical,
+            .files => .folderOpen,
         };
     }
 
@@ -309,6 +334,9 @@ pub const Gallery = struct {
     /// The Editor panel's editor.
     editor: gallery.Editor,
 
+    /// The design-kit panels (Badges & Keys, Forms, Rows & Headers) and their state.
+    kit: gallery.Kit,
+
     /// Whether the Chat panel's tool call is unfolded.
     tool_open: bool = false,
 
@@ -364,7 +392,9 @@ pub const Gallery = struct {
 
         var showcase = try gallery.Showcase.init(allocator);
         errdefer showcase.deinit();
-        const editor = try gallery.Editor.init(allocator);
+        var editor = try gallery.Editor.init(allocator);
+        errdefer editor.deinit();
+        const kit = try gallery.Kit.init(allocator);
         const self = Self{
             .allocator = allocator,
             .section = ziggui.State(i64).init(allocator, 0),
@@ -373,6 +403,7 @@ pub const Gallery = struct {
             .accent = ziggui.State(i64).init(allocator, 0),
             .showcase = showcase,
             .editor = editor,
+            .kit = kit,
         };
         return self;
     }
@@ -381,6 +412,7 @@ pub const Gallery = struct {
     ///
     /// - `self`: the gallery to tear down.
     pub fn deinit(self: *Self) void {
+        self.kit.deinit();
         self.editor.deinit();
         self.showcase.deinit();
         self.accent.deinit();
@@ -629,6 +661,11 @@ pub const Gallery = struct {
             .navigation => self.showcase.navigationPanel(active_theme, section.label()),
             .geometry => self.showcase.geometryPanel(active_theme),
             .editor => self.editor.body(active_theme),
+            .badges => self.kit.badgesPanel(active_theme),
+            .forms => self.kit.formsPanel(active_theme),
+            .rows => self.kit.rowsPanel(active_theme),
+            .reorder => self.kit.reorderPanel(active_theme),
+            .files => self.kit.filesPanel(active_theme),
         };
     }
 

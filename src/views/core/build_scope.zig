@@ -40,6 +40,11 @@ pub const BuildScope = struct {
     /// Called with the URL when a link span is tapped. The app sets it once.
     var link_handler: ?*const fn ([]const u8) void = null;
 
+    /// Makes the tokens for a published theme in place of
+    /// `BuildTokens.fromTheme`, when the app installed one (`setTokenProvider`).
+    /// The process's, as the link handler is: the app sets it once.
+    var token_provider: ?*const fn (renderer.Theme) mod.BuildTokens = null;
+
     /// The current thread's build scope.
     ///
     /// - Returns: the shared scope.
@@ -140,8 +145,21 @@ pub const BuildScope = struct {
     /// - `self`: the scope.
     /// - `published`: the theme.
     pub fn setTheme(self: *Self, published: renderer.Theme) void {
-        self.build_tokens = mod.BuildTokens.fromTheme(published);
+        self.build_tokens = if (token_provider) |provider| provider(published) else mod.BuildTokens.fromTheme(published);
         self.build_theme = published;
+    }
+
+    /// Installs the app's design tokens: from the next `setTheme` on, the
+    /// tokens are `provider(theme)` instead of `BuildTokens.fromTheme(theme)`,
+    /// so an app with its own design system recolors ziggui's widgets. The
+    /// provider may start from `BuildTokens.fromTheme` and change some roles.
+    /// Null (the default) restores `fromTheme`.
+    ///
+    /// - `self`: the scope.
+    /// - `provider`: makes the tokens for a theme; null for ziggui's own.
+    pub fn setTokenProvider(self: *Self, provider: ?*const fn (renderer.Theme) mod.BuildTokens) void {
+        _ = self;
+        token_provider = provider;
     }
 
     /// The window's size in design points, as the frame being built is laid out at.
@@ -241,4 +259,26 @@ test "view: buildTheme returns the theme setThemeTokens published" {
     defer scope.setTheme(renderer.MacosTheme.light);
     try std.testing.expect(scope.theme().scheme == .dark);
     try std.testing.expect(scope.theme().colors.label.r == dark.colors.label.r);
+}
+
+test "a token provider's tokens reach tokens(), and clearing it restores fromTheme" {
+    const Provider = struct {
+        const Self = @This();
+
+        /// The macOS tokens with an orange warning.
+        fn tokens(theme: renderer.Theme) mod.BuildTokens {
+            var made = mod.BuildTokens.fromTheme(theme);
+            made.warning = renderer.Color.fromRgb8(255, 128, 0);
+            return made;
+        }
+    };
+    const scope = BuildScope.shared();
+    scope.setTokenProvider(Provider.tokens);
+    defer scope.setTokenProvider(null);
+    scope.setTheme(renderer.MacosTheme.light);
+    try std.testing.expectEqual(renderer.Color.fromRgb8(255, 128, 0), scope.tokens().warning);
+
+    scope.setTokenProvider(null);
+    scope.setTheme(renderer.MacosTheme.light);
+    try std.testing.expectEqual(mod.BuildTokens.fromTheme(renderer.MacosTheme.light).warning, scope.tokens().warning);
 }

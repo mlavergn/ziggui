@@ -41,13 +41,38 @@ pub const SpaceDistributor = struct {
         for (0..count) |index| order[index] = index;
         Self.sortByFlexibility(order, items);
 
-        var items_left: f32 = @floatFromInt(count);
+        // Items with a natural size (a truncating text) are offered the room
+        // first, as if the fillers (`Spacer`, a max-width frame) were not
+        // there beyond their minimums; the fillers share what is left. So a
+        // name beside a spacer shows whole when it fits, and truncates only
+        // when it does not, as SwiftUI lays it out. A stack of only one kind
+        // shares as before.
+        var fillers_min: f32 = 0;
+        var sized: f32 = 0;
+        for (items) |item| {
+            if (item.fills()) fillers_min += item.min else sized += 1;
+        }
+        var for_sized = remaining - fillers_min;
         for (order) |index| {
-            const share = remaining / items_left;
+            if (items[index].fills()) continue;
+            const share = for_sized / sized;
+            const length = std.math.clamp(share, items[index].min, items[index].max);
+            lengths[index] = length;
+            for_sized -= length;
+            remaining -= length;
+            sized -= 1;
+        }
+        var fillers: f32 = @floatFromInt(count);
+        for (items) |item| {
+            if (!item.fills()) fillers -= 1;
+        }
+        for (order) |index| {
+            if (!items[index].fills()) continue;
+            const share = remaining / fillers;
             const length = std.math.clamp(share, items[index].min, items[index].max);
             lengths[index] = length;
             remaining -= length;
-            items_left -= 1;
+            fillers -= 1;
         }
     }
 
@@ -94,6 +119,25 @@ test "distribute: spacing reduces available before allocation" {
     (mod.SpaceDistributor{ .available = 200, .spacing = 10 }).distribute(&items, &lengths);
     try std.testing.expectEqual(@as(f32, 50), lengths[0]);
     try std.testing.expectEqual(@as(f32, 50), lengths[1]);
+}
+
+test "distribute: a truncating text beside a spacer takes what it needs first" {
+    // available 300: a rigid 40, a text that would be 200 (min 20), a spacer.
+    const items = [_]mod.FlexItem{
+        .{ .min = 40, .max = 40 },
+        .{ .min = 20, .max = 200 },
+        .{ .min = 0, .max = 1_000_000 },
+    };
+    var lengths: [3]f32 = undefined;
+    const distributor = SpaceDistributor{ .available = 300, .spacing = 0 };
+    distributor.distribute(&items, &lengths);
+    try std.testing.expectEqual(@as(f32, 200), lengths[1]);
+    try std.testing.expectEqual(@as(f32, 60), lengths[2]);
+    // Too little room: the text takes all the spacer can give, and truncates.
+    const tight = SpaceDistributor{ .available = 150, .spacing = 0 };
+    tight.distribute(&items, &lengths);
+    try std.testing.expectEqual(@as(f32, 110), lengths[1]);
+    try std.testing.expectEqual(@as(f32, 0), lengths[2]);
 }
 
 test "distribute: a flexible spacer absorbs the leftover" {

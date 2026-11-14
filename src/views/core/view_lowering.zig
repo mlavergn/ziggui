@@ -311,8 +311,9 @@ pub const ViewLowering = struct {
         const label_width = renderer.TextShaper.init(context.cache.face).measureLineWidth(button.label, pixel_size);
         const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
         const icon_width: f32 = if (button.icon != null) mod.ControlMetrics.button_icon_size + mod.ControlMetrics.button_icon_gap else 0;
+        const key_width: f32 = if (button.shortcut) |key| mod.ControlMetrics.button_key_gap + mod.ControlPainter.keyCapSize(context, key).width else 0;
         return .{
-            .width = icon_width + label_width + 2 * mod.ControlMetrics.control_horizontal_padding,
+            .width = icon_width + label_width + key_width + 2 * mod.ControlMetrics.control_horizontal_padding,
             .height = @max(line_height, context.theme.metrics.control_height),
         };
     }

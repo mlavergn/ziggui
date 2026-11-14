@@ -1,6 +1,7 @@
 //! The controls: text, shapes, gradients, buttons, switches, sliders,
-//! steppers, progress bars, pickers, text fields and editors, labels, images,
-//! icons and drawings. View constructors over the view engine in `core/`.
+//! steppers, progress bars, pickers, segmented controls, text fields and
+//! editors, labels, badges, key caps, images, icons and drawings. View
+//! constructors over the view engine in `core/`.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_controls_module);
@@ -61,6 +62,16 @@ pub const Icon = @import("icon.zig").Icon;
 pub const IconButton = @import("icon.zig").IconButton;
 /// A view that paints itself through a callback.
 pub const Drawing = @import("drawing.zig").Drawing;
+/// A push button with its keyboard shortcut in a key cap after the label.
+pub const ButtonKeyed = @import("button.zig").ButtonKeyed;
+/// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
+pub const BadgeTone = @import("badge.zig").BadgeTone;
+/// A short label on a soft ground in its tone's strong color.
+pub const Badge = @import("badge.zig").Badge;
+/// A keyboard key's glyph in a small cap.
+pub const KeyCap = @import("key_cap.zig").KeyCap;
+/// A segmented control of equal segments, a neutral thumb on a track.
+pub const SegmentedControl = @import("segmented_control.zig").SegmentedControl;
 
 /// A node of the view tree (from the views module).
 pub const View = @import("../module.zig").View;
@@ -82,6 +93,16 @@ pub const Pen = @import("../module.zig").Pen;
 pub const Span = @import("../module.zig").Span;
 /// Children side by side (from the views module).
 pub const HStack = @import("../module.zig").HStack;
+/// Flexible space in a stack (from the views module).
+pub const Spacer = @import("../module.zig").Spacer;
+/// Builds stack views from tuples or slices (from the views module).
+pub const StackBuilder = @import("../module.zig").StackBuilder;
+/// The build-time theme colors (from the views module).
+pub const BuildTokens = @import("../module.zig").BuildTokens;
+/// The built-in controls' geometry (from the views module).
+pub const ControlMetrics = @import("../module.zig").ControlMetrics;
+/// A headless frame for the unit tests (from the views module).
+pub const TestCanvas = @import("../module.zig").TestCanvas;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -106,4 +127,7 @@ test {
     _ = @import("image.zig");
     _ = @import("icon.zig");
     _ = @import("drawing.zig");
+    _ = @import("badge.zig");
+    _ = @import("key_cap.zig");
+    _ = @import("segmented_control.zig");
 }

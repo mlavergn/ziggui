@@ -359,8 +359,24 @@ const EventRouter = struct {
     /// already queued (draining the queue even after a timeout).
     fn waitThenDrain(self: *const Self, timeout_ms: c_int) void {
         var event: sdl_c.SDL_Event = undefined;
-        if (sdl_c.SDL_WaitEventTimeout(&event, timeout_ms)) self.handle(&event);
-        while (sdl_c.SDL_PollEvent(&event)) self.handle(&event);
+        if (sdl_c.SDL_WaitEventTimeout(&event, timeout_ms)) {
+            self.handle(&event);
+            if (Self.endsBatch(&event)) return;
+        }
+        while (sdl_c.SDL_PollEvent(&event)) {
+            self.handle(&event);
+            if (Self.endsBatch(&event)) return;
+        }
+    }
+
+    /// Whether the rest of the queue waits for the next frame after `event`:
+    /// a press may have removed what this frame's regions point at (a row and
+    /// its fields), so a second click queued behind it must see new regions.
+    ///
+    /// - `event`: the event just handled.
+    /// - Returns: true for a mouse press.
+    fn endsBatch(event: *const sdl_c.SDL_Event) bool {
+        return event.type == sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN;
     }
 
     /// Waits up to `timeout_ms` for an event; when one comes, handles it and
@@ -369,7 +385,11 @@ const EventRouter = struct {
         var event: sdl_c.SDL_Event = undefined;
         if (sdl_c.SDL_WaitEventTimeout(&event, timeout_ms)) {
             self.handle(&event);
-            while (sdl_c.SDL_PollEvent(&event)) self.handle(&event);
+            if (Self.endsBatch(&event)) return true;
+            while (sdl_c.SDL_PollEvent(&event)) {
+                self.handle(&event);
+                if (Self.endsBatch(&event)) return true;
+            }
             return true;
         }
         return false;
@@ -406,6 +426,9 @@ const EventRouter = struct {
             // Clicking anywhere else dismisses the popover, like a native panel.
             sdl_c.SDL_EVENT_WINDOW_FOCUS_LOST => if (on_panel) panel.hide() else if (app.focus_handler) |handler| handler(false),
             sdl_c.SDL_EVENT_WINDOW_FOCUS_GAINED => if (event.window.windowID != panel.id) if (app.focus_handler) |handler| handler(true),
+            // The flags are read as the event is handled, after a maximize's
+            // own resize has set them, so only a restored frame is kept.
+            sdl_c.SDL_EVENT_WINDOW_MOVED, sdl_c.SDL_EVENT_WINDOW_RESIZED => if (event.window.windowID != panel.id) if (app.window) |window| app.noteWindowFrame(window),
             // The close button: hide-to-tray when configured, else quit. (⌘Q still
             // sends SDL_EVENT_QUIT.)
             sdl_c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => if (on_panel) panel.hide() else if (app.hide_on_close) app.hideWindow() else {
@@ -506,11 +529,13 @@ const EventRouter = struct {
                     // not emit a matching TEXT_INPUT, so consuming the key here is safe.
                     if ((event.key.mod & (sdl_c.SDL_KMOD_GUI | sdl_c.SDL_KMOD_CTRL)) != 0) {
                         switch (event.key.key) {
+                            // A secure field's text never reaches the clipboard.
                             sdl_c.SDLK_C => {
-                                mod.Clipboard.copySelection(field);
+                                if (!field.secure) mod.Clipboard.copySelection(field);
                                 return;
                             },
                             sdl_c.SDLK_X => {
+                                if (field.secure) return;
                                 mod.Clipboard.copySelection(field);
                                 _ = field.deleteSelection();
                                 return;
@@ -527,13 +552,16 @@ const EventRouter = struct {
                         }
                     }
                     const shift = (event.key.mod & sdl_c.SDL_KMOD_SHIFT) != 0;
+                    // macOS: ⌘←/⌘→ go to the line's start and end (a one-line
+                    // field's head and tail), ⌘↑/⌘↓ to the text's.
+                    const command = mod.os_tag == .macos and (event.key.mod & sdl_c.SDL_KMOD_GUI) != 0;
                     switch (event.key.key) {
                         sdl_c.SDLK_BACKSPACE => field.backspace(),
                         sdl_c.SDLK_DELETE => field.deleteForward(),
-                        sdl_c.SDLK_LEFT => field.moveLeft(shift),
-                        sdl_c.SDLK_RIGHT => field.moveRight(shift),
-                        sdl_c.SDLK_UP => field.moveUp(shift),
-                        sdl_c.SDLK_DOWN => field.moveDown(shift),
+                        sdl_c.SDLK_LEFT => if (command) field.home(shift) else field.moveLeft(shift),
+                        sdl_c.SDLK_RIGHT => if (command) field.end(shift) else field.moveRight(shift),
+                        sdl_c.SDLK_UP => if (command) field.moveToStart(shift) else field.moveUp(shift),
+                        sdl_c.SDLK_DOWN => if (command) field.moveToEnd(shift) else field.moveDown(shift),
                         sdl_c.SDLK_HOME => field.home(shift),
                         sdl_c.SDLK_END => field.end(shift),
                         // Multi-line editors insert a newline; single-line fields submit.
@@ -752,6 +780,8 @@ pub fn EventLoop(comptime AppState: type) type {
             // Expose the window/loop to tray callbacks and the close handler.
             app.window = self.window;
             app.running = &self.running;
+            // A view's worker (a folder listing) wakes the loop when it is done.
+            views.FrameClock.shared().setWakeHandler(Self.wakeApp);
             app.hide_on_close = config.hide_on_close;
 
             self.frame = .{
@@ -833,6 +863,7 @@ pub fn EventLoop(comptime AppState: type) type {
             self.closePanel();
             if (self.sdl_renderer) |sdl_renderer| sdl_c.SDL_DestroyRenderer(sdl_renderer);
             if (self.gpu_backend) |*gpu| gpu.deinit();
+            views.FrameClock.shared().setWakeHandler(null);
             sdl_c.SDL_DestroyWindow(self.window);
             sdl_c.SDL_Quit();
             self.allocator.destroy(self);
@@ -946,8 +977,9 @@ pub fn EventLoop(comptime AppState: type) type {
         fn openWindow(self: *Self) !void {
             self.window = sdl_c.SDL_CreateWindow(
                 self.config.title.ptr,
-                @intCast(self.config.width),
-                @intCast(self.config.height),
+                // Clamped: a size read from a file may not fit a c_int.
+                @intCast(@min(self.config.width, std.math.maxInt(c_int))),
+                @intCast(@min(self.config.height, std.math.maxInt(c_int))),
                 sdl_c.SDL_WINDOW_RESIZABLE | sdl_c.SDL_WINDOW_HIGH_PIXEL_DENSITY | (if (self.customTitlebar()) sdl_c.SDL_WINDOW_BORDERLESS else 0),
             ) orelse {
                 std.log.err("SDL_CreateWindow failed: {s}", .{sdl_c.SDL_GetError()});
@@ -962,6 +994,14 @@ pub fn EventLoop(comptime AppState: type) type {
             const custom_titlebar = self.customTitlebar();
             if (config.min_width > 0 and config.min_height > 0)
                 _ = sdl_c.SDL_SetWindowMinimumSize(window, @intCast(config.min_width), @intCast(config.min_height));
+            // A remembered place, kept only while some display still shows the window.
+            if (config.x) |x| if (config.y) |y| {
+                const frame: mod.WindowFrame = .{ .x = x, .y = y, .width = config.width, .height = config.height };
+                if (Self.onSomeDisplay(frame)) _ = sdl_c.SDL_SetWindowPosition(window, x, y);
+            };
+            // Before maximizing: the frame the window returns to when restored.
+            mod.App.shared().noteWindowFrame(window);
+            if (config.maximized) _ = sdl_c.SDL_MaximizeWindow(window);
             if (config.unified_titlebar and mod.os_tag == .macos) mod.Cocoa.unifyTitlebar(window);
             if ((config.menus.len > 0 or config.settings != null) and mod.os_tag == .macos) mod.Cocoa.shared().setMenuBar(config.menus, config.settings);
             if (config.drag_band > 0 or custom_titlebar) mod.WindowHitTest.shared().install(window, config.drag_band, custom_titlebar);
@@ -981,6 +1021,28 @@ pub fn EventLoop(comptime AppState: type) type {
                     } else std.log.info("ziggui: icon_png not loaded ({s})", .{sdl_c.SDL_GetError()});
                 }
             }
+        }
+
+        /// `FrameClock.wake`'s handler: wakes the loop from any thread.
+        fn wakeApp() void {
+            mod.App.shared().wake();
+        }
+
+        /// Whether enough of `frame` falls inside some display's usable area to grab.
+        ///
+        /// - `frame`: the window's frame, in points.
+        /// - Returns: true when a display shows it.
+        fn onSomeDisplay(frame: mod.WindowFrame) bool {
+            var count: c_int = 0;
+            const displays = sdl_c.SDL_GetDisplays(&count) orelse return false;
+            defer sdl_c.SDL_free(displays);
+            for (displays[0..@intCast(count)]) |display| {
+                var bounds: sdl_c.SDL_Rect = undefined;
+                if (!sdl_c.SDL_GetDisplayUsableBounds(display, &bounds)) continue;
+                const usable: mod.WindowFrame = .{ .x = bounds.x, .y = bounds.y, .width = @intCast(@max(bounds.w, 0)), .height = @intCast(@max(bounds.h, 0)) };
+                if (frame.overlaps(usable, 100)) return true;
+            }
+            return false;
         }
 
         /// Creates the hidden panel window and its renderer, when there is a

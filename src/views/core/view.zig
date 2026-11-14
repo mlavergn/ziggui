@@ -134,11 +134,14 @@ pub const View = struct {
     }
 
     /// Expands to fill the available width (SwiftUI `.frame(maxWidth: .infinity)`).
+    /// It undoes a `.fixedSize()` the view came with, so a control that keeps
+    /// its ideal width by default (`SegmentedControl`) stretches when asked.
     ///
     /// - `self`: the view.
     /// - Returns: the filling view.
     pub fn frameMaxWidth(self: *const Self) Self {
         var view = self.*;
+        view.modifiers.fixed_width = false;
         var frame_specification = view.modifiers.frame orelse mod.FrameSpecification{};
         frame_specification.max_width = infinity;
         view.modifiers.frame = frame_specification;

@@ -5,6 +5,17 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_control_painter);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
+/// The colors of a key cap painted inside a control (`ControlPainter.paintKeyCap`).
+pub const KeyCapColors = struct {
+    const Self = @This();
+
+    /// The cap's fill.
+    ground: renderer.Color,
+    /// The cap's hairline border.
+    border: renderer.Color,
+    /// The key's text.
+    text: renderer.Color,
+};
 
 /// Paints each control kind into its laid-out rect: the view layer owns the
 /// geometry, the theme's painter draws the chrome, and each control registers
@@ -47,13 +58,19 @@ pub const ControlPainter = struct {
                 .disabled = context.disabled,
                 .hovered = hovered and !context.disabled,
             });
+            // A plain (text-only) button takes a color asked for with `.foreground()`.
+            if (button.role == .plain and !context.disabled) {
+                if (context.tint) |tint| label_color = tint;
+            }
         }
         const pixel_size = context.theme.typography.body.size;
         const label_width = renderer.TextShaper.init(context.cache.face).measureLineWidth(button.label, pixel_size);
         const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
         const color = label_color.multiplyAlpha(context.opacity * dim);
         const icon_width: f32 = if (button.icon != null) mod.ControlMetrics.button_icon_size + mod.ControlMetrics.button_icon_gap else 0;
-        const start_x = rect.x + (rect.width - (icon_width + label_width)) / 2;
+        const key_size: renderer.Size = if (button.shortcut) |key| Self.keyCapSize(context, key) else .{};
+        const key_width: f32 = if (button.shortcut != null) mod.ControlMetrics.button_key_gap + key_size.width else 0;
+        const start_x = rect.x + (rect.width - (icon_width + label_width + key_width)) / 2;
         if (button.icon) |icon| {
             if (context.icon_cache) |cache| {
                 const icon_box = renderer.Rect{
@@ -70,7 +87,68 @@ pub const ControlPainter = struct {
             .y = rect.y + (rect.height - line_height) / 2,
         };
         context.drawText(canvas, button.label, pixel_size, color, origin) catch |err| log.debug("text not drawn [{t}]", .{err});
+        if (button.shortcut) |key| {
+            const key_rect = renderer.Rect{
+                .x = origin.x + label_width + mod.ControlMetrics.button_key_gap,
+                .y = Self.verticalCenter(rect, key_size.height),
+                .width = key_size.width,
+                .height = key_size.height,
+            };
+            try Self.paintKeyCap(context, key, key_rect, .{
+                .ground = label_color.multiplyAlpha(mod.ControlMetrics.button_key_ground_alpha * context.opacity * dim),
+                .border = label_color.multiplyAlpha(mod.ControlMetrics.button_key_border_alpha * context.opacity * dim),
+                .text = color.multiplyAlpha(mod.ControlMetrics.button_key_text_alpha),
+            }, canvas);
+        }
         try context.hit_regions.append(context.arena, .{ .rect = rect, .action = .{ .callback = button.action }, .disabled = context.disabled });
+    }
+
+    /// The glyph cache a key cap's text is drawn in: the medium monospaced
+    /// face when the context has a font set, else the context's own.
+    ///
+    /// - `context`: the context.
+    /// - Returns: the cache.
+    pub fn keyCapCache(context: *const mod.Context) *renderer.GlyphCache {
+        const fonts = context.fonts orelse return context.cache;
+        return fonts.cache(.{ .weight = .medium, .mono = true });
+    }
+
+    /// The size of a key cap drawn inside a control (a `ButtonKeyed`'s shortcut).
+    ///
+    /// - `context`: the context.
+    /// - `key`: the key's text.
+    /// - Returns: its size, padding included.
+    pub fn keyCapSize(context: *const mod.Context, key: []const u8) renderer.Size {
+        const shaper = renderer.TextShaper.init(Self.keyCapCache(context).face);
+        return .{
+            .width = shaper.measureLineWidth(key, mod.ControlMetrics.key_cap_text_size) + 2 * mod.ControlMetrics.key_cap_horizontal_padding,
+            .height = shaper.lineHeight(mod.ControlMetrics.key_cap_text_size) + 2 * mod.ControlMetrics.key_cap_vertical_padding,
+        };
+    }
+
+    /// Paints a key cap inside a control as a `KeyCap` view draws one: a
+    /// rounded ground, a hairline border (a bevel on a chiseled theme) and
+    /// the key's text.
+    ///
+    /// - `context`: the context.
+    /// - `key`: the key's text.
+    /// - `rect`: the cap's frame (`keyCapSize`).
+    /// - `colors`: its ground, border and text.
+    /// - `canvas`: where it is painted.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn paintKeyCap(context: *const mod.Context, key: []const u8, rect: renderer.Rect, colors: KeyCapColors, canvas: *renderer.Canvas) !void {
+        const radius = context.theme.metrics.radius(mod.ControlMetrics.key_cap_radius);
+        try canvas.fillRoundedRect(rect, radius, colors.ground);
+        if (context.theme.metrics.chiseled) {
+            try context.surface(canvas).bevel(rect, false);
+        } else try canvas.strokeRoundedRect(rect, radius, 1, colors.border);
+        var key_context = context.*;
+        key_context.cache = Self.keyCapCache(context);
+        const origin = renderer.Point{
+            .x = rect.x + mod.ControlMetrics.key_cap_horizontal_padding,
+            .y = rect.y + mod.ControlMetrics.key_cap_vertical_padding,
+        };
+        key_context.drawText(canvas, key, mod.ControlMetrics.key_cap_text_size, colors.text, origin) catch |err| log.debug("text not drawn [{t}]", .{err});
     }
 
     /// Paints a switch: its label on the leading edge, the track and knob on the

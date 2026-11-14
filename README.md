@@ -4,7 +4,7 @@
 
 ## Overview
 
-ziggui draws declarative, SwiftUI-shaped view trees (`VStack`, `Toggle`, `NavigationSplitView`, `GeometryReader`, …) with five native-looking theme families (macOS, Windows 10, Windows 2000, KDE Plasma, Material). Layout, text, themes and a software rasterizer are pure Zig and test headless; on screen, rendering goes through SDL_GPU (Metal, Vulkan, D3D12) with an automatic software fallback. Beyond the standard views it has chat pieces, a virtual list that also scrolls sideways, a diff view (long lines scroll sideways or wrap), table rows, draggable split views, a hover popover, and for Linux and Windows an in-window menu bar and a title bar with the platform's window buttons. Names follow SwiftUI's where SwiftUI has one. A component gallery shows every view.
+ziggui draws declarative, SwiftUI-shaped view trees (`VStack`, `Toggle`, `NavigationSplitView`, `GeometryReader`, …) with five native-looking theme families (macOS, Windows 10, Windows 2000, KDE Plasma, Material). Layout, text, themes and a software rasterizer are pure Zig and test headless; on screen, rendering goes through SDL_GPU (Metal, Vulkan, D3D12) with an automatic software fallback. Beyond the standard views it has chat pieces, a virtual list that also scrolls sideways, a diff view (long lines scroll sideways or wrap), table rows, draggable split views, a hover popover, design-kit pieces (badges, key caps, buttons with their shortcut, segmented controls, a key-hint bar, setting, selectable and reorderable rows, pane headers, a key/value editor, a token field, a search field, an in-window file and folder picker), and for Linux and Windows an in-window menu bar and a title bar with the platform's window buttons. Names follow SwiftUI's where SwiftUI has one. On macOS a Ctrl-click is a right click, as elsewhere on the Mac, so it opens context menus (`onSecondaryTap`). A component gallery shows every view.
 
 Since 1.0.0 ziggui includes what used to be the separate zigui library, and builds SDL 3.4.20 itself from the official release.
 
@@ -58,7 +58,7 @@ tests.root_module.addImport("ziggui", ziggui_dep.module("ziggui"));
 
 Pass `linkApp` the same target and optimize mode as the dependency, and every call the same options; a mismatch panics at configure. Only the executable builds and links SDL3, and a dependent package fetches it only through `linkApp`; tests never compile or link it. One compilation holds only one of the two modules, so a module of yours that both the executable and the tests import is declared twice, once over each.
 
-Code writes `ziggui.X` throughout: `ziggui.VStack`, `ziggui.HSplitView`, `ziggui.Theme`. The window and its event loop are `ziggui.App.shared()`, present only in the executable's build. An app built on ziggui follows [`../styleguide/GUIDESIGN.md`](../styleguide/GUIDESIGN.md).
+Code writes `ziggui.X` throughout: `ziggui.VStack`, `ziggui.HSplitView`, `ziggui.Theme`. The window and its event loop are `ziggui.App.shared()`, present only in the executable's build. An app built on ziggui follows [`../styleguide/GUIDESIGN.md`](../styleguide/GUIDESIGN.md). An app with its own design system recolors ziggui's widgets by installing a token provider, `ziggui.BuildScope.shared().setTokenProvider(provider)`, which usually starts from `ziggui.BuildTokens.fromTheme(theme)` and changes some roles.
 
 Open the component gallery:
 
@@ -89,5 +89,6 @@ src/sdl/        the SDL3 runtime: window, event loop, menus, tray, clipboard, di
 src/module.zig  the ziggui barrel
 build/          the SDL3 C build
 gallery/        the component gallery
+fixtures/       fixed files the gallery shows (the File Browser's folder)
 tools/icon/     mkico.py: a polygon SVG to .ico/.png/an iconset, for app icons
 ```

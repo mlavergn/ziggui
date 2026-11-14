@@ -61,11 +61,11 @@ const MenuItem = struct {
         const self: *Self = @ptrCast(@alignCast(context.?));
         const field = self.field;
         switch (self.action) {
-            .cut => {
+            .cut => if (!field.secure) {
                 if (TextContextMenu.clipboard_operations) |operations| operations.copy(field);
                 _ = field.deleteSelection();
             },
-            .copy => if (TextContextMenu.clipboard_operations) |operations| operations.copy(field),
+            .copy => if (!field.secure) if (TextContextMenu.clipboard_operations) |operations| operations.copy(field),
             .paste => if (TextContextMenu.clipboard_operations) |operations| operations.paste(field),
             .selectAll => field.selectAll(),
         }
@@ -285,7 +285,8 @@ pub const TextContextMenu = struct {
     /// - `field`: the field the menu edits.
     /// - Returns: the menu's content.
     fn build(self: *const Self, context: *const mod.Context, field: *mod.TextFieldState) mod.View {
-        const has_selection = field.hasSelection();
+        // A secure field offers no Cut or Copy.
+        const has_selection = field.hasSelection() and !field.secure;
         const hovered: ?MenuAction = if (self.open_menu) |menu| menu.hover else null;
         const rows = context.arena.alloc(mod.View, 5) catch @panic("oom");
         rows[0] = self.row(context, field, "Cut", "⌘X", .cut, has_selection, MenuAction.cut.isHovered(hovered));
@@ -393,4 +394,30 @@ test "view: text context menu — fieldAt, render, actions, clipboard hook" {
     MenuItem.perform(&cut_item);
     try std.testing.expect(Recorder.copied);
     try std.testing.expectEqual(@as(usize, 0), field.text().len);
+}
+
+test "text context menu: a secure field's Cut and Copy do nothing" {
+    const Recorder = struct {
+        var copied: bool = false;
+        fn copy(_: *mod.TextFieldState) void {
+            copied = true;
+        }
+        fn paste(_: *mod.TextFieldState) void {}
+    };
+    Recorder.copied = false;
+    const menu = TextContextMenu.shared();
+    menu.setClipboardOperations(.{ .copy = Recorder.copy, .paste = Recorder.paste });
+    defer TextContextMenu.clipboard_operations = null;
+    defer menu.close();
+    var field = mod.TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    field.secure = true;
+    try field.setText("hunter2");
+    field.selectAll();
+    var copy_item = MenuItem{ .field = &field, .action = .copy };
+    MenuItem.perform(&copy_item);
+    var cut_item = MenuItem{ .field = &field, .action = .cut };
+    MenuItem.perform(&cut_item);
+    try std.testing.expect(!Recorder.copied);
+    try std.testing.expectEqualStrings("hunter2", field.text());
 }

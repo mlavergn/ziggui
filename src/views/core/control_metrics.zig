@@ -39,6 +39,24 @@ pub const ControlMetrics = struct {
     pub const button_icon_size: f32 = 14;
     /// The gap between an icon-label button's glyph and its label.
     pub const button_icon_gap: f32 = 5;
+    /// The text size of a key cap (`KeyCap`, a `ButtonKeyed`'s shortcut).
+    pub const key_cap_text_size: f32 = 11;
+    /// A key cap's padding on each side of its text.
+    pub const key_cap_horizontal_padding: f32 = 5;
+    /// A key cap's padding above and below its text.
+    pub const key_cap_vertical_padding: f32 = 1;
+    /// A key cap's corner radius.
+    pub const key_cap_radius: f32 = 4;
+    /// The gap between a `ButtonKeyed`'s label and its key cap.
+    pub const button_key_gap: f32 = 6;
+    /// The alpha of a `ButtonKeyed`'s key cap ground over its label color.
+    pub const button_key_ground_alpha: f32 = 0.14;
+    /// The alpha of a `ButtonKeyed`'s key text over its label color.
+    pub const button_key_text_alpha: f32 = 0.8;
+    /// The alpha of a `ButtonKeyed`'s key cap hairline over its label color:
+    /// the cap's border, as a `KeyCap` has one, in a color that reads on the
+    /// button's fill.
+    pub const button_key_border_alpha: f32 = 0.3;
 };
 
 // -----------------------------------------------------------------------------
