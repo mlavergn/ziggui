@@ -171,6 +171,16 @@ const FolderListing = struct {
     }
 };
 
+/// What a `FileBrowser` picks: a path and what it is.
+pub const FilePick = struct {
+    const Self = @This();
+
+    /// The path; owned by the allocator `pickAlloc` was handed.
+    path: []u8,
+    /// A folder or a file.
+    kind: FileNodeKind,
+};
+
 /// A `FileBrowser`'s folder, listed through `std.Io`: its path, its entries
 /// (folders first, then files, each by name, case aside), the selected one,
 /// and whether hidden (dot) names show. App-owned, so it survives frames; keep
@@ -359,11 +369,17 @@ pub const FileBrowserState = struct {
 
     /// The selected entry's path, or the folder on show's when none is selected.
     ///
+    /// A selection the hidden-names setting hides picks nothing, rather than
+    /// the folder: a dotfile selected, then hidden, must not turn into the
+    /// whole folder around it.
+    ///
     /// - `self`: the state.
     /// - `allocator`: owns the result.
-    /// - Returns: the path and what it is; propagates allocation failure.
-    pub fn pickAlloc(self: *const Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!struct { path: []u8, kind: FileNodeKind } {
-        const node = self.selected() orelse return .{ .path = try allocator.dupe(u8, self.path.items), .kind = .directory };
+    /// - Returns: the pick, or null while the selection is hidden; propagates allocation failure.
+    pub fn pickAlloc(self: *const Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!?FilePick {
+        const index = self.selection orelse return .{ .path = try allocator.dupe(u8, self.path.items), .kind = .directory };
+        const node = self.nodes[index];
+        if (!self.shows(node)) return null;
         return .{ .path = try std.Io.Dir.path.join(allocator, &.{ self.path.items, node.name }), .kind = node.kind };
     }
 
@@ -490,7 +506,7 @@ test "a file browser state lists folders first, moves past hidden names, and ope
     // A file is not entered; a folder is, and up comes back to it.
     state.select(2);
     try std.testing.expect(!try state.enter());
-    const file = try state.pickAlloc(allocator);
+    const file = (try state.pickAlloc(allocator)).?;
     defer allocator.free(file.path);
     try std.testing.expectEqual(FileNodeKind.file, file.kind);
     try std.testing.expect(std.mem.endsWith(u8, file.path, "A.txt"));
@@ -502,6 +518,12 @@ test "a file browser state lists folders first, moves past hidden names, and ope
     state.wait();
     try std.testing.expectEqualStrings(root, state.path.items);
     try std.testing.expectEqualStrings("deep", state.selected().?.name);
+
+    // A selection hidden after it was made picks nothing, never the folder around it.
+    state.select(1);
+    state.show_hidden.set(false);
+    try std.testing.expect(try state.pickAlloc(allocator) == null);
+    state.show_hidden.set(true);
 
     // A folder that cannot be read keeps the one on show.
     try state.open("does-not-exist-anywhere");
@@ -549,6 +571,7 @@ test "a listing that lands off the UI thread wakes the window" {
     const Waker = struct {
         const Self = @This();
         var wakes: std.atomic.Value(u32) = .init(0);
+        /// Counts a wake, from any thread.
         fn wake() void {
             _ = wakes.fetchAdd(1, .monotonic);
         }

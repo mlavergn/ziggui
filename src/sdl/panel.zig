@@ -185,6 +185,8 @@ pub const Panel = struct {
     /// Gives an override-redirect X11 window input focus (no window manager
     /// does), so a click elsewhere takes it away again and closes the panel. A
     /// no-op off X11.
+    ///
+    /// - `window`: the panel's window.
     fn x11Focus(window: *sdl_c.SDL_Window) void {
         const properties = sdl_c.SDL_GetWindowProperties(window);
         const display = sdl_c.SDL_GetPointerProperty(properties, sdl_c.SDL_PROP_WINDOW_X11_DISPLAY_POINTER, null) orelse return;

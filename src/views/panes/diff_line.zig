@@ -70,6 +70,24 @@ pub const DiffLine = struct {
     /// with no line numbers or marker, and never a hunk or file of its own.
     continued: bool = false,
 
+    /// The diff with every line's text cleaned for drawing (`DisplayText.clean`).
+    ///
+    /// As `DisplayText.clean`, a copy that cannot be made panics (`oom`).
+    ///
+    /// - `allocator`: owns a copy when one is made; typically a frame or diff arena.
+    /// - `lines`: the diff.
+    /// - Returns: `lines` itself when every line is valid UTF-8, else a copy whose
+    /// bad lines are cleaned.
+    pub fn cleanAll(allocator: std.mem.Allocator, lines: []const Self) []const Self {
+        for (lines, 0..) |line, index| {
+            if (std.unicode.utf8ValidateSlice(line.text)) continue;
+            const copied = allocator.dupe(Self, lines) catch @panic("oom");
+            for (copied[index..]) |*bad| bad.text = mod.DisplayText.clean(allocator, bad.text);
+            return copied;
+        }
+        return lines;
+    }
+
     /// How many hunks a diff holds.
     ///
     /// - `lines`: the diff.
@@ -377,4 +395,14 @@ test "a scroll anchor finds the same text after the lines wrap anew" {
     try std.testing.expectEqual(@as(usize, 3), DiffLine.anchorAt(ten, std.math.inf(f32)).line);
     try std.testing.expectEqual(@as(f32, @floatFromInt(five.len - 1)) * diff_row_height, DiffLine.offsetAt(five, .{ .line = 99 }));
     try std.testing.expectEqual(@as(f32, 0), DiffLine.offsetAt(&.{}, .{ .line = 1 }));
+}
+
+test "diff line cleans every bad line's text, and copies nothing when all are valid" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const fine = [_]DiffLine{ .{ .kind = .context, .text = "a" }, .{ .kind = .context, .text = "b" } };
+    try std.testing.expectEqual(@as([*]const DiffLine, &fine), DiffLine.cleanAll(arena.allocator(), &fine).ptr);
+    const bad = [_]DiffLine{ .{ .kind = .context, .text = "a" }, .{ .kind = .added, .text = "b\xff" } };
+    const cleaned = DiffLine.cleanAll(arena.allocator(), &bad);
+    try std.testing.expectEqualStrings("b\u{FFFD}", cleaned[1].text);
 }

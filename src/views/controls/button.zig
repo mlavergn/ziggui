@@ -79,6 +79,9 @@ test "a keyed button is wider than its plain twin, and taps" {
     const Probe = struct {
         const Self = @This();
         tapped: bool = false,
+        /// Notes the tap.
+        ///
+        /// - `self`: the probe.
         fn onTap(self: *Self) void {
             self.tapped = true;
         }
@@ -111,6 +114,7 @@ test "a plain button takes its own foreground, never an ancestor's" {
     defer canvas.destroy();
     const Idle = struct {
         const Self = @This();
+        /// Does nothing.
         fn nothing() void {}
     };
     const red = renderer.Color.fromRgb8(255, 0, 0);

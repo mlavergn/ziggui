@@ -51,7 +51,7 @@ pub const StackBuilder = struct {
             @memcpy(out, children);
             return out;
         }
-        const names = comptime std.meta.fieldNames(T);
+        const names = @typeInfo(T).@"struct".field_names;
         var out = arena.alloc(mod.View, names.len) catch @panic("oom");
         inline for (names, 0..) |name, index| out[index] = @field(children, name);
         return out;

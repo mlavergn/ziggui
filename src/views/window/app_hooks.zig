@@ -54,6 +54,10 @@ test "app hooks: a key-up reaches the handler with its keycode and modifiers" {
         var key: u32 = 0;
         var modifiers: u16 = 0;
         var calls: u32 = 0;
+        /// Records the key-up.
+        ///
+        /// - `pressed_key`: its keycode.
+        /// - `pressed_modifiers`: its modifier mask.
         fn up(pressed_key: u32, pressed_modifiers: u16) void {
             key = pressed_key;
             modifiers = pressed_modifiers;
@@ -73,10 +77,16 @@ test "app hooks: a refusing quit handler keeps the loop running" {
     const Probe = struct {
         const Self = @This();
         var asked: u32 = 0;
+        /// Refuses to quit, counting the ask.
+        ///
+        /// - Returns: false.
         fn refuse() bool {
             asked += 1;
             return false;
         }
+        /// Lets the app quit, counting the ask.
+        ///
+        /// - Returns: true.
         fn accept() bool {
             asked += 1;
             return true;

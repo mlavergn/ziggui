@@ -14,6 +14,12 @@ pub const WindowHit = @import("window_hit.zig").WindowHit;
 pub const WindowHitArea = @import("window_hit_area.zig").WindowHitArea;
 /// Escaped values for a freedesktop desktop entry (`.desktop`).
 pub const DesktopEntry = @import("desktop_entry.zig").DesktopEntry;
+/// Where the running executable's freedesktop entry stands.
+pub const DesktopEntryState = @import("desktop_entry_state.zig").DesktopEntryState;
+/// What an app's platform layer answers with no window: tests and headless runs.
+pub const HeadlessPlatform = @import("headless_platform.zig").HeadlessPlatform;
+/// A window's frame: its measures, its top band and drawn title bar, and how its menu bar spells a key.
+pub const WindowChrome = @import("window_chrome.zig").WindowChrome;
 /// What `WindowButtons` do: minimize, maximize or restore, close.
 pub const WindowActions = @import("window_actions.zig").WindowActions;
 /// A `TitleBar`'s height, in points.
@@ -37,6 +43,10 @@ pub const Callback = @import("../module.zig").Callback;
 pub const Drawing = @import("../module.zig").Drawing;
 /// A view that draws nothing (from the views module).
 pub const Empty = @import("../module.zig").Empty;
+/// An image view of pixels (from the views module).
+pub const Image = @import("../module.zig").Image;
+/// Text made safe to draw (from the views module).
+pub const DisplayText = @import("../module.zig").DisplayText;
 /// Content built from the size it is laid out at (from the views module).
 pub const GeometryReader = @import("../module.zig").GeometryReader;
 /// Children side by side (from the views module).
@@ -79,4 +89,7 @@ test {
     _ = @import("desktop_entry.zig");
     _ = @import("window_actions.zig");
     _ = @import("title_bar.zig");
+    _ = @import("desktop_entry_state.zig");
+    _ = @import("headless_platform.zig");
+    _ = @import("window_chrome.zig");
 }

@@ -288,6 +288,14 @@ pub const DrawingData = struct {
     draw: *const fn (context: *const anyopaque, pen: *mod.Pen, rect: renderer.Rect) std.mem.Allocator.Error!void,
 };
 
+/// A `VideoPlayer`: a player's picture.
+pub const VideoPlayerData = struct {
+    const Self = @This();
+
+    /// The player shown; the app owns it.
+    player: *mod.Player,
+};
+
 /// What a view is.
 pub const Kind = union(enum) {
     const Self = @This();
@@ -348,6 +356,8 @@ pub const Kind = union(enum) {
     picker: PickerData,
     /// A view that paints itself through a callback (see `Drawing`).
     drawing: DrawingData,
+    /// A player's picture (see `VideoPlayer`).
+    videoPlayer: VideoPlayerData,
     /// A transparent container whose children are spliced into the enclosing
     /// stack (used by `ForEach`).
     group: []const mod.View,

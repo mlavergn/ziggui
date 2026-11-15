@@ -87,6 +87,11 @@ pub const ViewPainter = struct {
         if (view.modifiers.on_drag) |drag_callback| {
             try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .drag = drag_callback }, .disabled = child_context.disabled });
         }
+        // The hover hint: the innermost hinted view under the pointer, and on screen, offers its text.
+        if (view.modifiers.help.len > 0) if (context.hover_point) |point| {
+            const on_screen = if (context.visible) |visible| visible.contains(point) else true;
+            if (on_screen and outer.contains(point)) mod.HelpTip.shared().offer(view.modifiers.help, outer);
+        };
         if (view.modifiers.on_hover) |hover_callback| if (context.hover_regions) |list| {
             try list.append(context.arena, .{ .rect = outer, .callback = hover_callback, .disabled = child_context.disabled });
         };
@@ -200,6 +205,7 @@ pub const ViewPainter = struct {
             .scroll => |scroll| try Self.paintScroll(context, scroll, rect, canvas),
             .scrollState => |scroll| try Self.paintScrollState(context, scroll, rect, canvas),
             .geometry => |geometry| try Self.paintGeometry(context, geometry, rect, canvas),
+            .videoPlayer => |video| try Self.paintVideoPlayer(context, view, video, rect, canvas),
             .textField => |field| {
                 try mod.TextViewPainter.paintTextField(context, view, field, rect, canvas);
                 // The buffer is copied only for an accessibility pass, not every paint.
@@ -390,6 +396,41 @@ pub const ViewPainter = struct {
         const content = geometry.build(geometry.context, rect.size());
         const node = try mod.ViewLowering.buildNode(context, content);
         try Self.paint(context, content, try renderer.LayoutEngine.shared().arrange(context.arena, node, rect), canvas);
+    }
+
+    /// Paints a `VideoPlayer`. Where the runtime collects video regions it
+    /// erases the frame, so the platform player's picture behind the window's
+    /// surface shows through and views painted later draw over it, and
+    /// registers the frame; elsewhere it fills it black with a video glyph.
+    /// While the player plays or waits it asks for frames, so labels drawn
+    /// from `Player.observe` keep up with it.
+    ///
+    /// - `context`: the context.
+    /// - `view`: the view (its corner radius).
+    /// - `video`: the player shown.
+    /// - `rect`: its frame.
+    /// - `canvas`: where it is painted.
+    /// - Returns: nothing; propagates allocation failure.
+    fn paintVideoPlayer(context: *const mod.Context, view: mod.View, video: mod.VideoPlayerData, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+        const radius = view.modifiers.corner_radius;
+        if (context.video_regions) |regions| {
+            try canvas.eraseRect(rect, radius);
+            const visible = if (context.visible) |shown| (shown.intersection(rect) orelse renderer.Rect{}) else rect;
+            try regions.append(context.arena, .{ .player = video.player, .rect = rect, .visible = visible, .corner_radius = radius });
+        } else {
+            try canvas.fillRoundedRect(rect, radius, renderer.Color.black.multiplyAlpha(context.opacity));
+            const side = @min(32, @min(rect.width, rect.height));
+            const glyph = renderer.Rect{ .x = rect.midX() - side / 2, .y = rect.midY() - side / 2, .width = side, .height = side };
+            try mod.ControlPainter.paintIcon(context, .{ .icon = .video, .size = side, .color = renderer.Color.white.withAlpha(0.35) }, glyph, canvas);
+        }
+        // The frame's sample: the app's own `observe` this frame took it.
+        const observation = video.player.observe();
+        const loading = observation.has_item and observation.status == .unknown;
+        if (observation.time_control != .paused or observation.seeking or loading) {
+            const clock = mod.FrameClock.shared();
+            clock.requestFrameAt(clock.time() + mod.Player.refresh_interval_ms);
+        }
+        try context.emitAccessibility(view, rect, .image, "Video", "");
     }
 
     /// The largest centered sub-rect of `rect` with the image's aspect ratio

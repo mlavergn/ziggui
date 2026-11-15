@@ -50,6 +50,15 @@ pub const SdlKey = struct {
     /// Page Down (`SDLK_PAGEDOWN`).
     pub const page_down: u32 = Self.scancode_mask | 78;
 
+    /// The media Play key (`SDLK_MEDIA_PLAY`).
+    pub const media_play: u32 = Self.scancode_mask | 262;
+
+    /// The media Pause key (`SDLK_MEDIA_PAUSE`).
+    pub const media_pause: u32 = Self.scancode_mask | 263;
+
+    /// The media Play/Pause key (`SDLK_MEDIA_PLAY_PAUSE`).
+    pub const media_play_pause: u32 = Self.scancode_mask | 271;
+
     /// The right arrow (`SDLK_RIGHT`).
     pub const right_arrow: u32 = Self.scancode_mask | 79;
 

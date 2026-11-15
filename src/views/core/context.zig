@@ -88,6 +88,11 @@ pub const Context = struct {
     /// `onHover` callback registers its frame so the app can route pointer
     /// motion with `PointerInput.hover`; when null, `onHover` is ignored.
     hover_regions: ?*std.ArrayList(mod.HoverRegion) = null,
+    /// Optional sink for `VideoPlayer` frames. The SDL runtime sets it where
+    /// it can show a platform player behind the window's surface: a
+    /// `VideoPlayer` then erases its frame and registers it here. When null
+    /// (headless, or a platform with no player yet) it draws a placeholder.
+    video_regions: ?*std.ArrayList(mod.VideoRegion) = null,
     /// Frames of `popoverPassthrough` views, which popover dismiss regions
     /// leave out. `ViewRenderer.render` supplies a list when this is null.
     passthrough: ?*std.ArrayList(renderer.Rect) = null,

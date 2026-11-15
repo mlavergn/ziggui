@@ -9,6 +9,7 @@
 const std = @import("std");
 const log = std.log.scoped(.ziggui_sdl_module);
 const builtin = @import("builtin");
+const views = @import("views");
 
 /// The OS this runtime is built for (a compile-time invariant).
 pub const os_tag = builtin.os.tag;
@@ -34,16 +35,18 @@ pub const MouseEvent = @import("mouse_event.zig").MouseEvent;
 pub const MouseEventKind = @import("mouse_event.zig").MouseEventKind;
 /// The OS light/dark preference.
 pub const SystemTheme = @import("system_theme.zig").SystemTheme;
-/// One native menu-bar menu (macOS).
-pub const CommandMenu = @import("command_menu.zig").CommandMenu;
-/// One entry of a `CommandMenu`.
-pub const CommandItem = @import("command_menu.zig").CommandItem;
+/// One native menu-bar menu (macOS): the core's, so a `MenuTable` builds it.
+pub const CommandMenu = views.CommandMenu;
+/// One entry of a `CommandMenu`: the core's.
+pub const CommandItem = views.CommandItem;
 /// The popover panel window a status-item click opens.
 pub const Panel = @import("panel.zig").Panel;
 /// What the popover panel shows and how big it is.
 pub const PanelSpecification = @import("panel_specification.zig").PanelSpecification;
 /// The system clipboard and the OS URL handler.
 pub const Clipboard = @import("clipboard.zig").Clipboard;
+/// Shows a local file in the system's file manager.
+pub const FileManager = @import("file_manager.zig").FileManager;
 /// The native open-file and open-folder dialogs.
 pub const FileDialog = @import("file_dialog.zig").FileDialog;
 /// What a finished `FileDialog` returned.
@@ -63,7 +66,7 @@ pub const StatusNotifier = @import("status_notifier.zig").StatusNotifier;
 /// The Linux freedesktop entry for the running executable.
 pub const DesktopInstall = @import("desktop_install.zig").DesktopInstall;
 /// Where the running executable's freedesktop entry stands.
-pub const DesktopEntryState = @import("desktop_install.zig").DesktopEntryState;
+pub const DesktopEntryState = views.DesktopEntryState;
 /// The bits of AppKit SDL does not expose, through the Objective-C runtime.
 pub const Cocoa = @import("cocoa.zig").Cocoa;
 /// The Win32 calls SDL does not make: the notification-area icon and the icon resource.
@@ -72,6 +75,28 @@ pub const Win32 = @import("win32.zig").Win32;
 pub const WindowHitTest = @import("window_hit_test.zig").WindowHitTest;
 /// The SDL_GPU backend.
 pub const Gpu = @import("gpu/gpu.zig").Gpu;
+/// This OS's media player for `Player`, and the placement of its pictures.
+pub const VideoBackend = @import("video_backend.zig").VideoBackend;
+/// The macOS media player: AVFoundation, its pictures behind the Metal view.
+pub const AvFoundationPlayer = @import("av_foundation_player.zig").AvFoundationPlayer;
+/// The Windows media player (Media Foundation): a stub for now.
+pub const MediaFoundationPlayer = @import("media_foundation_player.zig").MediaFoundationPlayer;
+/// The Linux media player (GStreamer): a stub for now.
+pub const GstreamerPlayer = @import("gstreamer_player.zig").GstreamerPlayer;
+/// The Objective-C runtime bridge the AVFoundation player uses.
+pub const ObjectiveC = @import("objective_c.zig").ObjectiveC;
+/// An Objective-C object pointer (`id`).
+pub const Id = @import("objective_c.zig").Id;
+/// Core Graphics' `CGPoint`.
+pub const CGPoint = @import("objective_c.zig").CGPoint;
+/// Core Graphics' `CGSize`.
+pub const CGSize = @import("objective_c.zig").CGSize;
+/// Core Graphics' `CGRect`.
+pub const CGRect = @import("objective_c.zig").CGRect;
+/// Core Media's `CMTime`.
+pub const CMTime = @import("objective_c.zig").CMTime;
+/// Core Media's `CMTimeRange`.
+pub const CMTimeRange = @import("objective_c.zig").CMTimeRange;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -91,16 +116,16 @@ test {
 
         /// Reports whether the test references a barrel declaration's own
         /// declarations: every struct's, except `sdl_c` (all of SDL's C API)
-        /// and the structs built for one OS (`Cocoa` on macOS, `Win32` on
-        /// Windows, `StatusNotifier` on Linux) on any other, so a
-        /// cross-compiled `zig build test-sdl` analyzes what that platform
-        /// builds.
+        /// and the structs built for one OS (`Cocoa`, `AvFoundationPlayer`
+        /// and `ObjectiveC` on macOS, `Win32` on Windows, `StatusNotifier`
+        /// on Linux) on any other, so a cross-compiled `zig build test-sdl`
+        /// analyzes what that platform builds.
         ///
         /// - `name`: the declaration's name.
         /// - Returns: true when the test references its declarations.
         fn descends(comptime name: []const u8) bool {
             if (std.mem.eql(u8, name, "sdl_c")) return false;
-            if (std.mem.eql(u8, name, "Cocoa")) return os_tag == .macos;
+            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
             if (std.mem.eql(u8, name, "Win32")) return os_tag == .windows;
             if (std.mem.eql(u8, name, "StatusNotifier")) return os_tag == .linux;
             return true;

@@ -62,6 +62,8 @@ pub const GeometryData = @import("core/module.zig").GeometryData;
 pub const PickerData = @import("core/module.zig").PickerData;
 /// A `Drawing`'s payload.
 pub const DrawingData = @import("core/module.zig").DrawingData;
+/// A `VideoPlayer`'s payload.
+pub const VideoPlayerData = @import("core/module.zig").VideoPlayerData;
 /// The modifiers applied around a view's content.
 pub const Modifiers = @import("core/module.zig").Modifiers;
 /// A `.sheet`/`.alert`/`.popover` modifier.
@@ -122,6 +124,8 @@ pub const TextClick = @import("core/module.zig").TextClick;
 pub const HitRegion = @import("core/module.zig").HitRegion;
 /// An `onHover` region registered while painting.
 pub const HoverRegion = @import("core/module.zig").HoverRegion;
+/// A `VideoPlayer`'s frame registered while painting.
+pub const VideoRegion = @import("core/module.zig").VideoRegion;
 /// An accessibility role.
 pub const A11yRole = @import("core/module.zig").A11yRole;
 /// One node of the accessibility tree.
@@ -170,6 +174,8 @@ pub const TextSelection = @import("core/module.zig").TextSelection;
 pub const SelectionSpan = @import("core/module.zig").SelectionSpan;
 /// The text-field context menu (`TextContextMenu.shared()`).
 pub const TextContextMenu = @import("core/module.zig").TextContextMenu;
+/// The hover hint a view's `.help(text)` shows (`HelpTip.shared()`).
+pub const HelpTip = @import("core/module.zig").HelpTip;
 /// The clipboard the context menu copies to and pastes from.
 pub const ClipboardOperations = @import("core/module.zig").ClipboardOperations;
 /// A headless frame for the view engine's unit tests.
@@ -192,6 +198,8 @@ pub const RichLayout = @import("text/module.zig").RichLayout;
 pub const RichFaces = @import("text/module.zig").RichFaces;
 /// A text field's buffer, caret and selection.
 pub const TextFieldState = @import("text/module.zig").TextFieldState;
+/// Text made safe to draw: each invalid UTF-8 byte becomes U+FFFD.
+pub const DisplayText = @import("text/module.zig").DisplayText;
 /// Line and column geometry over a UTF-8 buffer.
 pub const TextLines = @import("text/module.zig").TextLines;
 /// Tab-aware widths of edited text (caret, selection, click).
@@ -322,6 +330,44 @@ pub const NavigationBackButton = @import("containers/module.zig").NavigationBack
 pub const Menu = @import("containers/module.zig").Menu;
 /// A trigger view that opens a popover of items.
 pub const ContextMenu = @import("containers/module.zig").ContextMenu;
+/// One entry of a pop-up menu, filled under the pointer.
+pub const MenuItem = @import("containers/module.zig").MenuItem;
+/// A pop-up menu's panel: its entries stacked at a fixed width.
+pub const MenuList = @import("containers/module.zig").MenuList;
+/// An empty pane's message: a quiet title over a wrapped detail, centered.
+pub const EmptyState = @import("containers/module.zig").EmptyState;
+/// The notice strip: a busy mark, the last notice, and an optional action.
+pub const NoticeBar = @import("containers/module.zig").NoticeBar;
+/// A pane's title row over a divider, in the accent while the pane has the keys.
+pub const PaneTitle = @import("containers/module.zig").PaneTitle;
+/// A form field: its label over the control, and a line of help under it.
+pub const LabeledField = @import("containers/module.zig").LabeledField;
+/// A question an app asks before something it cannot undo.
+pub const Confirm = @import("containers/module.zig").Confirm;
+/// A yes-or-no question's panel, the refusal first.
+pub const ConfirmAlert = @import("containers/module.zig").ConfirmAlert;
+/// The last thing an action said, kept for the notice strip.
+pub const NoticeText = @import("text/module.zig").NoticeText;
+/// One key press as an app's screens read it.
+pub const Key = @import("menu_bar/module.zig").Key;
+/// A key that is not a character.
+pub const KeyName = @import("menu_bar/module.zig").KeyName;
+/// An SDL key-down as ziggui's key handler passes it.
+pub const SdlKeyEvent = @import("menu_bar/module.zig").SdlKeyEvent;
+/// One native (macOS) menu-bar entry.
+pub const CommandItem = @import("menu_bar/module.zig").CommandItem;
+/// One native (macOS) menu-bar menu.
+pub const CommandMenu = @import("menu_bar/module.zig").CommandMenu;
+/// Which systems a menu entry shows on.
+pub const MenuOnly = @import("menu_bar/module.zig").MenuOnly;
+/// An app's menus as one table, built into either menu bar.
+pub const MenuTable = @import("menu_bar/module.zig").MenuTable;
+/// Where the running executable's freedesktop entry stands.
+pub const DesktopEntryState = @import("window/module.zig").DesktopEntryState;
+/// What an app's platform layer answers with no window: tests and headless runs.
+pub const HeadlessPlatform = @import("window/module.zig").HeadlessPlatform;
+/// A window's frame: its measures, its top band and drawn title bar, and how its menu bar spells a key.
+pub const WindowChrome = @import("window/module.zig").WindowChrome;
 /// One row of a `Sidebar`.
 pub const SidebarItem = @import("containers/module.zig").SidebarItem;
 /// How a `Sidebar` highlights its selection.
@@ -500,6 +546,8 @@ pub const TokenField = @import("forms/module.zig").TokenField;
 pub const FileNodeKind = @import("forms/module.zig").FileNodeKind;
 /// One entry of a `FileBrowser`'s folder.
 pub const FileNode = @import("forms/module.zig").FileNode;
+/// What a `FileBrowser` picks: a path and what it is.
+pub const FilePick = @import("forms/module.zig").FilePick;
 /// What a `FileBrowser` shows (`open`, `up`, `enter`, `move`, `select`, `pickAlloc`).
 pub const FileBrowserState = @import("forms/module.zig").FileBrowserState;
 /// A local file and folder picker drawn in the window.
@@ -508,6 +556,26 @@ pub const FileBrowser = @import("forms/module.zig").FileBrowser;
 pub const SearchField = @import("forms/module.zig").SearchField;
 /// A composed field's look: the raised ground, a strong hairline border, a 6pt corner.
 pub const FieldChrome = @import("forms/module.zig").FieldChrome;
+
+// -----------------------------------------------------------------------------
+// Media playback (media/)
+
+/// Whether a player's item can play.
+pub const PlayerStatus = @import("media/module.zig").PlayerStatus;
+/// What a player is doing with time: paused, waiting, playing.
+pub const PlayerTimeControl = @import("media/module.zig").PlayerTimeControl;
+/// One sample of a player's state (`Player.observe`).
+pub const PlayerObservation = @import("media/module.zig").PlayerObservation;
+/// Audio or subtitles, for `Player.tracks` and `selectTrack`.
+pub const PlayerTrackKind = @import("media/module.zig").PlayerTrackKind;
+/// One audio or subtitle track of a player's item.
+pub const PlayerTrack = @import("media/module.zig").PlayerTrack;
+/// A platform media player's operations, installed by the SDL runtime.
+pub const PlayerBackend = @import("media/module.zig").PlayerBackend;
+/// A media player modeled on `AVPlayer` (`replaceCurrentItem`, `play`, `seek`, `observe`, `tracks`).
+pub const Player = @import("media/module.zig").Player;
+/// A player's picture in the view tree.
+pub const VideoPlayer = @import("media/module.zig").VideoPlayer;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -527,6 +595,7 @@ test {
     _ = @import("hover/module.zig");
     _ = @import("menu_bar/module.zig");
     _ = @import("status_line/module.zig");
+    _ = @import("media/module.zig");
     _ = @import("forms/module.zig");
     _ = @import("view_engine_test.zig");
     _ = @import("integration_test.zig");

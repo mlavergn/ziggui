@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_text_lines);
+const renderer = @import("renderer");
 
 /// A UTF-8 buffer read as lines and columns.
 pub const TextLines = struct {
@@ -51,7 +52,7 @@ pub const TextLines = struct {
         const length = std.unicode.utf8ByteSequenceLength(self.bytes[index]) catch return index + 1;
         if (length == 1) return index + 1;
         if (index + length > self.bytes.len) return index + 1;
-        _ = std.unicode.utf8Decode(self.bytes[index .. index + length]) catch return index + 1;
+        _ = renderer.TextShaper.decodeSequence(self.bytes[index .. index + length]) catch return index + 1;
         return index + length;
     }
 

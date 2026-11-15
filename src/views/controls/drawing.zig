@@ -20,6 +20,12 @@ pub fn Drawing(comptime T: type, context: *const T, comptime draw: fn (*const T,
     return .{ .kind = .{ .drawing = .{ .context = context, .draw = struct {
         const Self = @This();
 
+        /// Draws through the typed `draw`.
+        ///
+        /// - `pointer`: the context.
+        /// - `pen`: the pen to draw with.
+        /// - `rect`: the view's frame.
+        /// - Returns: nothing; propagates allocation failure.
         fn call(pointer: *const anyopaque, pen: *mod.Pen, rect: renderer.Rect) std.mem.Allocator.Error!void {
             try draw(@ptrCast(@alignCast(pointer)), pen, rect);
         }

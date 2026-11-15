@@ -6,6 +6,20 @@ const log = std.log.scoped(.ziggui_menu_bar_module);
 
 /// The SDL3 keycodes and modifier bits ziggui's key handlers pass, mirrored so key handling stays headless.
 pub const SdlKey = @import("sdl_key.zig").SdlKey;
+/// One key press as an app's screens read it.
+pub const Key = @import("key.zig").Key;
+/// A key that is not a character.
+pub const KeyName = @import("key.zig").KeyName;
+/// An SDL key-down as ziggui's key handler passes it.
+pub const SdlKeyEvent = @import("key.zig").SdlKeyEvent;
+/// One native (macOS) menu-bar entry.
+pub const CommandItem = @import("command_menu.zig").CommandItem;
+/// One native (macOS) menu-bar menu.
+pub const CommandMenu = @import("command_menu.zig").CommandMenu;
+/// Which systems a menu entry shows on.
+pub const MenuOnly = @import("menu_table.zig").MenuOnly;
+/// An app's menus as one table, built into either menu bar.
+pub const MenuTable = @import("menu_table.zig").MenuTable;
 /// One entry of a `MenuBarMenu`.
 pub const MenuBarItem = @import("menu_bar_menu.zig").MenuBarItem;
 /// One menu of a `MenuBar`: a title and its entries (`fold` makes the narrow bar's `☰`).
@@ -28,6 +42,8 @@ pub const MenuBar = @import("menu_bar.zig").MenuBar;
 
 /// The build arena, published theme and tokens, viewport, wrap cache and link handler (`BuildScope.shared()`), from the views module.
 pub const BuildScope = @import("../module.zig").BuildScope;
+/// A window's frame and how its menu bar spells a key (from the views module).
+pub const WindowChrome = @import("../module.zig").WindowChrome;
 /// A tap handler (`init` wraps a method, `action` a function, `select` a selection), from the views module.
 pub const Callback = @import("../module.zig").Callback;
 /// A hairline across a stack (from the views module).
@@ -65,6 +81,9 @@ test {
     // Nothing here does I/O to trace.
     _ = log;
     _ = @import("sdl_key.zig");
+    _ = @import("key.zig");
+    _ = @import("command_menu.zig");
+    _ = @import("menu_table.zig");
     _ = @import("menu_bar_menu.zig");
     _ = @import("menu_bar_options.zig");
     _ = @import("menu_bar_menus.zig");

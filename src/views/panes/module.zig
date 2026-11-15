@@ -34,6 +34,8 @@ pub const TableRow = @import("panes.zig").TableRow;
 
 /// The build arena, published theme and tokens, viewport, wrap cache and link handler (`BuildScope.shared()`), from the views module.
 pub const BuildScope = @import("../module.zig").BuildScope;
+/// Text made safe to draw: each invalid UTF-8 byte becomes U+FFFD (from the views module).
+pub const DisplayText = @import("../module.zig").DisplayText;
 /// The build-time theme colors: ziggui's, plus ziggui's `label`, `separator`, `added`, `removed` (from the views module).
 pub const BuildTokens = @import("../module.zig").BuildTokens;
 /// A tap handler (`init` wraps a method, `action` a function, `select` a selection), from the views module.

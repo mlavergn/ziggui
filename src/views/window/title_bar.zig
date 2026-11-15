@@ -245,12 +245,15 @@ const TestWindow = struct {
     var maximized: u32 = 0;
     var closed: u32 = 0;
 
+    /// Counts a minimize.
     fn minimize(_: ?*anyopaque) void {
         minimized += 1;
     }
+    /// Counts a maximize.
     fn maximize(_: ?*anyopaque) void {
         maximized += 1;
     }
+    /// Counts a close.
     fn close(_: ?*anyopaque) void {
         closed += 1;
     }

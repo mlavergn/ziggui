@@ -129,6 +129,10 @@ pub const FileDialog = struct {
     }
 
     /// SDL's dialog callback: records the picked path and wakes the loop.
+    ///
+    /// - `userdata`: unused.
+    /// - `filelist`: the picked paths, null on failure, empty when cancelled.
+    /// - `filter`: the filter chosen, unused.
     fn finished(userdata: ?*anyopaque, filelist: [*c]const [*c]const u8, filter: c_int) callconv(.c) void {
         _ = userdata;
         _ = filter;

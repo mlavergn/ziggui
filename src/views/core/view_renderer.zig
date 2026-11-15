@@ -70,8 +70,14 @@ pub const ViewRenderer = struct {
         var render_context = context.*;
         if (render_context.passthrough == null) render_context.passthrough = &passthrough;
         if (render_context.modal_passthrough == null) render_context.modal_passthrough = &modal_passthrough;
+        // The hover hint is one, shared by every window the loop draws: only the window the
+        // pointer is over touches it, so another (a tray panel) cannot reset its rest.
+        const hints = render_context.hover_point != null;
+        if (hints) mod.HelpTip.shared().begin();
         try Self.renderInto(&render_context, view, rect, canvas);
         if (render_context.overlays) |overlays| {
+            // A view under an overlay is covered: its hint goes; the overlay's own views may offer theirs.
+            if (hints and overlays.items.len > 0) mod.HelpTip.shared().discard();
             // Index-based loop: overlay content rendered below may enqueue *more*
             // overlays (nesting); appending keeps the list growing and we process
             // each exactly once — no double-drain, no recursion.
@@ -83,6 +89,11 @@ pub const ViewRenderer = struct {
         }
         // The text-field context menu sits above everything, including app overlays.
         try mod.TextContextMenu.shared().draw(&render_context, rect, canvas);
+        // The hover hint goes over everything; a view under the open context menu offers none.
+        if (hints) {
+            if (mod.TextContextMenu.shared().isOpen()) mod.HelpTip.shared().discard();
+            try mod.HelpTip.shared().draw(&render_context, rect, canvas);
+        }
     }
 
     /// Renders `view` for a HiDPI display: lays out and paints in logical *points*
@@ -162,6 +173,10 @@ pub const ViewRenderer = struct {
                     blur.rect = Self.scaleRect(blur.rect, factor);
                     blur.radius *= factor;
                     blur.sigma *= factor;
+                },
+                .eraseRect => |*erase| {
+                    erase.rect = Self.scaleRect(erase.rect, factor);
+                    erase.radius *= factor;
                 },
                 .pushClip => |*clip| {
                     clip.rect = Self.scaleRect(clip.rect, factor);

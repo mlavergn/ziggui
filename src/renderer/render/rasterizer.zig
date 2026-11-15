@@ -146,6 +146,7 @@ pub const Rasterizer = struct {
                 .glyph => |glyph| self.drawGlyph(clips.items, glyph.rect, glyph.color, glyph.coverage, glyph.gamma),
                 .image => |image| self.drawImage(clips.items, image.rect, image.image),
                 .blurRect => |blur| try self.blurRect(clips.items, blur.rect, blur.radius, blur.sigma, blur.tint),
+                .eraseRect => |erase| self.eraseShape(clips.items, erase.rect, erase.radius),
             }
         }
     }
@@ -508,6 +509,36 @@ pub const Rasterizer = struct {
         }
     }
 
+    /// Erase a rounded rect back to transparent (destination-out): each
+    /// pixel's alpha drops by the shape's coverage, so the anti-aliased edge
+    /// fades into the hole as it does on the GPU.
+    ///
+    /// - `self`: the rasterizer.
+    /// - `clips`: the clip stack.
+    /// - `rect`: the shape.
+    /// - `radius`: the corner radius.
+    fn eraseShape(self: *const Self, clips: []const Clip, rect: mod.Rect, radius: f32) void {
+        const framebuffer = self.framebuffer;
+        const clipped = self.clippedBoundsOf(clips, rect, 1);
+        const bounds = clipped.bounds;
+        if (bounds.empty()) return;
+        const corner = @min(radius, @min(rect.width, rect.height) / 2);
+        var y = bounds.top;
+        while (y < bounds.bottom) : (y += 1) {
+            const pixel_y = @as(f32, @floatFromInt(y)) + 0.5;
+            var x = bounds.left;
+            while (x < bounds.right) : (x += 1) {
+                const pixel_x = @as(f32, @floatFromInt(x)) + 0.5;
+                var coverage = Self.fillCoverage(pixel_x, pixel_y, rect, corner);
+                if (clipped.check_clip and coverage > 0) coverage *= Self.clipCoverage(clips, pixel_x, pixel_y);
+                if (coverage <= 0) continue;
+                const index = y * framebuffer.width + x;
+                const alpha = framebuffer.pixels[index].a * (1 - coverage);
+                framebuffer.pixels[index] = if (alpha <= 0) mod.Color.transparent else framebuffer.pixels[index].withAlpha(alpha);
+            }
+        }
+    }
+
     /// Stroke a rounded rect's outline.
     ///
     /// - `self`: the rasterizer.
@@ -759,6 +790,37 @@ test "raster: clip masks drawing to the clip rect" {
 
     try std.testing.expect(framebuffer.at(5, 10).approxEql(mod.Color.red, 0.02)); // inside clip
     try std.testing.expect(framebuffer.at(15, 10).approxEql(mod.Color.white, 0.02)); // clipped away
+}
+
+test "raster: eraseRect cuts a transparent hole and later draws composite over it" {
+    var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 40, 40);
+    defer framebuffer.deinit();
+    framebuffer.clear(mod.Color.white);
+    var canvas = mod.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+    try canvas.eraseRect(.{ .x = 10, .y = 10, .width = 20, .height = 20 }, 0);
+    try canvas.fillRect(.{ .x = 10, .y = 25, .width = 20, .height = 5 }, mod.Color.black.withAlpha(0.5));
+    try TestRender.canvasInto(&framebuffer, &canvas);
+
+    try std.testing.expectEqual(@as(f32, 0), framebuffer.at(15, 15).a); // the hole
+    try std.testing.expect(framebuffer.at(5, 5).approxEql(mod.Color.white, 0.02)); // outside it
+    try std.testing.expect(framebuffer.at(15, 27).approxEql(mod.Color.black.withAlpha(0.5), 0.02)); // a scrim over the hole
+}
+
+test "raster: eraseRect respects the clip and its corner radius" {
+    var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 40, 40);
+    defer framebuffer.deinit();
+    framebuffer.clear(mod.Color.white);
+    var canvas = mod.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+    try canvas.pushClip(.{ .x = 0, .y = 0, .width = 20, .height = 40 }, 0);
+    try canvas.eraseRect(.{ .x = 0, .y = 0, .width = 40, .height = 40 }, 12);
+    try canvas.popClip();
+    try TestRender.canvasInto(&framebuffer, &canvas);
+
+    try std.testing.expectEqual(@as(f32, 0), framebuffer.at(10, 20).a); // erased inside the clip
+    try std.testing.expectEqual(@as(f32, 1), framebuffer.at(30, 20).a); // clipped away
+    try std.testing.expectEqual(@as(f32, 1), framebuffer.at(0, 0).a); // outside the rounded corner
 }
 
 test "raster: linear gradient interpolates left-to-right" {

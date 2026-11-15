@@ -171,6 +171,7 @@ test "a disclosure group shows its content only while expanded" {
     defer canvas.destroy();
     const Probe = struct {
         const Self = @This();
+        /// A tap that does nothing.
         fn noop(_: ?*anyopaque) void {}
     };
     const callback: mod.Callback = .{ .function = Probe.noop };
@@ -189,6 +190,7 @@ test "a chip is tappable only with a callback, and a code block keeps its text" 
     defer canvas.destroy();
     const Probe = struct {
         const Self = @This();
+        /// A tap that does nothing.
         fn noop(_: ?*anyopaque) void {}
     };
     canvas.begin(renderer.MacosTheme.light);

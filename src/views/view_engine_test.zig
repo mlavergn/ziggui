@@ -263,6 +263,7 @@ test "view: a tap handler can arm a drag from its own press; the end hook fires 
     DragProbe.travel = 0;
     DragProbe.ended = 0;
     const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTap(mod.Callback.action(struct {
+        /// Arms a drag from the tap.
         fn arm() void {
             mod.PointerInput.shared().armDrag(.{ .function = DragProbe.move });
         }
@@ -451,6 +452,7 @@ test "view: IconButton fires its callback on tap" {
     const TapCounter = struct {
         const Self = @This();
         var hits: u32 = 0;
+        /// Counts a hit.
         fn tap(_: ?*anyopaque) void {
             hits += 1;
         }
@@ -1350,6 +1352,9 @@ test "view: onHover fires once on enter and once on leave, and only on movement"
         const Self = @This();
         var enters: u32 = 0;
         var leaves: u32 = 0;
+        /// Counts an enter or a leave.
+        ///
+        /// - `inside`: true on entering.
         fn seen(_: ?*anyopaque, inside: bool) void {
             if (inside) enters += 1 else leaves += 1;
         }
@@ -1396,6 +1401,7 @@ test "view: a popoverPassthrough view takes taps while a popover is open" {
     const Probe = struct {
         const Self = @This();
         var taps: u32 = 0;
+        /// Counts a tap.
         fn tapped(_: ?*anyopaque) void {
             taps += 1;
         }
@@ -1438,9 +1444,11 @@ test "view: a modalPassthrough view takes taps under an alert; a popoverPassthro
         const Self = @This();
         var modal: u32 = 0;
         var popover: u32 = 0;
+        /// Counts a tap on the modal.
         fn modalTap(_: ?*anyopaque) void {
             modal += 1;
         }
+        /// Counts a tap on the popover.
         fn popoverTap(_: ?*anyopaque) void {
             popover += 1;
         }
@@ -1648,6 +1656,12 @@ test "view: a Drawing paints into its frame" {
     const Box = struct {
         const Self = @This();
         color: renderer.Color,
+        /// Fills the frame's left half with the probe's color.
+        ///
+        /// - `self`: the probe.
+        /// - `pen`: the pen.
+        /// - `rect`: the frame.
+        /// - Returns: nothing; propagates allocation failure.
         fn draw(self: *const Self, pen: *mod.Pen, rect: renderer.Rect) std.mem.Allocator.Error!void {
             try pen.fill(.{ .x = rect.x, .y = rect.y, .width = rect.width / 2, .height = rect.height }, 0, self.color);
         }
@@ -2013,6 +2027,11 @@ test "view: GeometryReader builds its content for the size it is laid out at" {
     const Probe = struct {
         const Self = @This();
         seen: renderer.Size = .{},
+        /// Notes the size offered and fills it, red on the left half, blue on the right.
+        ///
+        /// - `self`: the probe.
+        /// - `size`: the size offered.
+        /// - Returns: the content.
         fn body(self: *const Self, size: renderer.Size) mod.View {
             @constCast(self).seen = size;
             // Red on the left half, blue on the right: the halves follow the size.
@@ -2057,6 +2076,7 @@ test "view: clipped content takes no taps outside the frame" {
     const Probe = struct {
         const Self = @This();
         var taps: u32 = 0;
+        /// Counts a tap.
         fn tapped(_: ?*anyopaque) void {
             taps += 1;
         }
@@ -2088,9 +2108,11 @@ test "view: a row scrolled up under a header leaves the header its taps" {
         const Self = @This();
         var header: u32 = 0;
         var rows: u32 = 0;
+        /// Counts a tap on the header.
         fn headerTap(_: ?*anyopaque) void {
             header += 1;
         }
+        /// Counts a tap on a row.
         fn rowTap(_: ?*anyopaque) void {
             rows += 1;
         }
@@ -2169,4 +2191,68 @@ test "a soft-wrap editor ending in a newline has a row for its empty last line" 
         else => {},
     };
     try std.testing.expectEqual(@as(?usize, 4), clicked);
+}
+
+test "video player: in a window it erases its frame and registers it, the visible part cut by its viewport" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var regions: std.ArrayList(mod.VideoRegion) = .empty;
+    context.video_regions = &regions;
+    var player = mod.Player.init(std.testing.allocator);
+    defer player.deinit();
+    var canvas = renderer.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+
+    const tree = mod.VStack(.{ mod.VideoPlayer(&player).cornerRadius(8), mod.Text("Below") }).clipped();
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 320, .height = 200 }, &canvas);
+
+    try std.testing.expectEqual(@as(usize, 1), regions.items.len);
+    const region = regions.items[0];
+    try std.testing.expect(region.player == &player);
+    try std.testing.expectEqual(@as(f32, 8), region.corner_radius);
+    try std.testing.expectApproxEqAbs(@as(f32, 320), region.rect.width, 0.5);
+    try std.testing.expect(region.visible.width > 0 and region.visible.height <= region.rect.height);
+    var erased = false;
+    for (canvas.commands.items) |command| switch (command) {
+        .eraseRect => |erase| erased = erase.rect.width == region.rect.width and erase.radius == 8,
+        else => {},
+    };
+    try std.testing.expect(erased);
+}
+
+test "video player: headless it is a black frame and registers nothing" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var player = mod.Player.init(std.testing.allocator);
+    defer player.deinit();
+    var framebuffer = try environment.renderToFramebuffer(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 0, .width = 64, .height = 36 }, 64, 36);
+    defer framebuffer.deinit();
+    try std.testing.expect(framebuffer.at(2, 2).approxEql(renderer.Color.black, 0.02));
+    try std.testing.expectEqual(@as(f32, 1), framebuffer.at(2, 2).a);
+}
+
+test "video player: a scrolled-away player registers an empty visible part" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var regions: std.ArrayList(mod.VideoRegion) = .empty;
+    context.video_regions = &regions;
+    context.visible = .{ .x = 0, .y = 500, .width = 320, .height = 100 };
+    var player = mod.Player.init(std.testing.allocator);
+    defer player.deinit();
+    var canvas = renderer.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+    // A frame wholly outside the viewport skips painting altogether.
+    try mod.ViewRenderer.render(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 0, .width = 320, .height = 180 }, &canvas);
+    try std.testing.expectEqual(@as(usize, 0), regions.items.len);
+    // One straddling its edge registers only the part inside.
+    try mod.ViewRenderer.render(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 450, .width = 320, .height = 180 }, &canvas);
+    try std.testing.expectEqual(@as(usize, 1), regions.items.len);
+    try std.testing.expectApproxEqAbs(@as(f32, 500), regions.items[0].visible.y, 0.5);
+    try std.testing.expectApproxEqAbs(@as(f32, 100), regions.items[0].visible.height, 0.5);
 }

@@ -77,10 +77,19 @@ test {
 test "window hit: edges and corners resize, the band drags, its controls keep their clicks" {
     const Probe = struct {
         const Self = @This();
+        /// A tap that does nothing.
         fn noop(_: ?*anyopaque) void {}
+        /// Reads the flag.
+        ///
+        /// - `context`: the flag.
+        /// - Returns: its value.
         fn get(context: *anyopaque) bool {
             return @as(*bool, @ptrCast(context)).*;
         }
+        /// Sets the flag.
+        ///
+        /// - `context`: the flag.
+        /// - `value`: what it becomes.
         fn set(context: *anyopaque, value: bool) void {
             @as(*bool, @ptrCast(context)).* = value;
         }

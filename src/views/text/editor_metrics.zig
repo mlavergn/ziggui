@@ -99,12 +99,12 @@ pub const EditorMetrics = struct {
     /// - `bytes`: the codepoint's bytes.
     /// - Returns: its advance, in pixels.
     fn codepointAdvance(self: *const Self, bytes: []const u8) f32 {
-        // A lone non-ASCII byte is a bad one (`utf8Decode` would take a
+        // A lone non-ASCII byte is a bad one (`decodeSequence` would take a
         // single byte as its own codepoint).
         const codepoint: u21 = if (bytes.len == 1)
             (if (bytes[0] < 0x80) bytes[0] else 0xFFFD)
         else
-            std.unicode.utf8Decode(bytes) catch 0xFFFD;
+            renderer.TextShaper.decodeSequence(bytes) catch 0xFFFD;
         const resolved = self.face.resolve(codepoint);
         const scale = resolved.face.scaleForPixelSize(self.pixel_size);
         return @as(f32, @floatFromInt(resolved.face.advanceWidth(resolved.glyph))) * scale;

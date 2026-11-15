@@ -109,6 +109,7 @@ test "folding lists every menu's entries under its title, keeping their actions"
     const Probe = struct {
         const Self = @This();
 
+        /// An entry's action that does nothing.
         fn pick(_: ?*anyopaque) void {}
     };
     const menus = [_]MenuBarMenu{
@@ -149,6 +150,10 @@ test "folding frees what it allocated when an allocation fails" {
     const Probe = struct {
         const Self = @This();
 
+        /// Folds two menus and frees the result.
+        ///
+        /// - `allocator`: the allocator, which may fail.
+        /// - Returns: nothing; propagates allocation failure.
         fn foldAndFree(allocator: std.mem.Allocator) !void {
             const menus = [_]MenuBarMenu{
                 .{ .title = "File", .items = &.{.{ .title = "Open" }} },

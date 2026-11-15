@@ -17,6 +17,10 @@ pub const RichLayout = @import("rich_layout.zig").RichLayout;
 pub const RichFaces = @import("rich_faces.zig").RichFaces;
 /// A text field's buffer, caret and selection.
 pub const TextFieldState = @import("text_field_state.zig").TextFieldState;
+/// Text made safe to draw: each invalid UTF-8 byte becomes U+FFFD.
+pub const DisplayText = @import("display_text.zig").DisplayText;
+/// The last thing an action said, kept for the notice strip.
+pub const NoticeText = @import("notice_text.zig").NoticeText;
 /// Line and column geometry over a UTF-8 buffer.
 pub const TextLines = @import("text_lines.zig").TextLines;
 /// Tab-aware widths of edited text.
@@ -44,6 +48,8 @@ test {
     _ = @import("rich_layout.zig");
     _ = @import("rich_faces.zig");
     _ = @import("text_field_state.zig");
+    _ = @import("display_text.zig");
+    _ = @import("notice_text.zig");
     _ = @import("text_lines.zig");
     _ = @import("editor_metrics.zig");
 }

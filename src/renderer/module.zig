@@ -51,6 +51,8 @@ pub const GlyphCommand = @import("render/module.zig").GlyphCommand;
 pub const ImageCommand = @import("render/module.zig").ImageCommand;
 /// A `DrawCommand.blurRect` payload.
 pub const BlurRectCommand = @import("render/module.zig").BlurRectCommand;
+/// A `DrawCommand.eraseRect` payload.
+pub const EraseRectCommand = @import("render/module.zig").EraseRectCommand;
 /// A `DrawCommand.pushClip` payload.
 pub const PushClipCommand = @import("render/module.zig").PushClipCommand;
 /// A retained list of draw commands.

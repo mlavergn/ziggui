@@ -235,6 +235,25 @@ pub const App = struct {
         return (sdl_c.SDL_GetWindowFlags(window) & sdl_c.SDL_WINDOW_MAXIMIZED) != 0;
     }
 
+    /// Puts the main window in full screen, or takes it out (a video player's
+    /// ⌃⌘F). On macOS it is the system's full-screen space, as the green
+    /// button gives.
+    ///
+    /// - `self`: the app.
+    pub fn toggleFullScreen(self: *const Self) void {
+        const window = self.window orelse return;
+        _ = sdl_c.SDL_SetWindowFullscreen(window, !self.isFullScreen());
+    }
+
+    /// Reports whether the main window is in full screen.
+    ///
+    /// - `self`: the app.
+    /// - Returns: true when it is; false with no window.
+    pub fn isFullScreen(self: *const Self) bool {
+        const window = self.window orelse return false;
+        return (sdl_c.SDL_GetWindowFlags(window) & sdl_c.SDL_WINDOW_FULLSCREEN) != 0;
+    }
+
     /// The main window's frame to remember, in points: where it is and how
     /// big, or, while it is maximized, where it was and how big before (the
     /// frame `AppConfig.x`/`y`/`width`/`height` take with `maximized`).

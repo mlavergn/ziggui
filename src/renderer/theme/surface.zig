@@ -146,6 +146,12 @@ pub const Surface = struct {
 
     /// One 1px ring: top and left edges in `top_left`, bottom and right in
     /// `bottom_right`.
+    ///
+    /// - `self`: the surface.
+    /// - `rect`: the ring's outer frame.
+    /// - `top_left`: the top and left edges' color.
+    /// - `bottom_right`: the bottom and right edges' color.
+    /// - Returns: nothing; propagates allocation failure.
     fn ring(self: *const Self, rect: mod.Rect, top_left: mod.Color, bottom_right: mod.Color) std.mem.Allocator.Error!void {
         try self.fill(.{ .x = rect.x, .y = rect.y, .width = rect.width, .height = 1 }, 0, top_left);
         try self.fill(.{ .x = rect.x, .y = rect.y, .width = 1, .height = rect.height }, 0, top_left);

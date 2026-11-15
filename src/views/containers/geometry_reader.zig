@@ -25,6 +25,11 @@ pub fn GeometryReader(comptime T: type, context: *const T, comptime build: fn (*
     return .{ .kind = .{ .geometry = .{ .context = context, .build = struct {
         const Self = @This();
 
+        /// Builds the content through the typed `build`.
+        ///
+        /// - `pointer`: the context.
+        /// - `size`: the size proposed.
+        /// - Returns: the content.
         fn call(pointer: *const anyopaque, size: renderer.Size) mod.View {
             return build(@ptrCast(@alignCast(pointer)), size);
         }

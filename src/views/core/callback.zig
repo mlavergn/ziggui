@@ -46,6 +46,9 @@ pub const Callback = struct {
         const self = Self{ .context = context, .function = struct {
             const Self = @This();
 
+            /// Calls `method` on the context.
+            ///
+            /// - `pointer`: the context.
             fn call(pointer: ?*anyopaque) void {
                 method(@ptrCast(@alignCast(pointer.?)));
             }
@@ -61,6 +64,7 @@ pub const Callback = struct {
         const self = Self{ .function = struct {
             const Self = @This();
 
+            /// Calls `function`.
             fn call(_: ?*anyopaque) void {
                 function();
             }
@@ -96,6 +100,9 @@ pub const Callback = struct {
         const self = Self{ .context = context, .function = struct {
             const Self = @This();
 
+            /// Calls `method` on the context, logging a failure.
+            ///
+            /// - `pointer`: the context.
             fn call(pointer: ?*anyopaque) void {
                 if (method(@as(*T, @ptrCast(@alignCast(pointer.?))))) |_| {} else |err| log.err(what ++ " [{t}]", .{err});
             }
@@ -158,6 +165,10 @@ test "a tagged callback calls its method with its own tag" {
     const Probe = struct {
         const Self = @This();
         last: ?usize = null,
+        /// Notes the removed row's tag.
+        ///
+        /// - `self`: the probe.
+        /// - `tag`: the row's tag.
         fn removed(self: *Self, tag: usize) void {
             self.last = tag;
         }
@@ -182,6 +193,10 @@ test "an attempted callback calls its fallible method" {
     const Probe = struct {
         const Self = @This();
         calls: u32 = 0,
+        /// Counts a call; a fallible method that succeeds.
+        ///
+        /// - `self`: the probe.
+        /// - Returns: nothing; could propagate allocation failure.
         fn grow(self: *Self) std.mem.Allocator.Error!void {
             self.calls += 1;
         }

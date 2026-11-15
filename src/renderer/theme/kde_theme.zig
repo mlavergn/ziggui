@@ -109,6 +109,12 @@ pub const KdeTheme = struct {
     // -------------------------------------------------------------------------
 
     /// `Painter.button`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the button's frame.
+    /// - `role`: the button's role.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: the color the label is drawn in; propagates allocation failure.
     fn button(surface: mod.Surface, rect: mod.Rect, role: mod.Role, state: mod.ControlState) std.mem.Allocator.Error!mod.Color {
         const radius = surface.metrics.control_corner_radius;
         if (role == .plain) return surface.palette.accent;
@@ -134,6 +140,12 @@ pub const KdeTheme = struct {
     }
 
     /// `Painter.field`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the field's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn field(surface: mod.Surface, rect: mod.Rect, radius: f32, state: mod.ControlState) std.mem.Allocator.Error!void {
         try surface.fill(rect, radius, surface.palette.control_background);
         const color = if (state.focused) surface.palette.accent else surface.palette.control_border;
@@ -142,6 +154,10 @@ pub const KdeTheme = struct {
     }
 
     /// `Painter.segmented_track`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the whole control's frame.
+    /// - Returns: nothing; propagates allocation failure.
     fn segmentedTrack(surface: mod.Surface, rect: mod.Rect) std.mem.Allocator.Error!void {
         const radius = surface.metrics.control_corner_radius;
         try surface.fill(rect, radius, surface.palette.control_track);
@@ -149,6 +165,10 @@ pub const KdeTheme = struct {
     }
 
     /// `Painter.segmented_selection`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `segment`: the selected segment's frame.
+    /// - Returns: the color the selected segment's label is drawn in; propagates allocation failure.
     fn segmentedSelection(surface: mod.Surface, segment: mod.Rect) std.mem.Allocator.Error!mod.Color {
         const inner = segment.insetBy(2, 2);
         const radius = surface.metrics.control_corner_radius - 1;
@@ -157,6 +177,11 @@ pub const KdeTheme = struct {
     }
 
     /// `Painter.switch_track`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the track's frame.
+    /// - `on`: whether the switch is on.
+    /// - Returns: nothing; propagates allocation failure.
     fn switchTrack(surface: mod.Surface, rect: mod.Rect, on: bool) std.mem.Allocator.Error!void {
         const radius = rect.height / 2;
         if (on) {
@@ -168,6 +193,11 @@ pub const KdeTheme = struct {
     }
 
     /// `Painter.switch_knob`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `knob`: the square bounding the knob.
+    /// - `on`: whether the switch is on.
+    /// - Returns: nothing; propagates allocation failure.
     fn switchKnob(surface: mod.Surface, knob: mod.Rect, on: bool) std.mem.Allocator.Error!void {
         _ = on;
         // A pale circular handle with a thin Breeze border.
@@ -177,6 +207,13 @@ pub const KdeTheme = struct {
     }
 
     /// `Painter.slider`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `track`: the unfilled track's frame.
+    /// - `fraction`: how much is filled, 0 to 1.
+    /// - `knob`: the square bounding the knob.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn slider(surface: mod.Surface, track: mod.Rect, fraction: f32, knob: mod.Rect, state: mod.ControlState) std.mem.Allocator.Error!void {
         _ = state;
         const track_radius = track.height / 2;
@@ -190,6 +227,11 @@ pub const KdeTheme = struct {
     }
 
     /// `Painter.stepper_box`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the box's frame.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn stepperBox(surface: mod.Surface, rect: mod.Rect, state: mod.ControlState) std.mem.Allocator.Error!void {
         _ = state;
         const radius = surface.metrics.control_corner_radius;
@@ -198,6 +240,11 @@ pub const KdeTheme = struct {
     }
 
     /// `Painter.progress`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the bar's frame.
+    /// - `fraction`: how much is filled, 0 to 1.
+    /// - Returns: nothing; propagates allocation failure.
     fn progress(surface: mod.Surface, rect: mod.Rect, fraction: f32) std.mem.Allocator.Error!void {
         const radius = rect.height / 2;
         try surface.fill(rect, radius, surface.palette.control_track.darken(0.04));
@@ -207,6 +254,12 @@ pub const KdeTheme = struct {
     }
 
     /// `Painter.panel`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the panel's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - `kind`: a modal (sheet, alert), or a popover or menu.
+    /// - Returns: nothing; propagates allocation failure.
     fn panel(surface: mod.Surface, rect: mod.Rect, radius: f32, kind: mod.PanelKind) std.mem.Allocator.Error!void {
         _ = kind; // one panel style fits all in this family
         try surface.fill(rect, radius, surface.palette.window_background);
@@ -214,6 +267,10 @@ pub const KdeTheme = struct {
     }
 
     /// Breeze's header color: #DEE0E2 in light, #2A2E32 in dark.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the title bar's frame.
+    /// - Returns: nothing; propagates allocation failure.
     fn titleBar(surface: mod.Surface, rect: mod.Rect) std.mem.Allocator.Error!void {
         try surface.fill(rect, 0, if (surface.scheme == .dark) mod.Color.fromRgb8(42, 46, 50) else mod.Color.fromRgb8(222, 224, 226));
     }

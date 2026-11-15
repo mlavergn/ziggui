@@ -50,6 +50,30 @@ pub fn ContextMenu(trigger: mod.View, open: *renderer.State(bool), items: anytyp
         .popover(open.binding(), content);
 }
 
+/// One entry of a pop-up menu: its title across the menu's width, filled
+/// under the pointer; a tap calls `on_tap`. The app closes the menu in it.
+///
+/// - `title`: the entry's title; cleaned for drawing.
+/// - `on_tap`: what choosing it does.
+/// - Returns: the entry.
+pub fn MenuItem(title: []const u8, on_tap: mod.Callback) mod.View {
+    const tokens = mod.BuildScope.shared().tokens();
+    const allocator = mod.BuildScope.shared().allocator();
+    return mod.HStack(.{ mod.Text(mod.DisplayText.clean(allocator, title)).font(.callout), mod.Spacer() })
+        .paddingInsets(.{ .top = 4, .leading = 10, .bottom = 4, .trailing = 10 }).frameMaxWidth()
+        .hoverFill(tokens.hover).onTap(on_tap);
+}
+
+/// A pop-up menu's panel: its entries (`MenuItem`s, `Divider`s) stacked at a
+/// fixed width, for a `.popover` on the view it belongs to (a row's right-click).
+///
+/// - `items`: the entries, in order.
+/// - `width`: the panel's width, in points.
+/// - Returns: the panel.
+pub fn MenuList(items: []const mod.View, width: f32) mod.View {
+    return mod.StackBuilder.fromSlice(.vertical, 2, .leading, items).padding(4).frameWidth(width);
+}
+
 // -----------------------------------------------------------------------------
 // Unit Tests
 
@@ -57,4 +81,10 @@ test {
     std.testing.refAllDecls(@This());
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "menu list stacks its entries at its width" {
+    const items = [_]mod.View{ mod.Text("Open"), mod.Text("Remove…") };
+    const panel = MenuList(&items, 170);
+    try std.testing.expect(panel.modifiers.frame != null);
 }

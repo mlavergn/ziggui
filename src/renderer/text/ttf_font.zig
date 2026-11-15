@@ -48,43 +48,77 @@ const BigEndianReader = struct {
     data: []const u8,
 
     /// A reader over the first `end` bytes only, so reads past `end` fail.
+    ///
+    /// - `self`: the reader.
+    /// - `end`: how many bytes from the start reads may touch.
+    /// - Returns: the narrower reader.
     fn bounded(self: *const Self, end: usize) Self {
         const reader = Self{ .data = self.data[0..@min(end, self.data.len)] };
         return reader;
     }
 
     /// Fail unless `length` bytes from `offset` lie inside the data.
+    ///
+    /// - `self`: the reader.
+    /// - `offset`: the first byte, from the start of the data.
+    /// - `length`: how many bytes.
+    /// - Returns: nothing; `error.InvalidFont` when they do not fit.
     fn require(self: *const Self, offset: usize, length: usize) FontReadError!void {
         if (offset > self.data.len or self.data.len - offset < length) return error.InvalidFont;
     }
 
     /// The `length` bytes at `offset`.
+    ///
+    /// - `self`: the reader.
+    /// - `offset`: the first byte, from the start of the data.
+    /// - `length`: how many bytes.
+    /// - Returns: the bytes; `error.InvalidFont` when they do not fit.
     fn bytes(self: *const Self, offset: usize, comptime length: usize) FontReadError!*const [length]u8 {
         try self.require(offset, length);
         return self.data[offset..][0..length];
     }
 
     /// The byte at `offset`.
+    ///
+    /// - `self`: the reader.
+    /// - `offset`: the byte's offset.
+    /// - Returns: the byte; `error.InvalidFont` past the end.
     fn byteAt(self: *const Self, offset: usize) FontReadError!u8 {
         return (try self.bytes(offset, 1))[0];
     }
 
     /// The big-endian u16 at `offset`.
+    ///
+    /// - `self`: the reader.
+    /// - `offset`: the value's first byte.
+    /// - Returns: the value; `error.InvalidFont` past the end.
     fn readU16(self: *const Self, offset: usize) FontReadError!u16 {
         return std.mem.readInt(u16, try self.bytes(offset, 2), .big);
     }
 
     /// The big-endian i16 at `offset`.
+    ///
+    /// - `self`: the reader.
+    /// - `offset`: the value's first byte.
+    /// - Returns: the value; `error.InvalidFont` past the end.
     fn readI16(self: *const Self, offset: usize) FontReadError!i16 {
         return std.mem.readInt(i16, try self.bytes(offset, 2), .big);
     }
 
     /// The big-endian u32 at `offset`.
+    ///
+    /// - `self`: the reader.
+    /// - `offset`: the value's first byte.
+    /// - Returns: the value; `error.InvalidFont` past the end.
     fn readU32(self: *const Self, offset: usize) FontReadError!u32 {
         return std.mem.readInt(u32, try self.bytes(offset, 4), .big);
     }
 
     /// The 2.14 fixed-point number at `offset`, as a float.
+    ///
+    /// - `self`: the reader.
+    /// - `offset`: the value's first byte.
+    /// - Returns: the value; `error.InvalidFont` past the end.
     fn readF2Dot14(self: *const Self, offset: usize) FontReadError!f32 {
         return @as(f32, @floatFromInt(try self.readI16(offset))) / 16384.0;
     }
@@ -100,6 +134,9 @@ const TableRange = struct {
     length: usize,
 
     /// One past the table's last byte.
+    ///
+    /// - `self`: the range.
+    /// - Returns: the offset just past it.
     fn end(self: *const Self) usize {
         return self.offset + self.length;
     }
@@ -126,6 +163,9 @@ const TableDirectory = struct {
 
     /// Read the directory, checking each table this parser uses lies inside
     /// the blob.
+    ///
+    /// - `reader`: a reader over the whole blob.
+    /// - Returns: the directory; `error.InvalidFont` when a used table lies past the blob.
     fn read(reader: *const BigEndianReader) TtfParseError!Self {
         var self = Self{};
         const table_count = try reader.readU16(4);
@@ -144,6 +184,10 @@ const TableDirectory = struct {
 
     /// The field a used table's tag fills, or null for a table this parser
     /// ignores.
+    ///
+    /// - `self`: the directory.
+    /// - `tag`: the table's four-byte tag.
+    /// - Returns: the field, or null.
     fn slotFor(self: *Self, tag: *const [4]u8) ?*?TableRange {
         if (std.mem.eql(u8, tag, "head")) return &self.head;
         if (std.mem.eql(u8, tag, "maxp")) return &self.maxp;
@@ -157,6 +201,10 @@ const TableDirectory = struct {
 
     /// A table that must be present (a zero offset counts as absent) and at
     /// least `min_length` bytes long.
+    ///
+    /// - `table`: the table as the directory found it, or null.
+    /// - `min_length`: its smallest usable length, in bytes.
+    /// - Returns: the range; `error.TableMissing` when absent, `error.InvalidFont` when too short.
     fn required(table: ?TableRange, min_length: usize) TtfParseError!TableRange {
         const range = table orelse return error.TableMissing;
         if (range.offset == 0) return error.TableMissing;
@@ -206,11 +254,20 @@ const Transform = struct {
     const identity = Self{};
 
     /// Transform a point.
+    ///
+    /// - `self`: the transform.
+    /// - `x`: the point's x, in font units.
+    /// - `y`: the point's y, in font units.
+    /// - Returns: the transformed point.
     fn apply(self: *const Self, x: f32, y: f32) [2]f32 {
         return .{ self.scale_x * x + self.skew_x * y + self.translate_x, self.skew_y * x + self.scale_y * y + self.translate_y };
     }
 
     /// self ∘ other  (apply other first, then self).
+    ///
+    /// - `self`: the transform applied second.
+    /// - `other`: the transform applied first.
+    /// - Returns: the combined transform.
     fn compose(self: *const Self, other: Self) Self {
         return .{
             .scale_x = self.scale_x * other.scale_x + self.skew_x * other.skew_y,
@@ -237,11 +294,17 @@ const Edge = struct {
     end_y: f32,
 
     /// The smaller of the edge's two y values.
+    ///
+    /// - `self`: the edge.
+    /// - Returns: its top y.
     fn topY(self: *const Self) f32 {
         return @min(self.start_y, self.end_y);
     }
 
     /// The larger of the edge's two y values.
+    ///
+    /// - `self`: the edge.
+    /// - Returns: its bottom y.
     fn bottomY(self: *const Self) f32 {
         return @max(self.start_y, self.end_y);
     }
@@ -261,6 +324,9 @@ const OutlineBudget = struct {
     components: usize = 0,
 
     /// Count one more component; fail past `max_components`.
+    ///
+    /// - `self`: the budget.
+    /// - Returns: nothing; `error.InvalidFont` once the budget is spent.
     fn takeComponent(self: *Self) FontReadError!void {
         if (self.components >= max_components) return error.InvalidFont;
         self.components += 1;
@@ -279,11 +345,20 @@ const ContourEmitter = struct {
     transform: Transform,
 
     /// Whether a point flag marks an on-curve point.
+    ///
+    /// - `flag`: the point's `glyf` flag byte.
+    /// - Returns: true for an on-curve point.
     fn isOnCurve(flag: u8) bool {
         return flag & 0x01 != 0;
     }
 
     /// Emit one contour's edges (quadratic segments flattened).
+    ///
+    /// - `self`: the emitter.
+    /// - `x_coordinates`: the contour's points' x, in font units.
+    /// - `y_coordinates`: their y, in font units.
+    /// - `flags`: their `glyf` flags (on- or off-curve).
+    /// - Returns: nothing; propagates allocation failure and the edge budget's `error.InvalidFont`.
     fn emitContour(self: *const Self, x_coordinates: []const f32, y_coordinates: []const f32, flags: []const u8) OutlineError!void {
         const point_count = x_coordinates.len;
         if (point_count == 0) return;
@@ -333,6 +408,16 @@ const ContourEmitter = struct {
 
     /// Emit a line to the target, or a flattened quadratic through the pending
     /// control point.
+    ///
+    /// - `self`: the emitter.
+    /// - `current_x`: the pen's x, in font units; moved to the target.
+    /// - `current_y`: the pen's y, in font units; moved to the target.
+    /// - `has_control`: whether a control point is pending; cleared.
+    /// - `control_x`: the pending control point's x.
+    /// - `control_y`: the pending control point's y.
+    /// - `target_x`: the segment's end x.
+    /// - `target_y`: the segment's end y.
+    /// - Returns: nothing; propagates allocation failure and `error.InvalidFont` past the budget.
     fn lineOrQuadratic(
         self: *const Self,
         current_x: *f32,
@@ -365,6 +450,13 @@ const ContourEmitter = struct {
     }
 
     /// Append one transformed edge; fail past the glyph's edge budget.
+    ///
+    /// - `self`: the emitter.
+    /// - `start_x`: the start's x, in font units.
+    /// - `start_y`: the start's y, in font units.
+    /// - `end_x`: the end's x, in font units.
+    /// - `end_y`: the end's y, in font units.
+    /// - Returns: nothing; propagates allocation failure and `error.InvalidFont` past the budget.
     fn pushEdge(self: *const Self, start_x: f32, start_y: f32, end_x: f32, end_y: f32) OutlineError!void {
         if (self.edges.items.len >= OutlineBudget.max_edges) return error.InvalidFont;
         const start = self.transform.apply(start_x, start_y);
@@ -383,6 +475,10 @@ const Crossing = struct {
     direction: i32,
 
     /// Order crossings left to right.
+    ///
+    /// - `left`: one crossing.
+    /// - `right`: the other.
+    /// - Returns: true when `left` is further left.
     fn lessThan(_: void, left: Self, right: Self) bool {
         return left.x < right.x;
     }
@@ -404,6 +500,12 @@ const CoverageScanner = struct {
     allocator: std.mem.Allocator,
 
     /// Fill `bitmap` (`width` x `height`) with the edges' coverage.
+    ///
+    /// - `self`: the scanner.
+    /// - `bitmap`: receives one coverage byte a pixel, row by row.
+    /// - `width`: the bitmap's width, in pixels.
+    /// - `height`: the bitmap's height, in pixels.
+    /// - Returns: nothing; propagates allocation failure.
     fn rasterize(self: *const Self, bitmap: []u8, width: u32, height: u32) std.mem.Allocator.Error!void {
         const samples_float: f32 = @floatFromInt(samples);
         const inverse_samples: f32 = 1.0 / @as(f32, @floatFromInt(samples * samples));
@@ -443,12 +545,23 @@ const CoverageScanner = struct {
     }
 
     /// Whether edge `left` starts above edge `right`.
+    ///
+    /// - `self`: the scanner.
+    /// - `left`: one edge's index.
+    /// - `right`: the other's.
+    /// - Returns: true when `left`'s top is higher.
     fn topLessThan(self: *const Self, left: u32, right: u32) bool {
         return self.edges[left].topY() < self.edges[right].topY();
     }
 
     /// The crossings of the sample row at `sample_y`, sorted left to right;
     /// drops active edges that end at or above the row (rows only go down).
+    ///
+    /// - `self`: the scanner.
+    /// - `sample_y`: the sample row's y, in bitmap pixels.
+    /// - `active`: the indices of the edges reaching the row; pruned in place.
+    /// - `crossings`: receives the row's crossings.
+    /// - Returns: nothing; propagates allocation failure.
     fn rowCrossings(self: *const Self, sample_y: f32, active: *std.ArrayList(u32), crossings: *std.ArrayList(Crossing)) std.mem.Allocator.Error!void {
         crossings.clearRetainingCapacity();
         var kept: usize = 0;
@@ -473,6 +586,10 @@ const CoverageScanner = struct {
 
     /// Count, per pixel, the row's samples inside the outline: a sample's
     /// winding is the sum of the directions of the crossings right of it.
+    ///
+    /// - `crossings`: the row's crossings, left to right.
+    /// - `inside_counts`: each pixel's count of inside samples so far; added to.
+    /// - `samples_float`: the sample columns per pixel.
     fn sweepRow(crossings: []const Crossing, inside_counts: []u32, samples_float: f32) void {
         var total: i32 = 0;
         for (crossings) |crossing| total += crossing.direction;
@@ -716,6 +833,13 @@ pub const TtfFont = struct {
     }
 
     /// Rasterize a glyph's outline; `error.InvalidFont` when it is malformed.
+    ///
+    /// - `self`: the face.
+    /// - `allocator`: allocator for the bitmap (the caller owns it) and the scratch edges.
+    /// - `glyph`: the glyph index.
+    /// - `scale`: font units to pixels.
+    /// - `advance`: the glyph's advance, in pixels.
+    /// - Returns: the glyph; propagates allocation failure and `error.InvalidFont`.
     fn rasterizeOutline(self: *const Self, allocator: std.mem.Allocator, glyph: u16, scale: f32, advance: f32) OutlineError!mod.RasterGlyph {
         const empty = mod.RasterGlyph{ .width = 0, .height = 0, .data = &.{}, .left = 0, .top = 0, .advance = advance };
         var edges: std.ArrayList(Edge) = .empty;
@@ -782,6 +906,10 @@ pub const TtfFont = struct {
 
     /// The first usable Unicode `cmap` subtable (format 12 preferred, else 4),
     /// checked to fit inside the `cmap` table (`reader` ends with it).
+    ///
+    /// - `reader`: a reader ending with the `cmap` table.
+    /// - `cmap`: the table's range.
+    /// - Returns: the subtable; `error.UnsupportedFormat` when there is no usable one, `error.InvalidFont` when it does not fit.
     fn findCmapSubtable(reader: *const BigEndianReader, cmap: TableRange) TtfParseError!CmapSubtable {
         const record_count = try reader.readU16(cmap.offset + 2);
         var best: ?CmapSubtable = null;
@@ -809,6 +937,10 @@ pub const TtfFont = struct {
     }
 
     /// Fail unless a format-4 subtable's segment arrays fit in the reader.
+    ///
+    /// - `reader`: a reader ending with the `cmap` table.
+    /// - `base`: the subtable's offset.
+    /// - Returns: nothing; `error.InvalidFont` when they do not fit.
     fn checkFormat4(reader: *const BigEndianReader, base: usize) FontReadError!void {
         const segment_count_x2 = try reader.readU16(base + 6);
         if (segment_count_x2 == 0 or segment_count_x2 % 2 != 0) return error.InvalidFont;
@@ -817,6 +949,10 @@ pub const TtfFont = struct {
     }
 
     /// Fail unless a format-12 subtable's groups fit in the reader.
+    ///
+    /// - `reader`: a reader ending with the `cmap` table.
+    /// - `base`: the subtable's offset.
+    /// - Returns: nothing; `error.InvalidFont` when they do not fit.
     fn checkFormat12(reader: *const BigEndianReader, base: usize) FontReadError!void {
         try reader.require(base, 16);
         const group_count = try reader.readU32(base + 12);
@@ -826,6 +962,11 @@ pub const TtfFont = struct {
     /// Look a codepoint up in a format-4 (segmented BMP) subtable: the first
     /// segment whose end code is at or past it (segments are sorted by end
     /// code). The result is the raw glyph id, unchecked against `glyph_count`.
+    ///
+    /// - `self`: the face.
+    /// - `reader`: a reader ending with the `cmap` table.
+    /// - `codepoint`: the codepoint.
+    /// - Returns: the glyph id, 0 when unmapped; `error.InvalidFont` on a read past the table.
     fn cmapFormat4(self: *const Self, reader: *const BigEndianReader, codepoint: u21) FontReadError!u16 {
         if (codepoint > 0xFFFF) return 0;
         const code: u16 = @intCast(codepoint);
@@ -860,6 +1001,11 @@ pub const TtfFont = struct {
     /// Look a codepoint up in a format-12 (segmented coverage) subtable: the
     /// group holding it (groups are sorted and do not overlap). The result is
     /// the raw glyph id, unchecked against `glyph_count`.
+    ///
+    /// - `self`: the face.
+    /// - `reader`: a reader ending with the `cmap` table.
+    /// - `codepoint`: the codepoint.
+    /// - Returns: the glyph id, 0 when unmapped; `error.InvalidFont` on a read past the table.
     fn cmapFormat12(self: *const Self, reader: *const BigEndianReader, codepoint: u21) FontReadError!u32 {
         const base = self.cmap_subtable_offset;
         const group_count: usize = try reader.readU32(base + 12);
@@ -880,6 +1026,10 @@ pub const TtfFont = struct {
 
     /// A glyph's byte range in `glyf`, or null for an empty glyph; fails for a
     /// glyph past `glyph_count` or `loca` entries out of order or past `glyf`.
+    ///
+    /// - `self`: the face.
+    /// - `glyph`: the glyph index.
+    /// - Returns: the range, or null for an empty glyph; `error.InvalidFont` when `loca` is malformed.
     fn glyfRange(self: *const Self, glyph: u16) FontReadError!?GlyfRange {
         if (glyph >= self.glyph_count) return error.InvalidFont;
         const reader = BigEndianReader{ .data = self.data };
@@ -897,6 +1047,15 @@ pub const TtfFont = struct {
     }
 
     /// Append a glyph's outline edges, recursing into composite components.
+    ///
+    /// - `self`: the face.
+    /// - `allocator`: allocator for the edges and scratch.
+    /// - `glyph`: the glyph index.
+    /// - `edges`: receives the edges, in font units.
+    /// - `transform`: the transform applied to every point.
+    /// - `depth`: how deep in composite glyphs this one is.
+    /// - `budget`: what the whole glyph may still cost.
+    /// - Returns: nothing; propagates allocation failure and `error.InvalidFont`.
     fn collectEdges(self: *const Self, allocator: std.mem.Allocator, glyph: u16, edges: *std.ArrayList(Edge), transform: Transform, depth: u8, budget: *OutlineBudget) OutlineError!void {
         if (depth > max_composite_depth) return; // guard against pathological recursion
         const range = try self.glyfRange(glyph) orelse return;
@@ -912,6 +1071,14 @@ pub const TtfFont = struct {
 
     /// Append a simple glyph's edges. `endPtsOfContours` must increase, and
     /// flags and coordinates must lie inside the glyph (`reader` ends with it).
+    ///
+    /// - `allocator`: allocator for the edges and scratch.
+    /// - `reader`: a reader ending with the glyph.
+    /// - `glyph_start`: the glyph's first byte.
+    /// - `contour_count`: its `numberOfContours`.
+    /// - `edges`: receives the edges, in font units.
+    /// - `transform`: the transform applied to every point.
+    /// - Returns: nothing; propagates allocation failure and `error.InvalidFont`.
     fn simpleGlyphEdges(allocator: std.mem.Allocator, reader: *const BigEndianReader, glyph_start: usize, contour_count: u16, edges: *std.ArrayList(Edge), transform: Transform) OutlineError!void {
         var position = glyph_start + 10; // skip numContours(2) + bbox(8)
         const end_points_offset = position;
@@ -993,6 +1160,17 @@ pub const TtfFont = struct {
     /// Append a composite glyph's components' edges. A component must be
     /// another glyph of the face, and the components (at every depth) must
     /// stay within the glyph's `budget`.
+    ///
+    /// - `self`: the face.
+    /// - `allocator`: allocator for the edges and scratch.
+    /// - `reader`: a reader ending with the glyph.
+    /// - `glyph`: the composite's glyph index (a component may not be it).
+    /// - `glyph_start`: the glyph's first byte.
+    /// - `edges`: receives the edges, in font units.
+    /// - `transform`: the transform applied to every point.
+    /// - `depth`: how deep in composite glyphs this one is.
+    /// - `budget`: what the whole glyph may still cost.
+    /// - Returns: nothing; propagates allocation failure and `error.InvalidFont`.
     fn compositeGlyphEdges(self: *const Self, allocator: std.mem.Allocator, reader: *const BigEndianReader, glyph: u16, glyph_start: usize, edges: *std.ArrayList(Edge), transform: Transform, depth: u8, budget: *OutlineBudget) OutlineError!void {
         var position = glyph_start + 10;
         while (true) {
@@ -1057,6 +1235,9 @@ const TestGlyphs = struct {
     const Self = @This();
 
     /// The sum of a glyph's coverage.
+    ///
+    /// - `glyph`: the glyph.
+    /// - Returns: the sum of its coverage bytes.
     fn coverageSum(glyph: mod.RasterGlyph) u64 {
         var sum: u64 = 0;
         for (glyph.data) |value| sum += value;
@@ -1068,14 +1249,28 @@ const TestGlyphs = struct {
 const FakeExternal = struct {
     const Self = @This();
 
+    /// The glyph for `codepoint`: 7 for 'あ', else missing.
+    ///
+    /// - `codepoint`: the codepoint.
+    /// - Returns: the glyph index.
     fn fakeGlyph(_: *const anyopaque, codepoint: u21) u16 {
         return if (codepoint == 0x3042) 7 else 0;
     }
 
+    /// The advance of `glyph`: 1000 units for glyph 7, else 0.
+    ///
+    /// - `glyph`: the glyph index.
+    /// - Returns: the advance, in font units.
     fn fakeAdvance(_: *const anyopaque, glyph: u16) u16 {
         return if (glyph == 7) 1000 else 0;
     }
 
+    /// A full 2x3 ink block for any glyph.
+    ///
+    /// - `allocator`: allocator for the bitmap (the caller owns it).
+    /// - `glyph`: the glyph index.
+    /// - `scale`: font units to pixels.
+    /// - Returns: the glyph; propagates allocation failure.
     fn fakeRasterize(_: *const anyopaque, allocator: std.mem.Allocator, glyph: u16, scale: f32) std.mem.Allocator.Error!mod.RasterGlyph {
         const data = try allocator.alloc(u8, 6);
         @memset(data, 255);
@@ -1125,17 +1320,26 @@ const TestFontBuilder = struct {
     bytes: std.ArrayList(u8) = .empty,
 
     /// An empty builder.
+    ///
+    /// - `allocator`: allocator the bytes grow with.
+    /// - Returns: the builder.
     fn init(allocator: std.mem.Allocator) Self {
         const self = Self{ .allocator = allocator };
         return self;
     }
 
     /// Free the bytes.
+    ///
+    /// - `self`: the builder.
     fn deinit(self: *Self) void {
         self.bytes.deinit(self.allocator);
     }
 
     /// Build a font from `options`; the bytes live until `deinit`.
+    ///
+    /// - `self`: the builder.
+    /// - `options`: what the font holds.
+    /// - Returns: the font's bytes; propagates allocation failure.
     fn build(self: *Self, options: TestFontOptions) ![]u8 {
         self.bytes.clearRetainingCapacity();
         try self.writeU32(0x00010000);
@@ -1223,6 +1427,10 @@ const TestFontBuilder = struct {
     }
 
     /// Append a big-endian u16.
+    ///
+    /// - `self`: the builder.
+    /// - `value`: the value.
+    /// - Returns: nothing; propagates allocation failure.
     fn writeU16(self: *Self, value: u16) !void {
         var buffer: [2]u8 = undefined;
         std.mem.writeInt(u16, &buffer, value, .big);
@@ -1230,11 +1438,19 @@ const TestFontBuilder = struct {
     }
 
     /// Append a big-endian i16.
+    ///
+    /// - `self`: the builder.
+    /// - `value`: the value.
+    /// - Returns: nothing; propagates allocation failure.
     fn writeI16(self: *Self, value: i16) !void {
         try self.writeU16(@bitCast(value));
     }
 
     /// Append a big-endian u32.
+    ///
+    /// - `self`: the builder.
+    /// - `value`: the value.
+    /// - Returns: nothing; propagates allocation failure.
     fn writeU32(self: *Self, value: u32) !void {
         var buffer: [4]u8 = undefined;
         std.mem.writeInt(u32, &buffer, value, .big);
@@ -1242,16 +1458,28 @@ const TestFontBuilder = struct {
     }
 
     /// Append `count` zero bytes.
+    ///
+    /// - `self`: the builder.
+    /// - `count`: how many bytes.
+    /// - Returns: nothing; propagates allocation failure.
     fn writeZeros(self: *Self, count: usize) !void {
         try self.bytes.appendNTimes(self.allocator, 0, count);
     }
 
     /// Overwrite the big-endian u16 at `offset`.
+    ///
+    /// - `self`: the builder.
+    /// - `offset`: the value's first byte.
+    /// - `value`: the value.
     fn patchU16(self: *Self, offset: usize, value: u16) void {
         std.mem.writeInt(u16, self.bytes.items[offset..][0..2], value, .big);
     }
 
     /// Overwrite the big-endian u32 at `offset`.
+    ///
+    /// - `self`: the builder.
+    /// - `offset`: the value's first byte.
+    /// - `value`: the value.
     fn patchU32(self: *Self, offset: usize, value: u32) void {
         std.mem.writeInt(u32, self.bytes.items[offset..][0..4], value, .big);
     }
@@ -1266,6 +1494,11 @@ const TestReferenceScanner = struct {
     edges: []const Edge,
 
     /// Fill `bitmap` (`width` x `height`) with the edges' coverage.
+    ///
+    /// - `self`: the scanner.
+    /// - `bitmap`: receives one coverage byte a pixel, row by row.
+    /// - `width`: the bitmap's width, in pixels.
+    /// - `height`: the bitmap's height, in pixels.
     fn rasterize(self: *const Self, bitmap: []u8, width: u32, height: u32) void {
         const samples: u32 = 4;
         const samples_float: f32 = @floatFromInt(samples);
@@ -1291,6 +1524,11 @@ const TestReferenceScanner = struct {
     }
 
     /// Whether a sample point is inside the outline (nonzero winding).
+    ///
+    /// - `self`: the scanner.
+    /// - `sample_x`: the sample's x, in bitmap pixels.
+    /// - `sample_y`: the sample's y, in bitmap pixels.
+    /// - Returns: true inside.
     fn windingInside(self: *const Self, sample_x: f32, sample_y: f32) bool {
         var winding: i32 = 0;
         for (self.edges) |edge| {
@@ -1309,6 +1547,11 @@ const TestReferenceScanner = struct {
 
     /// Rasterize `glyph` of `font` at `pixel_size` with both scanners and
     /// fail unless the bitmaps match byte for byte.
+    ///
+    /// - `font`: the face.
+    /// - `glyph`: the glyph index.
+    /// - `pixel_size`: the em size in pixels.
+    /// - Returns: nothing; fails the test on a mismatch.
     fn expectSameCoverage(font: *const TtfFont, glyph: u16, pixel_size: f32) !void {
         const allocator = std.testing.allocator;
         const scale = font.scaleForPixelSize(pixel_size);
@@ -1342,6 +1585,10 @@ const TestLinearCmap = struct {
     const Self = @This();
 
     /// The glyph a linear scan of `font`'s `cmap` subtable maps `codepoint` to.
+    ///
+    /// - `font`: the face.
+    /// - `codepoint`: the codepoint.
+    /// - Returns: the glyph id, 0 when unmapped; `error.InvalidFont` on a read past the table.
     fn lookup(font: *const TtfFont, codepoint: u21) !u32 {
         const reader = BigEndianReader{ .data = font.data[0..font.cmap_end] };
         const base = font.cmap_subtable_offset;

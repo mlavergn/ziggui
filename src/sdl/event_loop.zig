@@ -23,6 +23,10 @@ const FrameStatistics = struct {
     last_report_ms: u64 = 0,
 
     /// Adds one frame's render time, printing a report about once a second.
+    ///
+    /// - `self`: the log.
+    /// - `elapsed_ns`: the frame's render time, in nanoseconds.
+    /// - `now_ms`: the time now, in milliseconds.
     fn record(self: *Self, elapsed_ns: u64, now_ms: u64) void {
         self.count += 1;
         self.sum_ns += elapsed_ns;
@@ -56,6 +60,9 @@ const WheelDelta = struct {
 /// Everything one `draw` needs for one window (the main window or the panel),
 /// shared by the main loop and the resize watch (which run on the same
 /// thread, never concurrently).
+///
+/// - `AppState`: the app's state type.
+/// - Returns: the frame type.
 fn WindowFrame(comptime AppState: type) type {
     return struct {
         const Self = @This();
@@ -82,6 +89,9 @@ fn WindowFrame(comptime AppState: type) type {
         /// Transparent panel frame: clear to alpha 0 and paint a translucent
         /// rounded background, so corners reveal the desktop behind it.
         transparent: bool = false,
+        /// Collect this frame's `VideoPlayer` regions and put the platform
+        /// players' pictures behind them (the main window, where the OS can).
+        presents_video: bool = false,
         texture: *?*sdl_c.SDL_Texture,
         texture_width: *c_int,
         texture_height: *c_int,
@@ -98,6 +108,12 @@ fn WindowFrame(comptime AppState: type) type {
         /// Build, rasterize and present one frame into `frame_arena`, recording
         /// hit/scroll regions into the given lists. Returns false (no present) if
         /// the window is hidden or has a degenerate size.
+        ///
+        /// - `self`: the window's frame.
+        /// - `frame_arena`: the frame's arena, reset here.
+        /// - `hits`: receives the frame's hit regions.
+        /// - `scrolls`: receives the frame's scroll regions.
+        /// - Returns: true when a frame was presented.
         fn draw(
             self: *Self,
             frame_arena: *std.heap.ArenaAllocator,
@@ -186,6 +202,10 @@ fn WindowFrame(comptime AppState: type) type {
                 list.* = .empty; // arena-backed, like `hits`
                 context.hover_regions = list;
             }
+            // Arena-backed like `hits`; a `VideoPlayer` erases its frame and
+            // registers it here only when the OS can show a picture behind it.
+            var video_regions: std.ArrayList(views.VideoRegion) = .empty;
+            if (self.presents_video) context.video_regions = &video_regions;
 
             // Auto-height panel: measure the tree and resize the window to it,
             // clamped to the screen's usable height. Swift's MenuBarExtra panel
@@ -246,6 +266,10 @@ fn WindowFrame(comptime AppState: type) type {
                 // fillRoundedRect would just re-rasterize every pixel through the SDF path.
             }
             views.ViewRenderer.renderScaled(&context, root, .{ .x = 0, .y = 0, .width = point_width, .height = point_height }, scale, &canvas) catch |err| log.debug("view tree not drawn [{t}]", .{err});
+            // The pictures move with the frame that erased their holes.
+            if (self.presents_video) mod.VideoBackend.present(self.window, video_regions.items);
+            // Holes must reach the window's compositor as transparency.
+            const see_through = self.transparent or video_regions.items.len > 0;
 
             if (self.gpu_backend) |gpu| {
                 // GPU backend: translate + replay the command list on the GPU.
@@ -306,7 +330,7 @@ fn WindowFrame(comptime AppState: type) type {
                     self.texture_width.* = texture_width;
                     self.texture_height.* = texture_height;
                 }
-                if (self.transparent) {
+                if (see_through) {
                     if (self.texture.*) |texture| _ = sdl_c.SDL_SetTextureBlendMode(texture, sdl_c.SDL_BLENDMODE_BLEND);
                     _ = sdl_c.SDL_SetRenderDrawColor(sdl_renderer, 0, 0, 0, 0);
                 }
@@ -328,6 +352,10 @@ fn WindowFrame(comptime AppState: type) type {
         /// during the macOS modal live-resize loop (when the main loop is blocked
         /// in SDL_WaitEvent). Redraw on resize/expose so content reflows live
         /// instead of the old texture being stretched until the mouse is released.
+        ///
+        /// - `userdata`: the window's frame.
+        /// - `event`: the event.
+        /// - Returns: true, so SDL keeps the event.
         fn resizeWatch(userdata: ?*anyopaque, event: [*c]sdl_c.SDL_Event) callconv(.c) bool {
             const frame: *Self = @ptrCast(@alignCast(userdata.?));
             switch (event.*.type) {
@@ -357,6 +385,9 @@ const EventRouter = struct {
 
     /// Waits up to `timeout_ms` for an event, then handles it and every event
     /// already queued (draining the queue even after a timeout).
+    ///
+    /// - `self`: the router.
+    /// - `timeout_ms`: how long to wait, in milliseconds.
     fn waitThenDrain(self: *const Self, timeout_ms: c_int) void {
         var event: sdl_c.SDL_Event = undefined;
         if (sdl_c.SDL_WaitEventTimeout(&event, timeout_ms)) {
@@ -381,6 +412,10 @@ const EventRouter = struct {
 
     /// Waits up to `timeout_ms` for an event; when one comes, handles it and
     /// every event already queued. Returns whether one came.
+    ///
+    /// - `self`: the router.
+    /// - `timeout_ms`: how long to wait, in milliseconds.
+    /// - Returns: true when an event came.
     fn waitForEvent(self: *const Self, timeout_ms: c_int) bool {
         var event: sdl_c.SDL_Event = undefined;
         if (sdl_c.SDL_WaitEventTimeout(&event, timeout_ms)) {
@@ -396,6 +431,9 @@ const EventRouter = struct {
     }
 
     /// Handles one event.
+    ///
+    /// - `self`: the router.
+    /// - `event`: the event.
     fn handle(self: *const Self, event: *sdl_c.SDL_Event) void {
         const app = mod.App.shared();
         const panel = mod.Panel.shared();
@@ -435,6 +473,8 @@ const EventRouter = struct {
                 app.hooks.requestQuit(self.running);
             },
             sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                // A press hides the hover hint until the pointer rests on another view.
+                views.HelpTip.shared().press();
                 const point = app.eventPoint(event.button.x, event.button.y);
                 if (event.button.button == sdl_c.SDL_BUTTON_RIGHT) {
                     // Right-click pops the text context menu when over an editable
@@ -581,6 +621,11 @@ const EventRouter = struct {
     /// turns the vertical wheel sideways (wheel away from the user scrolls
     /// left); macOS already does that itself, sending `wheel.x`, so it is not
     /// done twice.
+    ///
+    /// - `x`: the wheel's horizontal delta.
+    /// - `y`: the wheel's vertical delta.
+    /// - `modifiers`: the `SDL_Keymod` mask held.
+    /// - Returns: the deltas to scroll by.
     fn wheelDeltas(x: f32, y: f32, modifiers: u16) WheelDelta {
         if (mod.os_tag != .macos and x == 0 and (modifiers & sdl_c.SDL_KMOD_SHIFT) != 0) return .{ .x = -y, .y = 0 };
         return .{ .x = x, .y = y };
@@ -782,6 +827,8 @@ pub fn EventLoop(comptime AppState: type) type {
             app.running = &self.running;
             // A view's worker (a folder listing) wakes the loop when it is done.
             views.FrameClock.shared().setWakeHandler(Self.wakeApp);
+            // `Player`s are made with this OS's media player from here on.
+            mod.VideoBackend.install();
             app.hide_on_close = config.hide_on_close;
 
             self.frame = .{
@@ -796,6 +843,7 @@ pub fn EventLoop(comptime AppState: type) type {
                 .body = body,
                 .hover = &app.hover_point,
                 .hover_regions = &app.hover_regions,
+                .presents_video = mod.VideoBackend.presents,
                 .texture = &self.texture,
                 .texture_width = &self.texture_width,
                 .texture_height = &self.texture_height,
@@ -845,6 +893,8 @@ pub fn EventLoop(comptime AppState: type) type {
         pub fn destroy(self: *Self) void {
             const app = mod.App.shared();
             sdl_c.SDL_RemoveEventWatch(WindowFrame(AppState).resizeWatch, &self.frame);
+            // Before the window goes: the pictures leave it, players live on.
+            mod.VideoBackend.uninstall();
             app.window = null;
             app.running = null;
             self.resize_arena.deinit();
@@ -924,6 +974,9 @@ pub fn EventLoop(comptime AppState: type) type {
         /// a busy predicate is set (e.g. a streaming request in flight), wakes
         /// on a ~60fps timeout and ticks the animator; otherwise blocks for
         /// input in idle slices.
+        ///
+        /// - `self`: the loop.
+        /// - `router`: handles the events that come.
         fn waitAfterFrame(self: *Self, router: *const EventRouter) void {
             const app = mod.App.shared();
             // UI animations keep their own ~60fps cadence; the app's requested
@@ -931,7 +984,12 @@ pub fn EventLoop(comptime AppState: type) type {
             // the loop only when nothing is animating.
             const app_ms = app.busyIntervalMs();
             const animating = self.animator.active() or views.FrameClock.shared().scrollbarsAnimating(sdl_c.SDL_GetTicks());
-            const busy_ms: u32 = if (animating) (if (app_ms == 0) 16 else @min(app_ms, 16)) else app_ms;
+            var busy_ms: u32 = if (animating) (if (app_ms == 0) 16 else @min(app_ms, 16)) else app_ms;
+            // A frame a view asked for (a hover hint's delay) caps the wait.
+            if (views.FrameClock.shared().frameDueIn(sdl_c.SDL_GetTicks())) |due| {
+                const wait: u32 = @intCast(@max(@min(due, 1000), 1));
+                busy_ms = if (busy_ms == 0) wait else @min(busy_ms, wait);
+            }
             if (busy_ms != 0) {
                 router.waitThenDrain(@intCast(busy_ms));
                 const now = sdl_c.SDL_GetTicks();
@@ -954,6 +1012,9 @@ pub fn EventLoop(comptime AppState: type) type {
         /// breaks out to the redraw at the top of the outer loop; it dispatches
         /// against the last frame's hit regions, still valid since no draw has
         /// reset the arena.
+        ///
+        /// - `self`: the loop.
+        /// - `router`: handles the events that come.
         fn waitIdle(self: *Self, router: *const EventRouter) void {
             const app = mod.App.shared();
             while (self.running) {
@@ -969,11 +1030,17 @@ pub fn EventLoop(comptime AppState: type) type {
         }
 
         /// Whether the window draws its own title bar (never on macOS).
+        ///
+        /// - `self`: the loop.
+        /// - Returns: true when it draws its own.
         fn customTitlebar(self: *const Self) bool {
             return self.config.custom_titlebar and mod.os_tag != .macos;
         }
 
         /// Creates the main window.
+        ///
+        /// - `self`: the loop.
+        /// - Returns: nothing; propagates a window SDL could not create.
         fn openWindow(self: *Self) !void {
             self.window = sdl_c.SDL_CreateWindow(
                 self.config.title.ptr,
@@ -988,6 +1055,8 @@ pub fn EventLoop(comptime AppState: type) type {
         }
 
         /// Applies the minimum size, title bar, menu bar, hit test and icon.
+        ///
+        /// - `self`: the loop.
         fn decorateWindow(self: *Self) void {
             const config = self.config;
             const window = self.window;
@@ -1047,6 +1116,8 @@ pub fn EventLoop(comptime AppState: type) type {
 
         /// Creates the hidden panel window and its renderer, when there is a
         /// panel; a failure is logged and leaves the app without one.
+        ///
+        /// - `self`: the loop.
         fn openPanel(self: *Self) void {
             const panel_specification = self.panel orelse return;
             const panel = mod.Panel.shared();
@@ -1085,6 +1156,8 @@ pub fn EventLoop(comptime AppState: type) type {
 
         /// Panel teardown in dependency order: texture, renderer, window, then
         /// its buffers and arena.
+        ///
+        /// - `self`: the loop.
         fn closePanel(self: *Self) void {
             if (self.panel_texture) |texture| sdl_c.SDL_DestroyTexture(texture);
             if (self.panel_renderer) |panel_renderer| sdl_c.SDL_DestroyRenderer(panel_renderer);

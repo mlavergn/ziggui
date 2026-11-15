@@ -1,8 +1,9 @@
-//! The app's native menu-bar menus (macOS), SwiftUI's `CommandMenu`.
+//! The app's native menu-bar menus (macOS), SwiftUI's `CommandMenu`: plain
+//! data in the core, so a `MenuTable` builds them; the SDL runtime installs them.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_command_menu);
-const views = @import("views");
+const mod = @import("module.zig");
 
 /// One menu-bar entry. An empty title is a separator. `action` runs on the UI
 /// thread; `selector` instead sends a standard Cocoa action down the responder
@@ -27,7 +28,7 @@ pub const CommandItem = struct {
     option: bool = false,
 
     /// Runs on the UI thread when the entry is chosen.
-    action: ?views.Callback = null,
+    action: ?mod.Callback = null,
 
     /// A standard Cocoa action sent down the responder chain instead.
     selector: ?[:0]const u8 = null,

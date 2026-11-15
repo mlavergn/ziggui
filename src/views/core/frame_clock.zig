@@ -26,6 +26,9 @@ pub const FrameClock = struct {
     /// Time (ms) until which at least one scrollbar is still visible or fading.
     scrollbar_until_ms: u64 = 0,
 
+    /// The earliest time (ms) a view asked for a frame at (a hover hint's delay), or 0 for none.
+    frame_at_ms: u64 = 0,
+
     /// The process's clock.
     var shared_clock: Self = .{};
 
@@ -79,6 +82,30 @@ pub const FrameClock = struct {
         return self.time_ms;
     }
 
+    /// Asks the loop for a frame at `milliseconds`, though no event comes: a
+    /// hover hint shows once the pointer has rested, and a resting pointer
+    /// sends nothing. The earliest request wins; `frameDueIn` reads it.
+    ///
+    /// - `self`: the clock.
+    /// - `milliseconds`: when, on the clock `setTime` sets.
+    pub fn requestFrameAt(self: *Self, milliseconds: u64) void {
+        if (self.frame_at_ms == 0 or milliseconds < self.frame_at_ms) self.frame_at_ms = milliseconds;
+    }
+
+    /// How long the loop may wait before the frame a view asked for, clearing a request that is due.
+    ///
+    /// - `self`: the clock.
+    /// - `now_ms`: the app's clock now.
+    /// - Returns: the wait in ms (0 when it is due now), or null when none was asked for.
+    pub fn frameDueIn(self: *Self, now_ms: u64) ?u64 {
+        if (self.frame_at_ms == 0) return null;
+        if (now_ms >= self.frame_at_ms) {
+            self.frame_at_ms = 0;
+            return 0;
+        }
+        return self.frame_at_ms - now_ms;
+    }
+
     /// Keeps the loop awake until a just-scrolled scrollbar has faded.
     ///
     /// - `self`: the clock.
@@ -105,6 +132,16 @@ test {
     std.testing.refAllDecls(@This());
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "frame clock: a requested frame is due at its time, the earliest first, then cleared" {
+    var clock: FrameClock = .{};
+    try std.testing.expect(clock.frameDueIn(100) == null);
+    clock.requestFrameAt(700);
+    clock.requestFrameAt(900);
+    try std.testing.expectEqual(@as(?u64, 600), clock.frameDueIn(100));
+    try std.testing.expectEqual(@as(?u64, 0), clock.frameDueIn(700));
+    try std.testing.expect(clock.frameDueIn(800) == null);
 }
 
 test "view: frameTime reads back what setFrameTime set" {

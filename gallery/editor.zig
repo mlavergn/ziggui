@@ -213,7 +213,7 @@ pub const Editor = struct {
     pub fn name(self: *const Self) []const u8 {
         const path = self.path.items;
         if (path.len == 0) return "Untitled";
-        const slash = std.mem.lastIndexOfScalar(u8, path, '/') orelse return path;
+        const slash = std.mem.findScalarLast(u8, path, '/') orelse return path;
         return path[slash + 1 ..];
     }
 
@@ -296,7 +296,7 @@ pub const Editor = struct {
         if (needle.len == 0) return;
         const haystack = self.document.text();
         const from = @min(self.document.caret, haystack.len);
-        const hit = std.mem.indexOfPos(u8, haystack, from, needle) orelse std.mem.indexOf(u8, haystack, needle);
+        const hit = std.mem.findPos(u8, haystack, from, needle) orelse std.mem.find(u8, haystack, needle);
         if (hit) |index| self.selectMatch(index, needle.len) else self.setStatus("Not found", .{});
     }
 
@@ -309,8 +309,8 @@ pub const Editor = struct {
         if (needle.len == 0) return;
         const haystack = self.document.text();
         const before = if (self.document.selectionRange()) |selection| selection.start else self.document.caret;
-        const earlier = if (before > 0) std.mem.lastIndexOf(u8, haystack[0..before], needle) else null;
-        const hit = earlier orelse std.mem.lastIndexOf(u8, haystack, needle);
+        const earlier = if (before > 0) std.mem.findLast(u8, haystack[0..before], needle) else null;
+        const hit = earlier orelse std.mem.findLast(u8, haystack, needle);
         if (hit) |index| self.selectMatch(index, needle.len) else self.setStatus("Not found", .{});
     }
 
@@ -335,9 +335,9 @@ pub const Editor = struct {
     /// - `to`: the text the selection ends before.
     pub fn selectBetween(self: *Self, from: []const u8, to: []const u8) void {
         const text = self.document.text();
-        const start = std.mem.indexOf(u8, text, from) orelse return;
+        const start = std.mem.find(u8, text, from) orelse return;
         self.document.selection_anchor = start;
-        self.document.caret = std.mem.indexOfPos(u8, text, start, to) orelse text.len;
+        self.document.caret = std.mem.findPos(u8, text, start, to) orelse text.len;
     }
 
     /// Moves the zoom `delta` steps along the font-size ladder, within it.
@@ -575,10 +575,10 @@ test "find selects the next match, wraps, and says when there is none" {
 
     try editor.find_field.setText("greeting");
     editor.findNext();
-    const first = std.mem.indexOf(u8, sample_document, "greeting").?;
+    const first = std.mem.find(u8, sample_document, "greeting").?;
     try std.testing.expectEqual(@as(?usize, first), editor.document.selection_anchor);
     editor.findNext();
-    const second = std.mem.indexOfPos(u8, sample_document, first + 1, "greeting").?;
+    const second = std.mem.findPos(u8, sample_document, first + 1, "greeting").?;
     try std.testing.expectEqual(@as(?usize, second), editor.document.selection_anchor);
     // Past the last, the next wraps to the first; before the first, the previous wraps to the last.
     editor.findNext();

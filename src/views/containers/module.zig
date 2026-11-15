@@ -58,6 +58,22 @@ pub const NavigationBackButton = @import("navigation.zig").NavigationBackButton;
 pub const Menu = @import("menu.zig").Menu;
 /// A trigger view that opens a popover of items.
 pub const ContextMenu = @import("menu.zig").ContextMenu;
+/// One entry of a pop-up menu, filled under the pointer.
+pub const MenuItem = @import("menu.zig").MenuItem;
+/// A pop-up menu's panel: its entries stacked at a fixed width.
+pub const MenuList = @import("menu.zig").MenuList;
+/// An empty pane's message: a quiet title over a wrapped detail, centered.
+pub const EmptyState = @import("empty_state.zig").EmptyState;
+/// The notice strip: a busy mark, the last notice, and an optional action.
+pub const NoticeBar = @import("notice_bar.zig").NoticeBar;
+/// A pane's title row over a divider, in the accent while the pane has the keys.
+pub const PaneTitle = @import("pane_title.zig").PaneTitle;
+/// A form field: its label over the control, and a line of help under it.
+pub const LabeledField = @import("labeled_field.zig").LabeledField;
+/// A question an app asks before something it cannot undo.
+pub const Confirm = @import("confirm.zig").Confirm;
+/// A yes-or-no question's panel, the refusal first.
+pub const ConfirmAlert = @import("confirm_alert.zig").ConfirmAlert;
 /// One row of a `Sidebar`.
 pub const SidebarItem = @import("sidebar_item.zig").SidebarItem;
 /// How a `Sidebar` highlights its selection.
@@ -115,6 +131,8 @@ pub const PointerInput = @import("../module.zig").PointerInput;
 pub const IconName = @import("../module.zig").IconName;
 /// One line of text (from the views module).
 pub const Text = @import("../module.zig").Text;
+/// Text made safe to draw: each invalid UTF-8 byte becomes U+FFFD.
+pub const DisplayText = @import("../module.zig").DisplayText;
 /// Text that wraps to the width it is given (from the views module).
 pub const WrappedText = @import("../module.zig").WrappedText;
 /// A filled rectangle (from the views module).
@@ -129,6 +147,8 @@ pub const Circle = @import("../module.zig").Circle;
 pub const Button = @import("../module.zig").Button;
 /// A push button with a role (from the views module).
 pub const ButtonRoled = @import("../module.zig").ButtonRoled;
+/// A button showing its keyboard shortcut (from the views module).
+pub const ButtonKeyed = @import("../module.zig").ButtonKeyed;
 /// A segmented picker over a selection binding (from the views module).
 pub const Picker = @import("../module.zig").Picker;
 
@@ -152,6 +172,12 @@ test {
     _ = @import("navigation_path.zig");
     _ = @import("navigation.zig");
     _ = @import("menu.zig");
+    _ = @import("empty_state.zig");
+    _ = @import("notice_bar.zig");
+    _ = @import("pane_title.zig");
+    _ = @import("labeled_field.zig");
+    _ = @import("confirm.zig");
+    _ = @import("confirm_alert.zig");
     _ = @import("sidebar_item.zig");
     _ = @import("sidebar_style.zig");
     _ = @import("sidebar.zig");

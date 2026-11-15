@@ -21,9 +21,12 @@ const Slot = enum {
     emoji,
 
     /// How many slots there are.
-    const count = std.meta.fieldNames(Self).len;
+    const count = @typeInfo(Self).@"enum".field_names.len;
 
     /// The slot a style draws with.
+    ///
+    /// - `style`: the weight, italic and mono asked for.
+    /// - Returns: the slot.
     fn forStyle(style: mod.FontStyle) Self {
         const heavy = switch (style.weight) {
             .semibold, .bold, .heavy, .black => true,
@@ -115,14 +118,24 @@ pub const FontSet = struct {
 const FakeCjk = struct {
     const Self = @This();
 
+    /// The glyph for `codepoint`: U+4E2D only.
+    ///
+    /// - `codepoint`: the codepoint.
+    /// - Returns: its glyph index, 0 when missing.
     fn glyph(_: *const anyopaque, codepoint: u21) u16 {
         return if (codepoint == 0x4E2D) 3 else 0;
     }
 
+    /// Every glyph's advance.
+    ///
+    /// - Returns: the advance, in font units.
     fn advance(_: *const anyopaque, _: u16) u16 {
         return 1000;
     }
 
+    /// An empty glyph image.
+    ///
+    /// - Returns: the raster; never fails.
     fn raster(_: *const anyopaque, _: std.mem.Allocator, _: u16, _: f32) std.mem.Allocator.Error!mod.RasterGlyph {
         return .{ .width = 0, .height = 0, .data = &.{}, .left = 0, .top = 0, .advance = 0 };
     }
