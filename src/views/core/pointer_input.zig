@@ -550,14 +550,26 @@ test "an armed drag hears its press, its moves and, once, its end" {
         tag: ?usize = null,
         travel: f32 = 0,
         ends: u32 = 0,
+        /// Notes the press that armed the drag.
+        ///
+        /// - `context`: the probe.
+        /// - `tag`: the drag's tag.
         fn begin(context: ?*anyopaque, tag: usize) void {
             const self: *Self = @ptrCast(@alignCast(context.?));
             self.tag = tag;
         }
+        /// Adds a move to the travel.
+        ///
+        /// - `context`: the probe.
+        /// - `delta_x`: the sideways move.
+        /// - `delta_y`: the downward move.
         fn move(context: ?*anyopaque, delta_x: f32, delta_y: f32) void {
             const self: *Self = @ptrCast(@alignCast(context.?));
             self.travel += delta_x + delta_y;
         }
+        /// Counts the drag's end.
+        ///
+        /// - `context`: the probe.
         fn end(context: ?*anyopaque) void {
             const self: *Self = @ptrCast(@alignCast(context.?));
             self.ends += 1;
@@ -584,13 +596,24 @@ test "a tap on a tappable view inside a draggable one taps it and arms the drag"
         taps: u32 = 0,
         travel: f32 = 0,
         ends: u32 = 0,
+        /// Counts a tap.
+        ///
+        /// - `self`: the probe.
         fn tapped(self: *Self) void {
             self.taps += 1;
         }
+        /// Adds a move to the travel.
+        ///
+        /// - `context`: the probe.
+        /// - `delta_x`: the sideways move.
+        /// - `delta_y`: the downward move.
         fn move(context: ?*anyopaque, delta_x: f32, delta_y: f32) void {
             const self: *Self = @ptrCast(@alignCast(context.?));
             self.travel += delta_x + delta_y;
         }
+        /// Counts the drag's end.
+        ///
+        /// - `context`: the probe.
         fn end(context: ?*anyopaque) void {
             const self: *Self = @ptrCast(@alignCast(context.?));
             self.ends += 1;
@@ -620,9 +643,13 @@ test "a tap on an overlay above a draggable view never arms its drag" {
     const Probe = struct {
         const Self = @This();
         taps: u32 = 0,
+        /// Counts a tap.
+        ///
+        /// - `self`: the probe.
         fn tapped(self: *Self) void {
             self.taps += 1;
         }
+        /// Ignores a move.
         fn move(_: ?*anyopaque, _: f32, _: f32) void {}
     };
     var probe: Probe = .{};
@@ -652,6 +679,7 @@ test "a tap on an overlay above a draggable view never arms its drag" {
 test "a toggle inside a draggable view flips on the press but never arms the drag" {
     const Probe = struct {
         const Self = @This();
+        /// Ignores a move.
         fn move(_: ?*anyopaque, _: f32, _: f32) void {}
     };
     var probe: Probe = .{};

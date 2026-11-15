@@ -514,6 +514,20 @@ pub const View = struct {
         return view;
     }
 
+    /// Shows `text` in a small label once the pointer rests on this view, like
+    /// SwiftUI's `.help` and a native tooltip (`HelpTip`). An icon-only button
+    /// says what it does this way; a disabled view still shows its hint, so it
+    /// can say why it is off. The innermost hinted view under the pointer wins.
+    ///
+    /// - `self`: the view.
+    /// - `text`: the hint; empty for none.
+    /// - Returns: the view.
+    pub fn help(self: *const Self, text: []const u8) Self {
+        var view = self.*;
+        view.modifiers.help = text;
+        return view;
+    }
+
     /// Keeps this view's frame live while a popover is open: the popover's
     /// tap-to-dismiss region leaves it out, so a tap there reaches the view
     /// (and the popover stays up unless the view closes it). A menu bar's

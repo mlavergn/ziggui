@@ -133,10 +133,12 @@ const Modules = struct {
         });
         Self.linkSdl(b, sdl, sdl_c, options);
         // cocoa.zig reaches AppKit (the unified title bar, the menu bar, template
-        // tray icons) through the Objective-C runtime.
+        // tray icons) through the Objective-C runtime, and av_foundation_player.zig
+        // AVFoundation, Core Media and Core Animation (`VideoPlayer`).
         if (options.target.result.os.tag == .macos) {
             if (options.macos_sdk) |sdk| Self.addMacosSdk(b, sdl, sdk);
             sdl.linkSystemLibrary("objc", .{});
+            for ([_][]const u8{ "AVFoundation", "CoreMedia", "CoreGraphics", "QuartzCore" }) |framework| sdl.linkFramework(framework, .{});
         }
 
         const barrel = b.createModule(.{
@@ -559,7 +561,7 @@ pub fn build(b: *std.Build) !void {
     });
     gallery_module.addOptions("gallery_config", Gallery.configOptions(b));
 
-    const filters: []const []const u8 = if (test_filter) |filter| b.dupeStrings(&.{filter}) else &.{};
+    const filters: []const []const u8 = if (test_filter) |filter| b.graph.dupeStrings(&.{filter}) else &.{};
     if (b.dep_prefix.len == 0) try AppSteps.declare(b, config, filters);
 
     // -------------------------------------------------------------------------

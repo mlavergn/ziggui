@@ -112,6 +112,12 @@ pub const MuiTheme = struct {
     // -------------------------------------------------------------------------
 
     /// `Painter.button`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the button's frame.
+    /// - `role`: the button's role.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: the color the label is drawn in; propagates allocation failure.
     fn button(surface: mod.Surface, rect: mod.Rect, role: mod.Role, state: mod.ControlState) std.mem.Allocator.Error!mod.Color {
         // A "text button": label-only, no container.
         if (role == .plain) return surface.palette.accent;
@@ -130,6 +136,12 @@ pub const MuiTheme = struct {
     }
 
     /// `Painter.field`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the field's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn field(surface: mod.Surface, rect: mod.Rect, radius: f32, state: mod.ControlState) std.mem.Allocator.Error!void {
         // The Material "outlined" text field: a thin box that thickens and tints to
         // the primary color on focus.
@@ -140,6 +152,10 @@ pub const MuiTheme = struct {
     }
 
     /// `Painter.segmented_track`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the whole control's frame.
+    /// - Returns: nothing; propagates allocation failure.
     fn segmentedTrack(surface: mod.Surface, rect: mod.Rect) std.mem.Allocator.Error!void {
         // A toggle-button group: an outlined container.
         const radius = surface.metrics.control_corner_radius;
@@ -148,6 +164,10 @@ pub const MuiTheme = struct {
     }
 
     /// `Painter.segmented_selection`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `segment`: the selected segment's frame.
+    /// - Returns: the color the selected segment's label is drawn in; propagates allocation failure.
     fn segmentedSelection(surface: mod.Surface, segment: mod.Rect) std.mem.Allocator.Error!mod.Color {
         // The selected toggle button is a primary-tinted cell with primary text
         // (MUI's ToggleButton selected state).
@@ -156,6 +176,11 @@ pub const MuiTheme = struct {
     }
 
     /// `Painter.switch_track`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the track's frame.
+    /// - `on`: whether the switch is on.
+    /// - Returns: nothing; propagates allocation failure.
     fn switchTrack(surface: mod.Surface, rect: mod.Rect, on: bool) std.mem.Allocator.Error!void {
         // The Material switch is a thin track the thumb overhangs — not a full-
         // height iOS pill. On tints to a translucent primary; off is a grey wash.
@@ -166,6 +191,11 @@ pub const MuiTheme = struct {
     }
 
     /// `Painter.switch_knob`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `knob`: the square bounding the knob.
+    /// - `on`: whether the switch is on.
+    /// - Returns: nothing; propagates allocation failure.
     fn switchKnob(surface: mod.Surface, knob: mod.Rect, on: bool) std.mem.Allocator.Error!void {
         // The thumb is wider than the track. On: solid primary. Off: a pale disc
         // with a hairline border standing in for the spec's elevation shadow.
@@ -177,6 +207,13 @@ pub const MuiTheme = struct {
     }
 
     /// `Painter.slider`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `track`: the unfilled track's frame.
+    /// - `fraction`: how much is filled, 0 to 1.
+    /// - `knob`: the square bounding the knob.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn slider(surface: mod.Surface, track: mod.Rect, fraction: f32, knob: mod.Rect, state: mod.ControlState) std.mem.Allocator.Error!void {
         _ = state;
         const track_radius = track.height / 2;
@@ -188,6 +225,11 @@ pub const MuiTheme = struct {
     }
 
     /// `Painter.stepper_box`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the box's frame.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn stepperBox(surface: mod.Surface, rect: mod.Rect, state: mod.ControlState) std.mem.Allocator.Error!void {
         _ = state;
         const radius = surface.metrics.control_corner_radius;
@@ -196,6 +238,11 @@ pub const MuiTheme = struct {
     }
 
     /// `Painter.progress`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the bar's frame.
+    /// - `fraction`: how much is filled, 0 to 1.
+    /// - Returns: nothing; propagates allocation failure.
     fn progress(surface: mod.Surface, rect: mod.Rect, fraction: f32) std.mem.Allocator.Error!void {
         const radius = rect.height / 2;
         try surface.fill(rect, radius, surface.palette.accent.withAlpha(0.3));
@@ -204,6 +251,12 @@ pub const MuiTheme = struct {
     }
 
     /// `Painter.panel`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the panel's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - `kind`: a modal (sheet, alert), or a popover or menu.
+    /// - Returns: nothing; propagates allocation failure.
     fn panel(surface: mod.Surface, rect: mod.Rect, radius: f32, kind: mod.PanelKind) std.mem.Allocator.Error!void {
         _ = kind; // one panel style fits all in this family
         // A raised surface (card/menu/dialog). No shadow primitive, so a thin border
@@ -213,11 +266,18 @@ pub const MuiTheme = struct {
     }
 
     /// A Material top app bar: the accent (primary) color.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the title bar's frame.
+    /// - Returns: nothing; propagates allocation failure.
     fn titleBar(surface: mod.Surface, rect: mod.Rect) std.mem.Allocator.Error!void {
         try surface.fill(rect, 0, surface.palette.accent);
     }
 
     /// Content on the app bar takes the on-accent color.
+    ///
+    /// - `palette`: the theme's colors.
+    /// - Returns: the color.
     fn titleBarForeground(palette: *const mod.Palette) mod.Color {
         return palette.on_accent;
     }

@@ -100,10 +100,14 @@ test "a filled platform calls its hooks" {
 
         var calls: u32 = 0;
 
+        /// Counts a call.
         fn count() void {
             Self.calls += 1;
         }
 
+        /// Answers yes.
+        ///
+        /// - Returns: true.
         fn yes() bool {
             return true;
         }

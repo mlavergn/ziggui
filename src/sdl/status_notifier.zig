@@ -222,7 +222,7 @@ pub const StatusNotifier = struct {
         const connection = self.api.bus_get_private(Self.bus_session, &dbus_error) orelse return false;
         self.api.set_exit_on_disconnect(connection, 0);
 
-        _ = std.fmt.bufPrintSentinel(&self.bus_name, "org.kde.StatusNotifierItem-{d}-1", .{std.os.linux.getpid()}, 0) catch return false;
+        _ = std.mem.printSentinel(&self.bus_name, "org.kde.StatusNotifierItem-{d}-1", .{std.os.linux.getpid()}, 0) catch return false;
         if (self.api.request_name(connection, &self.bus_name, Self.name_do_not_queue, &dbus_error) != 1) return false;
         if (self.api.register_object_path(connection, Self.item_path, &Self.vtable, null, &dbus_error) == 0) return false;
 
@@ -267,6 +267,9 @@ pub const StatusNotifier = struct {
     }
 
     /// Resolves the libdbus entry points.
+    ///
+    /// - `self`: the item.
+    /// - Returns: false when libdbus or an entry point is missing.
     fn load(self: *Self) bool {
         const library = std.c.dlopen("libdbus-1.so.3", .{ .LAZY = true }) orelse return false;
         inline for (Self.symbols) |symbol| {
@@ -277,12 +280,17 @@ pub const StatusNotifier = struct {
     }
 
     /// The D-Bus thread: dispatches until the connection drops.
+    ///
+    /// - `connection`: the item's connection.
     fn serve(connection: *DbusConnection) void {
         const self = Self.shared();
         while (self.api.read_write_dispatch(connection, -1) != 0) {}
     }
 
     /// A `RegisterStatusNotifierItem` call carrying the item's bus name.
+    ///
+    /// - `self`: the item.
+    /// - Returns: the call, or null when it could not be made.
     fn registerMessage(self: *Self) ?*DbusMessage {
         const message = self.api.new_method_call(Self.watcher, "/StatusNotifierWatcher", Self.watcher, "RegisterStatusNotifierItem") orelse return null;
         var iterator: MessageIter = .{};
@@ -293,6 +301,10 @@ pub const StatusNotifier = struct {
     }
 
     /// The watcher's owner changed: register again with the new one.
+    ///
+    /// - `connection`: the item's connection.
+    /// - `message`: the signal.
+    /// - Returns: whether the signal was handled.
     fn watcherChanged(connection: *DbusConnection, message: *DbusMessage, _: ?*anyopaque) callconv(.c) HandlerResult {
         const self = Self.shared();
         if (self.api.is_signal(message, "org.freedesktop.DBus", "NameOwnerChanged") == 0) return .notYetHandled;
@@ -309,6 +321,10 @@ pub const StatusNotifier = struct {
     }
 
     /// The item's object-path handler: clicks, and the property reads.
+    ///
+    /// - `connection`: the item's connection.
+    /// - `message`: the call.
+    /// - Returns: whether the call was handled.
     fn handle(connection: *DbusConnection, message: *DbusMessage, _: ?*anyopaque) callconv(.c) HandlerResult {
         const self = Self.shared();
         if (self.api.is_method_call(message, Self.item_iface, "Activate") != 0 or
@@ -370,6 +386,11 @@ pub const StatusNotifier = struct {
     }
 
     /// Answers a method call with an empty return.
+    ///
+    /// - `self`: the item.
+    /// - `connection`: the item's connection.
+    /// - `message`: the call answered.
+    /// - Returns: handled.
     fn replyEmpty(self: *Self, connection: *DbusConnection, message: *DbusMessage) HandlerResult {
         const reply = self.api.new_method_return(message) orelse return .needMemory;
         _ = self.api.send(connection, reply, null);
@@ -378,6 +399,10 @@ pub const StatusNotifier = struct {
     }
 
     /// Appends property `name` as a variant.
+    ///
+    /// - `self`: the item.
+    /// - `iterator`: where it is appended.
+    /// - `name`: the property's name.
     fn appendProperty(self: *Self, iterator: *MessageIter, name: []const u8) void {
         const signature: [:0]const u8 = if (std.mem.eql(u8, name, "ItemIsMenu"))
             "b"
@@ -415,6 +440,10 @@ pub const StatusNotifier = struct {
     }
 
     /// Appends an `a(iiay)` holding the icon, or empty.
+    ///
+    /// - `self`: the item.
+    /// - `iterator`: where it is appended.
+    /// - `with_icon`: whether to include the icon.
     fn appendPixmaps(self: *Self, iterator: *MessageIter, with_icon: bool) void {
         var array: MessageIter = .{};
         _ = self.api.iter_open_container(iterator, Self.type_array, "(iiay)", &array);
@@ -434,6 +463,10 @@ pub const StatusNotifier = struct {
     }
 
     /// Appends a string, cut to 256 bytes on a code-point boundary.
+    ///
+    /// - `self`: the item.
+    /// - `iterator`: where it is appended.
+    /// - `string`: the string.
     fn appendString(self: *Self, iterator: *MessageIter, string: []const u8) void {
         var buffer: [256:0]u8 = @splat(0);
         const prefix = Self.utf8Prefix(string, buffer.len);

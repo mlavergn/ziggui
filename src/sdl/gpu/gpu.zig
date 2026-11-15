@@ -80,11 +80,16 @@ const HlslBlob = extern struct {
     vtbl: *const HlslBlobVtable,
 
     /// The blob's bytes.
+    ///
+    /// - `self`: the blob.
+    /// - Returns: its bytes, valid while it is held.
     fn bytes(self: *Self) []const u8 {
         return self.vtbl.GetBufferPointer(self)[0..self.vtbl.GetBufferSize(self)];
     }
 
     /// Drops this reference.
+    ///
+    /// - `self`: the blob.
     fn release(self: *Self) void {
         _ = self.vtbl.Release(self);
     }
@@ -122,6 +127,8 @@ const HlslCompiler = struct {
     compile: D3DCompileFn,
 
     /// Loads d3dcompiler_47.dll.
+    ///
+    /// - Returns: the compiler, or null when the DLL or its entry point is missing.
     fn load() ?Self {
         const library = sdl_c.SDL_LoadObject("d3dcompiler_47.dll") orelse {
             std.log.info("ziggui: d3dcompiler_47.dll not found ({s})", .{sdl_c.SDL_GetError()});
@@ -135,12 +142,20 @@ const HlslCompiler = struct {
     }
 
     /// Unloads the DLL.
+    ///
+    /// - `self`: the compiler.
     fn unload(self: *const Self) void {
         sdl_c.SDL_UnloadObject(self.library);
     }
 
     /// Compiles one entry point; the caller releases the returned blob after
     /// handing its bytes to SDL (which copies them).
+    ///
+    /// - `self`: the compiler.
+    /// - `source`: the HLSL source.
+    /// - `entry`: the entry point's name.
+    /// - `stage`: the shader stage it compiles for.
+    /// - Returns: the compiled blob, or null when compiling failed (logged).
     fn compileEntry(self: *const Self, source: []const u8, entry: [:0]const u8, stage: sdl_c.SDL_GPUShaderStage) ?*HlslBlob {
         const target: [*:0]const u8 = if (stage == sdl_c.SDL_GPU_SHADERSTAGE_VERTEX) "vs_5_1" else "ps_5_1";
         var code: ?*HlslBlob = null;
@@ -215,6 +230,10 @@ const GpuEncoder = struct {
     cleared: bool = false,
 
     /// The scene texture as a color target.
+    ///
+    /// - `self`: the encoder.
+    /// - `load`: what the pass does with the texture's contents first.
+    /// - Returns: the target.
     fn sceneTarget(self: *Self, load: sdl_c.SDL_GPULoadOp) sdl_c.SDL_GPUColorTargetInfo {
         return .{
             .texture = self.gpu.scene_texture,
@@ -227,6 +246,9 @@ const GpuEncoder = struct {
 
     /// Open (or reuse) a render pass on the scene texture with the primitive
     /// pipeline fully bound. The first pass of the frame clears.
+    ///
+    /// - `self`: the encoder.
+    /// - Returns: the pass, or null when SDL could not begin one.
     fn beginPrimitivePass(self: *Self) ?*sdl_c.SDL_GPURenderPass {
         if (self.pass) |pass| return pass;
         const load: sdl_c.SDL_GPULoadOp = if (self.cleared) sdl_c.SDL_GPU_LOADOP_LOAD else sdl_c.SDL_GPU_LOADOP_CLEAR;
@@ -234,15 +256,28 @@ const GpuEncoder = struct {
         const pass = sdl_c.SDL_BeginGPURenderPass(self.command_buffer, &target, 1, null) orelse return null;
         self.cleared = true;
         self.pass = pass;
-        sdl_c.SDL_BindGPUGraphicsPipeline(pass, self.gpu.primitive_pipeline);
+        self.bindInstanced(pass, self.gpu.primitive_pipeline);
+        return pass;
+    }
+
+    /// Binds an instanced pipeline (the primitive or the erase one) with the
+    /// instance buffer, the atlas and the viewport, all of which every draw
+    /// of either reads.
+    ///
+    /// - `self`: the encoder.
+    /// - `pass`: the open render pass.
+    /// - `pipeline`: the pipeline to bind.
+    fn bindInstanced(self: *Self, pass: *sdl_c.SDL_GPURenderPass, pipeline: *sdl_c.SDL_GPUGraphicsPipeline) void {
+        sdl_c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
         sdl_c.SDL_BindGPUVertexBuffers(pass, 0, &.{ .buffer = self.gpu.instance_buffer, .offset = 0 }, 1);
         sdl_c.SDL_BindGPUFragmentSamplers(pass, 0, &.{ .texture = self.gpu.atlas_texture, .sampler = self.gpu.sampler }, 1);
         const viewport = [4]f32{ @floatFromInt(self.width), @floatFromInt(self.height), 0, 0 };
         sdl_c.SDL_PushGPUVertexUniformData(self.command_buffer, 0, &viewport, @sizeOf(@TypeOf(viewport)));
-        return pass;
     }
 
     /// Ends the open render pass, if any.
+    ///
+    /// - `self`: the encoder.
     fn endPass(self: *Self) void {
         if (self.pass) |pass| sdl_c.SDL_EndGPURenderPass(pass);
         self.pass = null;
@@ -250,6 +285,8 @@ const GpuEncoder = struct {
 
     /// Make sure the scene texture has defined contents (a frame whose
     /// first command is a blur must not sample garbage).
+    ///
+    /// - `self`: the encoder.
     fn ensureCleared(self: *Self) void {
         if (self.cleared) return;
         const target = self.sceneTarget(sdl_c.SDL_GPU_LOADOP_CLEAR);
@@ -260,13 +297,33 @@ const GpuEncoder = struct {
     }
 
     /// Draws a run of instances.
+    ///
+    /// - `self`: the encoder.
+    /// - `first`: the run's first instance.
+    /// - `count`: how many instances it holds.
     fn drawStep(self: *Self, first: u32, count: u32) void {
         const pass = self.beginPrimitivePass() orelse return;
         sdl_c.SDL_DrawGPUPrimitives(pass, 4, count, 0, first);
     }
 
+    /// Draws a run of erase instances with the destination-out blend, then
+    /// puts the primitive pipeline back for the runs after it.
+    ///
+    /// - `self`: the encoder.
+    /// - `first`: the run's first instance.
+    /// - `count`: how many instances it holds.
+    fn eraseStep(self: *Self, first: u32, count: u32) void {
+        const pass = self.beginPrimitivePass() orelse return;
+        self.bindInstanced(pass, self.gpu.erase_pipeline);
+        sdl_c.SDL_DrawGPUPrimitives(pass, 4, count, 0, first);
+        self.bindInstanced(pass, self.gpu.primitive_pipeline);
+    }
+
     /// Blurs a region: a horizontal pass into scratch, then a vertical pass
     /// with the tint back into the scene.
+    ///
+    /// - `self`: the encoder.
+    /// - `blur`: the step's region, radius and tint (`renderer.BlurStep`).
     fn blurStep(self: *Self, blur: anytype) void {
         self.endPass();
         self.ensureCleared();
@@ -342,6 +399,21 @@ pub const Gpu = struct {
         .enable_color_write_mask = false,
     };
 
+    /// Destination-out: the source's alpha (a fill's coverage) cuts the scene
+    /// back toward transparent, color and alpha alike, so a hole stays
+    /// premultiplied for the window compositor (`DrawCommand.eraseRect`).
+    const erase_blend = sdl_c.SDL_GPUColorTargetBlendState{
+        .src_color_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ZERO,
+        .dst_color_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        .color_blend_op = sdl_c.SDL_GPU_BLENDOP_ADD,
+        .src_alpha_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ZERO,
+        .dst_alpha_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        .alpha_blend_op = sdl_c.SDL_GPU_BLENDOP_ADD,
+        .color_write_mask = 0,
+        .enable_blend = true,
+        .enable_color_write_mask = false,
+    };
+
     /// Owns the atlas and read-back buffers.
     allocator: std.mem.Allocator,
 
@@ -357,6 +429,9 @@ pub const Gpu = struct {
 
     /// The unified instanced pipeline.
     primitive_pipeline: *sdl_c.SDL_GPUGraphicsPipeline,
+
+    /// The instanced pipeline with the erase blend.
+    erase_pipeline: *sdl_c.SDL_GPUGraphicsPipeline,
 
     /// The horizontal blur pass.
     blur_horizontal_pipeline: *sdl_c.SDL_GPUGraphicsPipeline,
@@ -432,6 +507,7 @@ pub const Gpu = struct {
         if (self.scratch_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
         sdl_c.SDL_ReleaseGPUSampler(device, self.sampler);
         sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.primitive_pipeline);
+        sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.erase_pipeline);
         sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.blur_horizontal_pipeline);
         sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.blur_vertical_pipeline);
         if (self.window) |window| sdl_c.SDL_ReleaseWindowFromGPUDevice(device, window);
@@ -579,6 +655,11 @@ pub const Gpu = struct {
     }
 
     /// Creates the device for `formats` and builds the pipelines.
+    ///
+    /// - `allocator`: allocator for the device's buffers.
+    /// - `window`: the window to claim, or null offscreen.
+    /// - `formats`: the shader formats the device may take.
+    /// - Returns: the device, or null when SDL_GPU cannot make one (logged).
     fn initWith(allocator: std.mem.Allocator, window: ?*sdl_c.SDL_Window, formats: sdl_c.SDL_GPUShaderFormat) ?Self {
         const device = sdl_c.SDL_CreateGPUDevice(formats, false, null) orelse {
             std.log.info("ziggui: no GPU backend ({s}); using the software rasterizer", .{sdl_c.SDL_GetError()});
@@ -600,6 +681,7 @@ pub const Gpu = struct {
             .window = window,
             .target_format = target_format,
             .primitive_pipeline = undefined,
+            .erase_pipeline = undefined,
             .blur_horizontal_pipeline = undefined,
             .blur_vertical_pipeline = undefined,
             .sampler = undefined,
@@ -615,6 +697,11 @@ pub const Gpu = struct {
     }
 
     /// Creates one shader from the format the device takes.
+    ///
+    /// - `self`: the device.
+    /// - `description`: the shader's stages, sources and resources.
+    /// - `hlsl`: the HLSL compiler on Direct3D 12, else null.
+    /// - Returns: the shader, or null when it could not be made (logged).
     fn createShader(self: *Self, description: ShaderDescription, hlsl: ?HlslCompiler) ?*sdl_c.SDL_GPUShader {
         const formats = sdl_c.SDL_GetGPUShaderFormats(self.device);
         var create_info = sdl_c.SDL_GPUShaderCreateInfo{
@@ -650,6 +737,9 @@ pub const Gpu = struct {
     }
 
     /// Builds the primitive and blur pipelines and the sampler.
+    ///
+    /// - `self`: the device.
+    /// - Returns: false when any of them could not be made (logged).
     fn createPipelines(self: *Self) bool {
         const device = self.device;
         // D3D12 only: load the HLSL compiler for the duration of shader setup.
@@ -746,6 +836,13 @@ pub const Gpu = struct {
             .props = 0,
         };
         self.primitive_pipeline = sdl_c.SDL_CreateGPUGraphicsPipeline(device, &create_info) orelse return false;
+        var erase_target = color_target;
+        erase_target.blend_state = Self.erase_blend;
+        create_info.target_info.color_target_descriptions = &erase_target;
+        self.erase_pipeline = sdl_c.SDL_CreateGPUGraphicsPipeline(device, &create_info) orelse {
+            sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.primitive_pipeline);
+            return false;
+        };
 
         // Blur pipelines share the bare quad vertex shader and have no vertex
         // buffer. The horizontal pass overwrites scratch (no blending); the
@@ -758,12 +855,14 @@ pub const Gpu = struct {
         create_info.target_info.color_target_descriptions = &no_blend_target;
         self.blur_horizontal_pipeline = sdl_c.SDL_CreateGPUGraphicsPipeline(device, &create_info) orelse {
             sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.primitive_pipeline);
+            sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.erase_pipeline);
             return false;
         };
         create_info.fragment_shader = blur_vertical_fragment;
         create_info.target_info.color_target_descriptions = &color_target;
         self.blur_vertical_pipeline = sdl_c.SDL_CreateGPUGraphicsPipeline(device, &create_info) orelse {
             sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.primitive_pipeline);
+            sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.erase_pipeline);
             sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.blur_horizontal_pipeline);
             return false;
         };
@@ -779,6 +878,7 @@ pub const Gpu = struct {
             .address_mode_w = sdl_c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
         }) orelse {
             sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.primitive_pipeline);
+            sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.erase_pipeline);
             sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.blur_horizontal_pipeline);
             sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.blur_vertical_pipeline);
             return false;
@@ -787,6 +887,12 @@ pub const Gpu = struct {
     }
 
     /// A color-target texture the shaders can also sample.
+    ///
+    /// - `self`: the device.
+    /// - `width`: its width, in pixels.
+    /// - `height`: its height, in pixels.
+    /// - `format`: its pixel format.
+    /// - Returns: the texture, or null when SDL could not make it.
     fn makeTexture(self: *Self, width: u32, height: u32, format: sdl_c.SDL_GPUTextureFormat) ?*sdl_c.SDL_GPUTexture {
         return sdl_c.SDL_CreateGPUTexture(self.device, &.{
             .type = sdl_c.SDL_GPU_TEXTURETYPE_2D,
@@ -800,6 +906,11 @@ pub const Gpu = struct {
     }
 
     /// (Re)creates the scene and scratch textures at the frame's size.
+    ///
+    /// - `self`: the device.
+    /// - `width`: the frame's width, in pixels.
+    /// - `height`: the frame's height, in pixels.
+    /// - Returns: false when a texture could not be made.
     fn ensureFrameTextures(self: *Self, width: u32, height: u32) bool {
         if (self.scene_texture != null and self.texture_width == width and self.texture_height == height) return true;
         if (self.scene_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(self.device, texture);
@@ -814,6 +925,9 @@ pub const Gpu = struct {
     }
 
     /// (Re)creates the atlas texture at the atlas's size.
+    ///
+    /// - `self`: the device.
+    /// - Returns: false when the texture could not be made.
     fn ensureAtlasTexture(self: *Self) bool {
         if (self.atlas_texture != null and self.atlas_texture_size == self.atlas.size) return true;
         if (self.atlas_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(self.device, texture);
@@ -833,6 +947,13 @@ pub const Gpu = struct {
     /// Translate with atlas-full recovery: grow (or, at max size, evict) and
     /// retry; a reset invalidates the entries staged so far, so the whole
     /// command list is re-translated against the fresh atlas.
+    ///
+    /// - `self`: the device.
+    /// - `arena`: the frame's arena, which holds the scene.
+    /// - `commands`: the frame's draw commands.
+    /// - `width`: the frame's width, in pixels.
+    /// - `height`: the frame's height, in pixels.
+    /// - Returns: the scene, or null when it could not be translated (logged).
     fn translateScene(
         self: *Self,
         arena: std.mem.Allocator,
@@ -866,12 +987,20 @@ pub const Gpu = struct {
     }
 
     /// An atlas entry with its 1px border (`TextureAtlas.padding`), RGBA8.
+    ///
+    /// - `pending`: the entry.
+    /// - Returns: its size in bytes, border included.
     fn paddedBytes(pending: renderer.AtlasUpload) u32 {
         return (pending.width + 2) * (pending.height + 2) * 4;
     }
 
     /// Stage instance data and pending atlas uploads through the (grown as
     /// needed) transfer buffer, recording the copy commands on `command_buffer`.
+    ///
+    /// - `self`: the device.
+    /// - `command_buffer`: the frame's command buffer.
+    /// - `scene`: the translated scene.
+    /// - Returns: false when the transfer buffer could not be made or mapped.
     fn upload(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, scene: renderer.GpuScene) bool {
         const uploads = self.atlas.pendingUploads();
         const instance_bytes: u32 = @intCast(scene.instances.len * @sizeOf(renderer.Instance));
@@ -940,6 +1069,13 @@ pub const Gpu = struct {
 
     /// Encode a translated scene into `command_buffer`, rendering into the
     /// scene texture (cleared to `clear` on first use).
+    ///
+    /// - `self`: the device.
+    /// - `command_buffer`: the frame's command buffer.
+    /// - `scene`: the translated scene.
+    /// - `clear`: the color the scene texture starts as.
+    /// - `width`: the frame's width, in pixels.
+    /// - `height`: the frame's height, in pixels.
     fn encode(
         self: *Self,
         command_buffer: *sdl_c.SDL_GPUCommandBuffer,
@@ -953,6 +1089,7 @@ pub const Gpu = struct {
             switch (step) {
                 .draw => |draw| encoder.drawStep(draw.first, draw.count),
                 .blur => |blur| encoder.blurStep(blur),
+                .erase => |erase| encoder.eraseStep(erase.first, erase.count),
             }
         }
         encoder.endPass();
@@ -965,4 +1102,25 @@ pub const Gpu = struct {
 
 test {
     std.testing.refAllDecls(@This());
+}
+
+test "gpu: an erase cuts a premultiplied transparent hole, and a later fill composites over it" {
+    if (!sdl_c.SDL_Init(sdl_c.SDL_INIT_VIDEO)) return error.SkipZigTest;
+    defer sdl_c.SDL_Quit();
+    var gpu = Gpu.init(std.testing.allocator, null) orelse return error.SkipZigTest;
+    defer gpu.deinit();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const commands = [_]renderer.DrawCommand{
+        .{ .eraseRect = .{ .rect = .{ .x = 8, .y = 8, .width = 16, .height = 16 } } },
+        .{ .fillRoundedRect = .{ .rect = .{ .x = 8, .y = 20, .width = 16, .height = 4 }, .color = renderer.Color.black.withAlpha(0.5) } },
+    };
+    const pixels = gpu.renderToRgba(arena.allocator(), &commands, renderer.Color.white, 32, 32) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(pixels);
+    const hole = pixels[(12 * 32 + 12) * 4 ..][0..4];
+    const scrim = pixels[(22 * 32 + 12) * 4 ..][0..4];
+    const outside = pixels[(2 * 32 + 2) * 4 ..][0..4];
+    try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0 }, hole);
+    try std.testing.expect(scrim[3] >= 126 and scrim[3] <= 129 and scrim[0] <= 1); // premultiplied black at half alpha
+    try std.testing.expectEqualSlices(u8, &.{ 255, 255, 255, 255 }, outside);
 }

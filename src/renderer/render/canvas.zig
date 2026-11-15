@@ -173,6 +173,17 @@ pub const Canvas = struct {
         try self.push(.{ .blurRect = .{ .rect = rect, .radius = radius, .sigma = sigma, .tint = tint } });
     }
 
+    /// Erase what is already drawn inside a rect back to transparent, the
+    /// window's backdrop (a native video layer) showing through.
+    ///
+    /// - `self`: the canvas.
+    /// - `rect`: the region.
+    /// - `radius`: the region's corner radius.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn eraseRect(self: *Self, rect: mod.Rect, radius: f32) !void {
+        try self.push(.{ .eraseRect = .{ .rect = rect, .radius = radius } });
+    }
+
     /// Push a clip region.
     ///
     /// - `self`: the canvas.

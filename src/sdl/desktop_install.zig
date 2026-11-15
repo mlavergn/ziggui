@@ -7,23 +7,6 @@ const mod = @import("module.zig");
 const views = @import("views");
 const sdl_c = @import("sdl_c");
 
-/// Where the running executable's freedesktop entry stands (see
-/// `DesktopInstall.install`).
-pub const DesktopEntryState = enum {
-    const Self = @This();
-
-    /// No entry of its own, and none installed system-wide.
-    missing,
-    /// Its entry runs this executable.
-    current,
-    /// Its entry runs another path (the executable moved).
-    stale,
-    /// A package installed one under `/usr/share` or `/usr/local/share`.
-    system,
-    /// Not Linux.
-    unsupported,
-};
-
 /// The per-user entry's path for the running executable, and its app ID.
 const EntryPaths = struct {
     const Self = @This();
@@ -86,7 +69,7 @@ pub const DesktopInstall = struct {
         const icon_value = views.DesktopEntry.stringValue(&icon_value_buffer, paths.icon) orelse return Self.logUnwritable("icon path", paths.icon);
         const id_value = views.DesktopEntry.stringValue(&id_buffer, paths.id) orelse return Self.logUnwritable("app ID", paths.id);
         var entry_buffer: [exec_value_buffer.len + name_buffer.len + icon_value_buffer.len + id_buffer.len + 256]u8 = undefined;
-        const entry = std.fmt.bufPrint(&entry_buffer,
+        const entry = std.mem.print(&entry_buffer,
             \\[Desktop Entry]
             \\Type=Application
             \\Name={s}
@@ -106,7 +89,7 @@ pub const DesktopInstall = struct {
     /// it still points here. Linux only.
     ///
     /// - Returns: the entry's state.
-    pub fn state() DesktopEntryState {
+    pub fn state() views.DesktopEntryState {
         if (mod.os_tag != .linux) return .unsupported;
         var executable_buffer: [4096]u8 = undefined;
         var data_buffer: [4096]u8 = undefined;
@@ -115,7 +98,7 @@ pub const DesktopInstall = struct {
         const paths = Self.entryPaths(&executable_buffer, &data_buffer, &desktop_buffer, &icon_buffer) orelse return .missing;
         for ([_][]const u8{ "/usr/share/applications", "/usr/local/share/applications" }) |directory| {
             var system_buffer: [4096]u8 = undefined;
-            const system_path = std.fmt.bufPrintSentinel(&system_buffer, "{s}/{s}.desktop", .{ directory, paths.id }, 0) catch continue;
+            const system_path = std.mem.printSentinel(&system_buffer, "{s}/{s}.desktop", .{ directory, paths.id }, 0) catch continue;
             if (sdl_c.SDL_GetPathInfo(system_path.ptr, null)) return .system;
         }
         var size: usize = 0;
@@ -149,10 +132,13 @@ pub const DesktopInstall = struct {
 
     /// Creates the folder `path` goes in, and any missing above it (logged on
     /// failure).
+    ///
+    /// - `path`: the file whose folder is made.
+    /// - Returns: false when it could not be made.
     fn createParentDirectory(path: []const u8) bool {
-        const slash = std.mem.lastIndexOfScalar(u8, path, '/') orelse return true;
+        const slash = std.mem.findScalarLast(u8, path, '/') orelse return true;
         var buffer: [4096]u8 = undefined;
-        const directory = std.fmt.bufPrintSentinel(&buffer, "{s}", .{path[0..slash]}, 0) catch return false;
+        const directory = std.mem.printSentinel(&buffer, "{s}", .{path[0..slash]}, 0) catch return false;
         if (!sdl_c.SDL_CreateDirectory(directory.ptr)) return Self.logInstallError(directory);
         return true;
     }
@@ -161,18 +147,24 @@ pub const DesktopInstall = struct {
     /// and icon go (`$XDG_DATA_HOME`, default `~/.local/share`). Null when the
     /// executable's path or the data folder cannot be found, or a path is too
     /// long.
+    ///
+    /// - `executable_buffer`: holds the executable's path.
+    /// - `data_buffer`: holds the data folder's path.
+    /// - `desktop_buffer`: holds the entry's path.
+    /// - `icon_buffer`: holds the icon's path.
+    /// - Returns: the paths, in the buffers, or null.
     fn entryPaths(executable_buffer: *[4096]u8, data_buffer: *[4096]u8, desktop_buffer: *[4096]u8, icon_buffer: *[4096]u8) ?EntryPaths {
         const length = std.c.readlink("/proc/self/exe", executable_buffer, executable_buffer.len);
         // A path that fills the buffer may have been cut short.
         if (length <= 0 or length >= executable_buffer.len) return null;
         const executable = executable_buffer[0..@intCast(length)];
         // SDL's default app ID is the executable's basename; match it.
-        const id = executable[(std.mem.lastIndexOfScalar(u8, executable, '/') orelse return null) + 1 ..];
+        const id = executable[(std.mem.findScalarLast(u8, executable, '/') orelse return null) + 1 ..];
         const xdg_data_home: ?[]const u8 = if (sdl_c.SDL_getenv("XDG_DATA_HOME")) |value| std.mem.span(value) else null;
         const home: ?[]const u8 = if (sdl_c.SDL_getenv("HOME")) |value| std.mem.span(value) else null;
         const data_directory = Self.dataDirectory(xdg_data_home, home, data_buffer) orelse return null;
-        const desktop = std.fmt.bufPrintSentinel(desktop_buffer, "{s}/applications/{s}.desktop", .{ data_directory, id }, 0) catch return null;
-        const icon = std.fmt.bufPrintSentinel(icon_buffer, "{s}/icons/hicolor/256x256/apps/{s}.png", .{ data_directory, id }, 0) catch return null;
+        const desktop = std.mem.printSentinel(desktop_buffer, "{s}/applications/{s}.desktop", .{ data_directory, id }, 0) catch return null;
+        const icon = std.mem.printSentinel(icon_buffer, "{s}/icons/hicolor/256x256/apps/{s}.png", .{ data_directory, id }, 0) catch return null;
         return .{ .desktop = desktop, .icon = icon, .id = id, .executable = executable };
     }
 
@@ -189,11 +181,15 @@ pub const DesktopInstall = struct {
         if (xdg_data_home) |value| if (value.len > 0 and value[0] == '/') return value;
         const home_directory = home orelse return null;
         if (home_directory.len == 0) return null;
-        return std.fmt.bufPrint(data_buffer, "{s}/.local/share", .{home_directory}) catch null;
+        return std.mem.print(data_buffer, "{s}/.local/share", .{home_directory}) catch null;
     }
 
     /// Logs why `value` cannot go in a desktop entry. The value itself is left
     /// out: a control character in it would be written to the log raw.
+    ///
+    /// - `what`: what the value is (the name, the path).
+    /// - `value`: the value.
+    /// - Returns: false, for the caller to return.
     fn logUnwritable(what: []const u8, value: []const u8) bool {
         for (value) |byte| if (byte < 0x20 or byte == 0x7f) {
             std.log.err("ziggui: no desktop entry: its {s} has a control character", .{what});
@@ -204,6 +200,9 @@ pub const DesktopInstall = struct {
     }
 
     /// Logs a failed write of `path` with SDL's error.
+    ///
+    /// - `path`: the file that was not written.
+    /// - Returns: false, for the caller to return.
     fn logInstallError(path: []const u8) bool {
         std.log.err("ziggui: cannot write {s} ({s})", .{ path, sdl_c.SDL_GetError() });
         return false;

@@ -152,6 +152,9 @@ test "a test canvas draws a view and replays a tap on it" {
     const Probe = struct {
         const Self = @This();
         tapped: bool = false,
+        /// Notes the tap.
+        ///
+        /// - `self`: the probe.
         fn onTap(self: *Self) void {
             self.tapped = true;
         }

@@ -266,6 +266,9 @@ test "a token provider's tokens reach tokens(), and clearing it restores fromThe
         const Self = @This();
 
         /// The macOS tokens with an orange warning.
+        ///
+        /// - `theme`: the theme.
+        /// - Returns: the tokens.
         fn tokens(theme: renderer.Theme) mod.BuildTokens {
             var made = mod.BuildTokens.fromTheme(theme);
             made.warning = renderer.Color.fromRgb8(255, 128, 0);

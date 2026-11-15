@@ -133,16 +133,27 @@ pub const TextFieldState = struct {
     /// - `string`: the new text, copied.
     /// - Returns: nothing; propagates allocation failure.
     pub fn setText(self: *Self, string: []const u8) std.mem.Allocator.Error!void {
-        // The old text goes from memory, not only from view: the whole buffer,
-        // since bytes deleted earlier linger past the text's end.
-        std.crypto.secureZero(u8, self.buffer.allocatedSlice());
-        self.buffer.clearRetainingCapacity();
+        // The old text goes from memory, not only from view (`wipe`).
+        self.wipe();
         try self.reserve(string.len);
         self.buffer.appendSliceAssumeCapacity(string);
         self.caret = self.buffer.items.len;
+        self.last_caret = self.caret;
+    }
+
+    /// Empties the field and zeroes every byte it held: a password's or a key's field closing.
+    ///
+    /// - `self`: the field.
+    pub fn wipe(self: *Self) void {
+        // The whole buffer, since bytes deleted earlier linger past the
+        // text's end. Cleared first: a clear marks the bytes undefined, which
+        // a debug build fills, after any zeroing.
+        self.buffer.clearRetainingCapacity();
+        std.crypto.secureZero(u8, self.buffer.allocatedSlice());
+        self.caret = 0;
         self.selection_anchor = null;
         self.preferred_column = null;
-        self.last_caret = self.caret;
+        self.last_caret = 0;
         self.revision +%= 1;
     }
 
@@ -636,6 +647,17 @@ test "TextFieldState: a secure field hands out no selection, and setText wipes d
     _ = field.deleteSelection();
     try field.setText("");
     const memory = field.buffer.allocatedSlice();
-    try std.testing.expect(std.mem.indexOf(u8, memory, "hunt") == null);
-    try std.testing.expect(std.mem.indexOf(u8, memory, "er2") == null);
+    try std.testing.expect(std.mem.find(u8, memory, "hunt") == null);
+    try std.testing.expect(std.mem.find(u8, memory, "er2") == null);
+}
+
+test "text field state wipes to empty, the old bytes zeroed" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("secret");
+    const held = field.buffer.allocatedSlice();
+    field.wipe();
+    try std.testing.expectEqualStrings("", field.text());
+    try std.testing.expectEqual(@as(usize, 0), field.caret);
+    for (held) |byte| try std.testing.expectEqual(@as(u8, 0), byte);
 }

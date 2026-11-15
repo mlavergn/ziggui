@@ -150,6 +150,10 @@ const Probe = struct {
 
     builds: u32 = 0,
 
+    /// Counts a build.
+    ///
+    /// - `self`: the probe.
+    /// - Returns: a small red rectangle.
     fn body(self: *Self) mod.View {
         self.builds += 1;
         return mod.Rectangle(renderer.Color.red).frame(4, 2);

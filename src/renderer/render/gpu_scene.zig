@@ -4,7 +4,7 @@
 //! instanced quad whose fragment shader evaluates the same rounded-box /
 //! segment SDFs as the `Rasterizer`), a glyph/image texture atlas, and a `Step`
 //! list that splits the instance stream wherever a `blurRect` needs the
-//! pixels rendered so far.
+//! pixels rendered so far or an `eraseRect` needs the erase blend.
 //!
 //! This module is pure Zig with no GPU or C dependency, so the whole
 //! translation layer (packing, clip resolution, padding, atlas growth) is
@@ -143,6 +143,28 @@ pub const GpuScene = struct {
                         .clip_rounded_rect = clip.rounded_rect,
                         .clip_radius = clip.radius,
                     } });
+                },
+                .eraseRect => |erase| {
+                    // An erase is a fill drawn with the destination-out blend:
+                    // its own step, so the backend can switch pipelines.
+                    const count: u32 = @intCast(instances.items.len);
+                    if (count > run_start) {
+                        try steps.append(arena, .{ .draw = .{ .first = run_start, .count = count - run_start } });
+                    }
+                    const clip = ClipState.resolve(clip_rects.items, clip_radii.items, framebuffer_width, framebuffer_height);
+                    try instances.append(arena, .{
+                        .quad = Self.paddedQuad(erase.rect, 1),
+                        .shape = Self.rectArray(erase.rect),
+                        .color0 = .{ 0, 0, 0, 1 },
+                        .color1 = .{ 0, 0, 0, 0 },
+                        .points = .{ 0, 0, 0, 0 },
+                        .atlas_rect = .{ 0, 0, 0, 0 },
+                        .clip = clip.rect,
+                        .clip_rounded_rect = clip.rounded_rect,
+                        .parameters = .{ @floatFromInt(@backingInt(InstanceKind.fill)), erase.radius, 0, clip.radius },
+                    });
+                    try steps.append(arena, .{ .erase = .{ .first = count, .count = 1 } });
+                    run_start = count + 1;
                 },
                 else => {
                     const clip = ClipState.resolve(clip_rects.items, clip_radii.items, framebuffer_width, framebuffer_height);
@@ -427,6 +449,33 @@ test "gpu_scene: blur splits the instance stream into steps" {
     try std.testing.expectEqual(@as(f32, 4), scene.steps[1].blur.sigma);
     try std.testing.expectEqual(@as(u32, 1), scene.steps[2].draw.first);
     try std.testing.expectEqual(@as(u32, 1), scene.steps[2].draw.count);
+}
+
+test "gpu_scene: an erase is a fill instance in a step of its own" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    var atlas = mod.TextureAtlas.init(std.testing.allocator, 64);
+    defer atlas.deinit();
+
+    const rect = mod.Rect{ .x = 10, .y = 20, .width = 30, .height = 40 };
+    const commands = [_]mod.DrawCommand{
+        .{ .fillRoundedRect = .{ .rect = rect, .color = mod.Color.red } },
+        .{ .eraseRect = .{ .rect = rect, .radius = 6 } },
+        .{ .fillRoundedRect = .{ .rect = rect, .color = mod.Color.blue } },
+    };
+    const scene = try TestScene.translate(arena_state.allocator(), &commands, &atlas);
+
+    try std.testing.expectEqual(@as(usize, 3), scene.instances.len);
+    try std.testing.expectEqual(@as(usize, 3), scene.steps.len);
+    try std.testing.expectEqual(@as(u32, 1), scene.steps[0].draw.count);
+    try std.testing.expectEqual(@as(u32, 1), scene.steps[1].erase.first);
+    try std.testing.expectEqual(@as(u32, 1), scene.steps[1].erase.count);
+    try std.testing.expectEqual(@as(u32, 2), scene.steps[2].draw.first);
+    const erase = scene.instances[1];
+    try std.testing.expectEqual([4]f32{ 10, 20, 30, 40 }, erase.shape);
+    try std.testing.expectEqual(@as(f32, @floatFromInt(@backingInt(InstanceKind.fill))), erase.parameters[0]);
+    try std.testing.expectEqual(@as(f32, 6), erase.parameters[1]);
+    try std.testing.expectEqual(@as(f32, 1), erase.color0[3]);
 }
 
 test "gpu_scene: atlas reports full and recovers by growing" {

@@ -48,6 +48,9 @@ test "a selectable row fills by selection and focus, and taps" {
     const Probe = struct {
         const Self = @This();
         taps: usize = 0,
+        /// Counts a tap.
+        ///
+        /// - `self`: the probe.
         fn onTap(self: *Self) void {
             self.taps += 1;
         }

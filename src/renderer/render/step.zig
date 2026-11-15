@@ -1,4 +1,4 @@
-//! One run of the GPU scene's instance stream, or a blur break in it.
+//! One run of the GPU scene's instance stream, or a blur or erase break in it.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_step);
@@ -43,6 +43,9 @@ pub const Step = union(enum) {
     draw: DrawStep,
     /// Blur what is drawn so far.
     blur: BlurStep,
+    /// Draw a run of instances (fills) with the erase blend, cutting their
+    /// shapes back to transparent (`DrawCommand.eraseRect`).
+    erase: DrawStep,
 };
 
 // -----------------------------------------------------------------------------

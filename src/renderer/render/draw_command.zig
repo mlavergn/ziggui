@@ -109,6 +109,19 @@ pub const BlurRectCommand = struct {
     tint: mod.Color = mod.Color.transparent,
 };
 
+/// Erase what is already drawn inside a (possibly rounded) rect back to
+/// transparent (destination-out), so whatever lies behind the window's
+/// surface shows through: the hole a native video layer is seen in. Draws
+/// after it composite over the hole as usual, so controls stay on top.
+pub const EraseRectCommand = struct {
+    const Self = @This();
+
+    /// The rect erased.
+    rect: mod.Rect,
+    /// The corner radius.
+    radius: f32 = 0,
+};
+
 /// Push a clip region; subsequent draws are masked to the intersection of
 /// all clips on the stack until the matching `popClip`.
 pub const PushClipCommand = struct {
@@ -139,6 +152,8 @@ pub const DrawCommand = union(enum) {
     image: ImageCommand,
     /// Frost what is beneath a rect.
     blurRect: BlurRectCommand,
+    /// Erase what is beneath a rect to transparent.
+    eraseRect: EraseRectCommand,
     /// Push a clip region.
     pushClip: PushClipCommand,
     /// Pop the innermost clip region.

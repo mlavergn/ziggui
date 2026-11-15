@@ -57,6 +57,8 @@ pub const GeometryData = @import("kind.zig").GeometryData;
 pub const PickerData = @import("kind.zig").PickerData;
 /// A `Drawing`'s payload.
 pub const DrawingData = @import("kind.zig").DrawingData;
+/// A `VideoPlayer`'s payload.
+pub const VideoPlayerData = @import("kind.zig").VideoPlayerData;
 /// The modifiers applied around a view's content.
 pub const Modifiers = @import("modifiers.zig").Modifiers;
 /// A `.sheet`/`.alert`/`.popover` modifier.
@@ -129,6 +131,8 @@ pub const TextClick = @import("text_click.zig").TextClick;
 pub const HitRegion = @import("hit_region.zig").HitRegion;
 /// An `onHover` region registered while painting.
 pub const HoverRegion = @import("hover_region.zig").HoverRegion;
+/// A `VideoPlayer`'s frame registered while painting.
+pub const VideoRegion = @import("video_region.zig").VideoRegion;
 /// An accessibility role.
 pub const A11yRole = @import("a11y_role.zig").A11yRole;
 /// One node of the accessibility tree.
@@ -185,6 +189,8 @@ pub const TextSelection = @import("text_selection.zig").TextSelection;
 pub const SelectionSpan = @import("text_selection.zig").SelectionSpan;
 /// The text-field context menu (`TextContextMenu.shared()`).
 pub const TextContextMenu = @import("text_context_menu.zig").TextContextMenu;
+/// The hover hint a view's `.help(text)` shows (`HelpTip.shared()`).
+pub const HelpTip = @import("help_tip.zig").HelpTip;
 /// The clipboard the context menu copies to and pastes from.
 pub const ClipboardOperations = @import("text_context_menu.zig").ClipboardOperations;
 
@@ -193,6 +199,8 @@ pub const ClipboardOperations = @import("text_context_menu.zig").ClipboardOperat
 
 /// A text field's buffer, caret and selection (from the views module).
 pub const TextFieldState = @import("../module.zig").TextFieldState;
+/// Text made safe to draw (from the views module).
+pub const DisplayText = @import("../module.zig").DisplayText;
 /// One styled run of a `RichText` (from the views module).
 pub const Span = @import("../module.zig").Span;
 /// A laid-out piece of one span on one line (from the views module).
@@ -207,6 +215,8 @@ pub const RichFaces = @import("../module.zig").RichFaces;
 pub const TextLines = @import("../module.zig").TextLines;
 /// Tab-aware widths of edited text (from the views module).
 pub const EditorMetrics = @import("../module.zig").EditorMetrics;
+/// A media player modeled on `AVPlayer` (from the views module).
+pub const Player = @import("../module.zig").Player;
 /// One line of text (from the views module).
 pub const Text = @import("../module.zig").Text;
 /// A one-line text field (from the views module).
@@ -257,6 +267,7 @@ test {
     _ = @import("text_click.zig");
     _ = @import("hit_region.zig");
     _ = @import("hover_region.zig");
+    _ = @import("video_region.zig");
     _ = @import("a11y_role.zig");
     _ = @import("a11y_node.zig");
     _ = @import("overlay_request.zig");
@@ -280,6 +291,7 @@ test {
     _ = @import("frame_clock.zig");
     _ = @import("text_selection.zig");
     _ = @import("text_context_menu.zig");
+    _ = @import("help_tip.zig");
     _ = @import("test_environment.zig");
     _ = @import("accent.zig");
     _ = @import("test_canvas.zig");

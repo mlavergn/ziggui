@@ -79,6 +79,9 @@ pub const Section = enum {
     /// A file and folder picker drawn in the window.
     files,
 
+    /// A video player with controls drawn over its picture.
+    video,
+
     /// Every section, as sidebar rows.
     pub const items = blk: {
         const values = @typeInfo(Self).@"enum".field_values;
@@ -119,6 +122,7 @@ pub const Section = enum {
             .rows => "Rows & Headers",
             .reorder => "Reorder",
             .files => "File Browser",
+            .video => "Video",
         };
     }
 
@@ -151,6 +155,7 @@ pub const Section = enum {
             .rows => .list,
             .reorder => .gripVertical,
             .files => .folderOpen,
+            .video => .monitorPlay,
         };
     }
 
@@ -337,6 +342,9 @@ pub const Gallery = struct {
     /// The design-kit panels (Badges & Keys, Forms, Rows & Headers) and their state.
     kit: gallery.Kit,
 
+    /// The Video panel and its player.
+    media: gallery.Media,
+
     /// Whether the Chat panel's tool call is unfolded.
     tool_open: bool = false,
 
@@ -404,6 +412,7 @@ pub const Gallery = struct {
             .showcase = showcase,
             .editor = editor,
             .kit = kit,
+            .media = gallery.Media.init(allocator),
         };
         return self;
     }
@@ -412,6 +421,7 @@ pub const Gallery = struct {
     ///
     /// - `self`: the gallery to tear down.
     pub fn deinit(self: *Self) void {
+        self.media.deinit();
         self.kit.deinit();
         self.editor.deinit();
         self.showcase.deinit();
@@ -666,6 +676,7 @@ pub const Gallery = struct {
             .rows => self.kit.rowsPanel(active_theme),
             .reorder => self.kit.reorderPanel(active_theme),
             .files => self.kit.filesPanel(active_theme),
+            .video => self.media.videoPanel(active_theme),
         };
     }
 

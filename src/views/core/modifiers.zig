@@ -67,6 +67,8 @@ pub const Modifiers = struct {
     hover_fill: ?renderer.Color = null,
     /// Told when the pointer enters or leaves this view's frame (see `View.onHover`).
     on_hover: ?mod.HoverCallback = null,
+    /// The hover hint shown once the pointer rests on this view (see `View.help`).
+    help: []const u8 = "",
     /// This view's frame stays live while a popover is open: the popover's
     /// tap-to-dismiss region leaves it out (see `View.popoverPassthrough`).
     popover_passthrough: bool = false,

@@ -24,6 +24,8 @@ pub const Showcase = @import("showcase.zig").Showcase;
 pub const Editor = @import("editor.zig").Editor;
 /// The design-kit panels (badges, key caps, keyed buttons, segmented controls, forms, rows), and their state.
 pub const Kit = @import("kit.zig").Kit;
+/// The Video panel: a `VideoPlayer` and its player.
+pub const Media = @import("media.zig").Media;
 
 // -----------------------------------------------------------------------------
 // Test Fixtures

@@ -140,6 +140,12 @@ pub const MacosTheme = struct {
     /// offset translucent fills peeking out below the shape (drawn first, mostly
     /// covered by the fill itself). Matches the ~2pt ambient shadow under native
     /// controls.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the capsule's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - `strength`: how dark the shadow is, 1 for a control's.
+    /// - Returns: nothing; propagates allocation failure.
     fn dropShadow(surface: mod.Surface, rect: mod.Rect, radius: f32, strength: f32) std.mem.Allocator.Error!void {
         try surface.fill(rect.offsetBy(0, 2).insetBy(-1, -1), radius + 1, mod.Color.black.withAlpha(0.05 * strength));
         try surface.fill(rect.offsetBy(0, 1), radius, mod.Color.black.withAlpha(0.10 * strength));
@@ -149,6 +155,13 @@ pub const MacosTheme = struct {
     /// Light mode: a near-white capsule with a white rim, a faint occlusion line
     /// under the top edge, and a soft shadow. Dark mode: a darker-than-backdrop
     /// fill with a brighter top rim.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the capsule's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - `dim`: the opacity it is drawn at, lower while disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn clearGlass(surface: mod.Surface, rect: mod.Rect, radius: f32, state: mod.ControlState, dim: f32) std.mem.Allocator.Error!void {
         const lit = surface.scheme == .light;
         if (state.disabled) {
@@ -195,6 +208,14 @@ pub const MacosTheme = struct {
     /// Tinted Liquid Glass (prominent / destructive): a flat tint capsule with a
     /// bright 1px specular under the top edge and a soft shadow — exactly how
     /// native `.glassProminent` renders at rest.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the capsule's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - `tint`: the capsule's tint.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - `dim`: the opacity it is drawn at, lower while disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn tintedGlass(surface: mod.Surface, rect: mod.Rect, radius: f32, tint: mod.Color, state: mod.ControlState, dim: f32) std.mem.Allocator.Error!void {
         var background = tint;
         if (state.pressed) background = background.darken(0.08) else if (state.hovered) background = background.lighten(0.06);
@@ -211,6 +232,12 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.button`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the button's frame.
+    /// - `role`: the button's role.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: the color the label is drawn in; propagates allocation failure.
     fn button(surface: mod.Surface, rect: mod.Rect, role: mod.Role, state: mod.ControlState) std.mem.Allocator.Error!mod.Color {
         const dim: f32 = if (state.disabled) 0.4 else 1.0;
         // In-content macOS 26 buttons are gently rounded rects (~5pt), not
@@ -237,6 +264,12 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.field`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the field's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn field(surface: mod.Surface, rect: mod.Rect, radius: f32, state: mod.ControlState) std.mem.Allocator.Error!void {
         try surface.fill(rect, radius, surface.palette.control_background);
         if (state.focused) {
@@ -249,6 +282,10 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.segmented_track`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the whole control's frame.
+    /// - Returns: nothing; propagates allocation failure.
     fn segmentedTrack(surface: mod.Surface, rect: mod.Rect) std.mem.Allocator.Error!void {
         // A flat translucent trough, moderately rounded (native is ~7pt at a 24pt
         // height — not a capsule), with no border.
@@ -256,6 +293,10 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.segmented_selection`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `segment`: the selected segment's frame.
+    /// - Returns: the color the selected segment's label is drawn in; propagates allocation failure.
     fn segmentedSelection(surface: mod.Surface, segment: mod.Rect) std.mem.Allocator.Error!mod.Color {
         // The selected chip fills the full track height (no inset) as a flat
         // control-accent rounded rect with a faint top specular.
@@ -271,6 +312,11 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.switch_track`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the track's frame.
+    /// - `on`: whether the switch is on.
+    /// - Returns: nothing; propagates allocation failure.
     fn switchTrack(surface: mod.Surface, rect: mod.Rect, on: bool) std.mem.Allocator.Error!void {
         const radius = rect.height / 2;
         if (on) {
@@ -284,6 +330,11 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.switch_knob`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `knob`: the square bounding the knob.
+    /// - `on`: whether the switch is on.
+    /// - Returns: nothing; propagates allocation failure.
     fn switchKnob(surface: mod.Surface, knob: mod.Rect, on: bool) std.mem.Allocator.Error!void {
         _ = on; // the knob looks the same on or off; its position encodes the state
         const radius = knob.width / 2;
@@ -295,6 +346,13 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.slider`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `track`: the unfilled track's frame.
+    /// - `fraction`: how much is filled, 0 to 1.
+    /// - `knob`: the square bounding the knob.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn slider(surface: mod.Surface, track: mod.Rect, fraction: f32, knob: mod.Rect, state: mod.ControlState) std.mem.Allocator.Error!void {
         _ = state;
         const lit = surface.scheme == .light;
@@ -310,6 +368,11 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.stepper_box`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the box's frame.
+    /// - `state`: its state: hovered, pressed, focused, disabled.
+    /// - Returns: nothing; propagates allocation failure.
     fn stepperBox(surface: mod.Surface, rect: mod.Rect, state: mod.ControlState) std.mem.Allocator.Error!void {
         _ = state;
         // Native steppers are a flat grey chevron column — same fill as the
@@ -318,6 +381,11 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.progress`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the bar's frame.
+    /// - `fraction`: how much is filled, 0 to 1.
+    /// - Returns: nothing; propagates allocation failure.
     fn progress(surface: mod.Surface, rect: mod.Rect, fraction: f32) std.mem.Allocator.Error!void {
         const radius = rect.height / 2;
         const lit = surface.scheme == .light;
@@ -328,6 +396,12 @@ pub const MacosTheme = struct {
     }
 
     /// `Painter.panel`.
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the panel's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - `kind`: a modal (sheet, alert), or a popover or menu.
+    /// - Returns: nothing; propagates allocation failure.
     fn panel(surface: mod.Surface, rect: mod.Rect, radius: f32, kind: mod.PanelKind) std.mem.Allocator.Error!void {
         // A wide ambient shadow halo grounds the floating panel.
         var ring: f32 = 1;
@@ -354,6 +428,11 @@ pub const MacosTheme = struct {
 
     /// The `.glassEffect()` surface: the same neutral clear glass as a button at
     /// rest (frost + sheen + rim + soft shadow).
+    ///
+    /// - `surface`: where to draw, with the theme's palette and scheme.
+    /// - `rect`: the surface's frame.
+    /// - `radius`: the corner radius, in points.
+    /// - Returns: nothing; propagates allocation failure.
     fn glassSurface(surface: mod.Surface, rect: mod.Rect, radius: f32) std.mem.Allocator.Error!void {
         try Self.clearGlass(surface, rect, radius, .{}, 1);
     }

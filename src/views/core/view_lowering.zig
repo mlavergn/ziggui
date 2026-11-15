@@ -251,6 +251,13 @@ pub const ViewLowering = struct {
                     .height = @max(line_height, mod.ControlMetrics.label_icon_size),
                 }) };
             },
+            // A picture fills what it is offered; its ideal is a 16:9 frame,
+            // not the video's size, so the layout never jumps as an item loads.
+            .videoPlayer => return .{ .leaf = .{
+                .min = .{},
+                .ideal = .{ .width = 480, .height = 270 },
+                .max = .{ .width = infinity, .height = infinity },
+            } },
             .scroll, .scrollState, .geometry => return .{ .leaf = .{
                 .min = .{},
                 .ideal = .{ .width = 200, .height = 200 },

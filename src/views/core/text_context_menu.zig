@@ -328,10 +328,16 @@ test "view: text context menu — fieldAt, render, actions, clipboard hook" {
         const Self = @This();
         var copied: bool = false;
         var pasted: bool = false;
+        /// Notes a copy.
+        ///
+        /// - `target`: the field copied from.
         fn copy(target: *mod.TextFieldState) void {
             _ = target;
             copied = true;
         }
+        /// Notes a paste.
+        ///
+        /// - `target`: the field pasted into.
         fn paste(target: *mod.TextFieldState) void {
             _ = target;
             pasted = true;
@@ -399,9 +405,11 @@ test "view: text context menu — fieldAt, render, actions, clipboard hook" {
 test "text context menu: a secure field's Cut and Copy do nothing" {
     const Recorder = struct {
         var copied: bool = false;
+        /// Notes a copy.
         fn copy(_: *mod.TextFieldState) void {
             copied = true;
         }
+        /// Ignores a paste.
         fn paste(_: *mod.TextFieldState) void {}
     };
     Recorder.copied = false;

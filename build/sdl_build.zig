@@ -687,7 +687,7 @@ const Platform = struct {
     /// - Returns: true when the target CPU has NEON.
     fn hasNeon(self: *const Self) bool {
         if (self.cpu.arch.isArm()) return std.Target.arm.featureSetHas(self.cpu.features, .neon);
-        if (self.cpu.arch.isAARCH64()) return std.Target.aarch64.featureSetHas(self.cpu.features, .neon);
+        if (self.cpu.arch.isAarch64()) return std.Target.aarch64.featureSetHas(self.cpu.features, .neon);
         return false;
     }
 };

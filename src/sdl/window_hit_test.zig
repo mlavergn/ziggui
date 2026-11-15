@@ -54,6 +54,10 @@ pub const WindowHitTest = struct {
     /// region excepted. With a custom title bar the edges resize the window
     /// unless it is maximized. Fullscreen, the whole window is content. See
     /// `views.WindowHitArea`.
+    ///
+    /// - `window`: the window.
+    /// - `area`: the point, in window points.
+    /// - Returns: what a press there does.
     fn hitTest(window: ?*sdl_c.SDL_Window, area: [*c]const sdl_c.SDL_Point, _: ?*anyopaque) callconv(.c) sdl_c.SDL_HitTestResult {
         const self = Self.shared();
         const app = mod.App.shared();

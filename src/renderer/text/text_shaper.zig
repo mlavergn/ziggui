@@ -21,6 +21,9 @@ const CodepointIterator = struct {
     truncated: bool = false,
 
     /// An iterator at the start of `text`.
+    ///
+    /// - `text`: the text to decode.
+    /// - Returns: the iterator.
     fn init(text: []const u8) Self {
         const self = Self{ .text = text };
         return self;
@@ -31,6 +34,9 @@ const CodepointIterator = struct {
     /// `text`) is one U+FFFD for its first byte only, as the text editor's
     /// `TextLines.nextCodepointEnd` steps it, so drawn glyphs and caret stops
     /// agree on invalid text.
+    ///
+    /// - `self`: the iterator.
+    /// - Returns: the codepoint, or null at the end.
     fn next(self: *Self) ?u21 {
         if (self.index >= self.text.len) return null;
         const length = std.unicode.utf8ByteSequenceLength(self.text[self.index]) catch {
@@ -42,7 +48,7 @@ const CodepointIterator = struct {
             self.truncated = true;
             return 0xFFFD;
         }
-        const codepoint = std.unicode.utf8Decode(self.text[self.index .. self.index + length]) catch {
+        const codepoint = TextShaper.decodeSequence(self.text[self.index .. self.index + length]) catch {
             self.index += 1;
             return 0xFFFD;
         };
@@ -70,6 +76,14 @@ const LineMeter = struct {
 
     /// The width of `text[start..end]`, exactly as
     /// `measureLineWidth(text[start..end])` measures it.
+    ///
+    /// - `self`: the meter.
+    /// - `shaper`: the shaper whose faces measure.
+    /// - `text`: the text the line is cut from.
+    /// - `start`: the line's first byte.
+    /// - `end`: one past its last byte.
+    /// - `pixel_size`: the font size, in pixels.
+    /// - Returns: the width, in pixels.
     fn widthOf(self: *Self, shaper: *const TextShaper, text: []const u8, start: usize, end: usize, pixel_size: f32) f32 {
         if (start != self.start or end < self.end or !self.whole) self.* = .{ .start = start, .end = start };
         var iterator = CodepointIterator{ .text = text[start..end], .index = self.end - start };
@@ -242,8 +256,31 @@ pub const TextShaper = struct {
         return lines.toOwnedSlice(allocator);
     }
 
+    /// The codepoint one UTF-8 sequence encodes, as every UTF-8 step in
+    /// ziggui decodes it (drawing, measuring, caret stops).
+    ///
+    /// - `bytes`: one sequence, 1 to 4 bytes, as long as its lead byte says
+    ///   (`std.unicode.utf8ByteSequenceLength`).
+    /// - Returns: the codepoint; an error when a continuation byte, an
+    ///   overlong form, a surrogate half or a value past U+10FFFF makes the
+    ///   sequence invalid.
+    pub fn decodeSequence(bytes: []const u8) !u21 {
+        return switch (bytes.len) {
+            1 => bytes[0],
+            2 => std.unicode.utf8Decode2(bytes[0..2].*),
+            3 => std.unicode.utf8Decode3(bytes[0..3].*),
+            4 => std.unicode.utf8Decode4(bytes[0..4].*),
+            else => unreachable,
+        };
+    }
+
     /// A codepoint's advance in pixels, from the face of the fallback chain
     /// that carries it, at that face's own scale.
+    ///
+    /// - `self`: the shaper.
+    /// - `codepoint`: the codepoint.
+    /// - `pixel_size`: the font size, in pixels.
+    /// - Returns: the advance, in pixels.
     fn codepointAdvance(self: *const Self, codepoint: u21, pixel_size: f32) f32 {
         const resolved = self.face.resolve(codepoint);
         const scale = resolved.face.scaleForPixelSize(pixel_size);
@@ -260,6 +297,13 @@ const TestQuadraticWrap = struct {
     const Self = @This();
 
     /// Wrap `text` the original way.
+    ///
+    /// - `shaper`: the shaper whose faces measure.
+    /// - `allocator`: owns the lines.
+    /// - `text`: the text.
+    /// - `pixel_size`: the font size, in pixels.
+    /// - `max_width`: the widest a line may be, in pixels.
+    /// - Returns: the lines; propagates allocation failure.
     fn wrap(shaper: *const TextShaper, allocator: std.mem.Allocator, text: []const u8, pixel_size: f32, max_width: f32) ![]mod.WrappedLine {
         var lines: std.ArrayList(mod.WrappedLine) = .empty;
         errdefer lines.deinit(allocator);

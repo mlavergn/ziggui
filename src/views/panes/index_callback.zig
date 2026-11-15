@@ -44,6 +44,10 @@ pub const IndexCallback = struct {
         const self = Self{ .context = context, .function = struct {
             const Self = @This();
 
+            /// Calls `method` on the context with the index.
+            ///
+            /// - `pointer`: the context.
+            /// - `index`: the index.
             fn call(pointer: ?*anyopaque, index: usize) void {
                 method(@ptrCast(@alignCast(pointer.?)), index);
             }
@@ -88,6 +92,10 @@ test "a bound index callback calls its handler with the bound index" {
     const Probe = struct {
         const Self = @This();
         index: ?usize = null,
+        /// Notes the index.
+        ///
+        /// - `self`: the probe.
+        /// - `index`: the index.
         fn onIndex(self: *Self, index: usize) void {
             self.index = index;
         }

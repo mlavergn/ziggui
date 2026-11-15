@@ -224,6 +224,10 @@ pub const MenuBarExtra = struct {
 
     /// Boxes `callback` so it outlives this call (SDL keeps the userdata
     /// pointer), and wires it to `entry` through the C-ABI thunk.
+    ///
+    /// - `self`: the extra.
+    /// - `entry`: the tray entry.
+    /// - `callback`: what clicking it runs.
     fn bind(self: *Self, entry: *sdl_c.SDL_TrayEntry, callback: views.Callback) void {
         const boxed = self.allocator.create(views.Callback) catch |err| {
             log.err("tray entry callback not bound: {t}", .{err});
@@ -239,6 +243,9 @@ pub const MenuBarExtra = struct {
     }
 
     /// SDL's entry callback: runs the boxed callback.
+    ///
+    /// - `userdata`: the boxed callback.
+    /// - `entry`: the entry clicked, unused.
     fn entryClicked(userdata: ?*anyopaque, entry: ?*sdl_c.SDL_TrayEntry) callconv(.c) void {
         _ = entry;
         const callback: *views.Callback = @ptrCast(@alignCast(userdata orelse return));

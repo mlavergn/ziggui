@@ -21,6 +21,8 @@ pub const TokenField = @import("token_field.zig").TokenField;
 pub const FileNodeKind = @import("file_browser_state.zig").FileNodeKind;
 /// One entry of a `FileBrowser`'s folder.
 pub const FileNode = @import("file_browser_state.zig").FileNode;
+/// What a `FileBrowser` picks: a path and what it is.
+pub const FilePick = @import("file_browser_state.zig").FilePick;
 /// What a `FileBrowser` shows (`open`, `up`, `enter`, `move`, `select`, `pickAlloc`).
 pub const FileBrowserState = @import("file_browser_state.zig").FileBrowserState;
 /// A local file and folder picker drawn in the window.

@@ -256,8 +256,10 @@ pub const Kit = struct {
     /// - Returns: the panel's view.
     pub fn filesPanel(self: *Self, theme: ziggui.Theme) ziggui.View {
         const allocator = ziggui.BuildScope.shared().allocator();
-        const pick = self.files.pickAlloc(allocator) catch @panic("oom");
-        const said = allocator.print("Picks the {s} {s}", .{ if (pick.kind == .directory) "folder" else "file", pick.path }) catch @panic("oom");
+        const said = if (self.files.pickAlloc(allocator) catch @panic("oom")) |pick|
+            allocator.print("Picks the {s} {s}", .{ if (pick.kind == .directory) "folder" else "file", pick.path }) catch @panic("oom")
+        else
+            "Picks nothing: the selection is hidden.";
         return ziggui.VStack(.{
             Self.card(theme, "FileBrowser: a tap selects, a double-click opens a folder", ziggui.FileBrowser(&self.files, true).frameHeight(280)),
             Self.leading(ziggui.Text(said).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated()),

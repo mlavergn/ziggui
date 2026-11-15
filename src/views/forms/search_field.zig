@@ -75,6 +75,9 @@ test "a search field shows its clear button only with text, and the button empti
     const Probe = struct {
         const Self = @This();
         cleared: usize = 0,
+        /// Counts a clear.
+        ///
+        /// - `self`: the probe.
         fn onClear(self: *Self) void {
             self.cleared += 1;
         }

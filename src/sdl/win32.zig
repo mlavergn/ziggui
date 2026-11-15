@@ -196,6 +196,12 @@ pub const Win32 = struct {
 
     /// The message-only window's procedure: a click on the icon runs the
     /// callback; Explorer restarting re-adds the icon.
+    ///
+    /// - `hwnd`: the window.
+    /// - `message`: the message.
+    /// - `wparam`: its first parameter.
+    /// - `lparam`: its second parameter.
+    /// - Returns: the message's result.
     fn windowProcedure(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) callconv(.winapi) LRESULT {
         const self = Self.shared();
         if (message == Self.WM_TRAYICON) {
@@ -216,6 +222,8 @@ pub const Win32 = struct {
     }
 
     /// Registers the icon with the shell, on notification version 4.
+    ///
+    /// - `self`: the icon.
     fn add(self: *Self) void {
         _ = Shell_NotifyIconW(Self.NIM_ADD, &self.notify_icon);
         self.notify_icon.uVersion = Self.NOTIFYICON_VERSION_4;
@@ -225,6 +233,11 @@ pub const Win32 = struct {
     /// An HICON from straight-alpha RGBA: a top-down 32-bit BGRA DIB (its
     /// alpha is the icon's transparency) plus the mask CreateIconIndirect requires.
     /// Null when `rgba` is not `width * height * 4` bytes or Win32 refused.
+    ///
+    /// - `rgba`: the pixels, straight alpha, rows top-down.
+    /// - `width`: the width, in pixels.
+    /// - `height`: the height, in pixels.
+    /// - Returns: the icon, or null.
     fn makeIcon(rgba: []const u8, width: c_int, height: c_int) ?*anyopaque {
         // The DIB holds exactly width * height pixels; the copy below fills it
         // from `rgba`, so a longer buffer would write past it.

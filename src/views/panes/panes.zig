@@ -465,6 +465,10 @@ test "a DiffView builds only the rows in view, and taps name the hunk" {
     const Probe = struct {
         const Self = @This();
         hunk: ?usize = null,
+        /// Notes the hunk.
+        ///
+        /// - `self`: the probe.
+        /// - `index`: the hunk's index.
         fn onHunk(self: *Self, index: usize) void {
             self.hunk = index;
         }
@@ -538,6 +542,10 @@ test "a DiffView over lines wrapped to its width has nothing to scroll across" {
     const Probe = struct {
         const Self = @This();
         hunk: ?usize = null,
+        /// Notes the hunk.
+        ///
+        /// - `self`: the probe.
+        /// - `index`: the hunk's index.
         fn onHunk(self: *Self, index: usize) void {
             self.hunk = index;
         }
