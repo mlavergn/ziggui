@@ -577,6 +577,19 @@ pub const View = struct {
         return view;
     }
 
+    /// Sets how the `Toggle`s in this subtree draw, as SwiftUI's
+    /// `.toggleStyle()`: `.checkbox` puts a box before the label, `.switch` a
+    /// switch after it; `.automatic` (the default) is a checkbox in a `Form`.
+    ///
+    /// - `self`: the view.
+    /// - `style`: the style.
+    /// - Returns: the view.
+    pub fn toggleStyle(self: *const Self, style: mod.ToggleStyle) Self {
+        var view = self.*;
+        view.modifiers.toggle_style = style;
+        return view;
+    }
+
     /// Presents `content` as a window-modal sheet while `presented` is true.
     ///
     /// - `self`: the presenting view.

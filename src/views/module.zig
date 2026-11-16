@@ -64,8 +64,12 @@ pub const PickerData = @import("core/module.zig").PickerData;
 pub const DrawingData = @import("core/module.zig").DrawingData;
 /// A `VideoPlayer`'s payload.
 pub const VideoPlayerData = @import("core/module.zig").VideoPlayerData;
+/// A `NativeView`'s payload.
+pub const NativeViewData = @import("core/module.zig").NativeViewData;
 /// The modifiers applied around a view's content.
 pub const Modifiers = @import("core/module.zig").Modifiers;
+/// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
+pub const ToggleStyle = @import("core/module.zig").ToggleStyle;
 /// A `.sheet`/`.alert`/`.popover` modifier.
 pub const OverlayModifier = @import("core/module.zig").OverlayModifier;
 /// A `.frame(...)` modifier's sizes and alignment.
@@ -126,6 +130,8 @@ pub const HitRegion = @import("core/module.zig").HitRegion;
 pub const HoverRegion = @import("core/module.zig").HoverRegion;
 /// A `VideoPlayer`'s frame registered while painting.
 pub const VideoRegion = @import("core/module.zig").VideoRegion;
+/// A `NativeView`'s frame registered while painting.
+pub const NativeRegion = @import("core/module.zig").NativeRegion;
 /// An accessibility role.
 pub const A11yRole = @import("core/module.zig").A11yRole;
 /// One node of the accessibility tree.
@@ -322,8 +328,10 @@ pub const NavigationPath = @import("containers/module.zig").NavigationPath;
 pub const NavigationSplitView = @import("containers/module.zig").NavigationSplitView;
 /// A `NavigationSplitView` whose sidebar is an inset panel.
 pub const NavigationSplitViewInset = @import("containers/module.zig").NavigationSplitViewInset;
-/// A button that pushes a route.
+/// A list row that pushes a route: its title and a trailing chevron.
 pub const NavigationLink = @import("containers/module.zig").NavigationLink;
+/// A `NavigationLink` row led by an icon.
+pub const NavigationLinkIcon = @import("containers/module.zig").NavigationLinkIcon;
 /// A button that pops a route.
 pub const NavigationBackButton = @import("containers/module.zig").NavigationBackButton;
 /// A button that opens a popover of items.
@@ -382,6 +390,18 @@ pub const RadioGroup = @import("containers/module.zig").RadioGroup;
 pub const TableColumn = @import("containers/module.zig").TableColumn;
 /// A multi-column table of text rows.
 pub const Table = @import("containers/module.zig").Table;
+/// A settings form in columns: labels right-aligned in one column, sections divided.
+pub const Form = @import("containers/module.zig").Form;
+/// A group of a `Form`'s rows.
+pub const Section = @import("containers/module.zig").Section;
+/// A `Form` row: a label in the form's label column, its controls beside it.
+pub const LabeledContent = @import("containers/module.zig").LabeledContent;
+/// An app's settings: a toolbar of tabs over the selected page.
+pub const Settings = @import("containers/module.zig").Settings;
+/// A `Table` whose columns the user drags wider or narrower.
+pub const TableResizable = @import("containers/module.zig").TableResizable;
+/// The column widths a user dragged in a `TableResizable`.
+pub const TableColumnCustomization = @import("containers/module.zig").TableColumnCustomization;
 /// The order a column is sorted in (`.forward`, `.reverse`), as SwiftUI's `SortOrder`.
 pub const SortOrder = @import("containers/module.zig").SortOrder;
 /// A `DataTable`'s sort column and direction.
@@ -576,6 +596,12 @@ pub const PlayerBackend = @import("media/module.zig").PlayerBackend;
 pub const Player = @import("media/module.zig").Player;
 /// A player's picture in the view tree.
 pub const VideoPlayer = @import("media/module.zig").VideoPlayer;
+/// The standard controls over a `VideoPlayer`: full screen, volume, transport, scrubber.
+pub const VideoPlayerControls = @import("media/module.zig").VideoPlayerControls;
+/// What a `VideoPlayerControls` keeps across frames; app-owned.
+pub const VideoPlayerControlsState = @import("media/module.zig").VideoPlayerControlsState;
+/// A platform view the app owns, placed where layout puts it.
+pub const NativeView = @import("media/module.zig").NativeView;
 
 // -----------------------------------------------------------------------------
 // Unit Tests

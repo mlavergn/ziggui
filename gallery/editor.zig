@@ -56,6 +56,9 @@ pub const Editor = struct {
     /// Whether the editor shows line numbers.
     line_numbers: ziggui.State(bool),
 
+    /// Whether the editor draws in the fixed-width face (`TextEditor.mono()`).
+    monospaced: ziggui.State(bool),
+
     /// The zoom, a step of the font-size ladder (`zoom_body` is the body size).
     zoom: ziggui.State(i64),
 
@@ -91,6 +94,7 @@ pub const Editor = struct {
             .allocator = allocator,
             .document = ziggui.TextFieldState.init(allocator),
             .line_numbers = ziggui.State(bool).init(allocator, true),
+            .monospaced = ziggui.State(bool).init(allocator, false),
             .zoom = ziggui.State(i64).init(allocator, zoom_body),
             .show_dialog = ziggui.State(bool).init(allocator, false),
             .path_field = ziggui.TextFieldState.init(allocator),
@@ -114,6 +118,7 @@ pub const Editor = struct {
         self.path_field.deinit();
         self.show_dialog.deinit();
         self.zoom.deinit();
+        self.monospaced.deinit();
         self.line_numbers.deinit();
         self.path.deinit(self.allocator);
         self.document.deinit();
@@ -126,7 +131,8 @@ pub const Editor = struct {
     /// - `theme`: the theme this frame draws with.
     /// - Returns: the editor's view, filling the space it is given.
     pub fn body(self: *Self, theme: ziggui.Theme) ziggui.View {
-        const editor = Self.zoomed(ziggui.TextEditor(&self.document, &self.document_scroll, self.line_numbers.get()), self.zoom.get())
+        const document = ziggui.TextEditor(&self.document, &self.document_scroll, self.line_numbers.get());
+        const editor = Self.zoomed(if (self.monospaced.get()) document.mono() else document, self.zoom.get())
             .frameMaxWidth()
             .frameMaxHeight()
             .paddingInsets(.{ .top = 8, .leading = 10, .bottom = 8, .trailing = 10 });
@@ -439,7 +445,7 @@ pub const Editor = struct {
     }
 
     /// The toolbar: the document's name, a dot while modified, and the
-    /// line-number toggle and file buttons.
+    /// monospaced and line-number toggles and the file buttons.
     ///
     /// - `self`: the editor.
     /// - Returns: the toolbar.
@@ -448,6 +454,7 @@ pub const Editor = struct {
         return ziggui.HStack(.{
             ziggui.Text(title).font(.headline),
             ziggui.Spacer(),
+            ziggui.Toggle("Monospaced", self.monospaced.binding()),
             ziggui.Toggle("Line numbers", self.line_numbers.binding()),
             ziggui.ButtonRoled("New", .plain, ziggui.Callback.init(Self, self, Self.newDocument)),
             ziggui.ButtonRoled("Open", .plain, ziggui.Callback.init(Self, self, Self.openDialog)),
@@ -479,7 +486,7 @@ pub const Editor = struct {
     }
 
     /// The status bar: the caret's line and column, the document's
-    /// characters and lines, and the status message.
+    /// characters and lines, the code name it shows, and the status message.
     ///
     /// - `self`: the editor.
     /// - `theme`: the theme this frame draws with.
@@ -493,6 +500,7 @@ pub const Editor = struct {
         return ziggui.HStack(.{
             ziggui.Text(counts).font(.footnote).foreground(theme.colors.secondary_label),
             ziggui.Spacer(),
+            ziggui.Text("ziggui.TextEditor").font(.caption).mono().foreground(theme.colors.tertiary_label),
             ziggui.Text(self.status()).font(.footnote).foreground(theme.colors.tertiary_label),
         }).spacing(14)
             .paddingInsets(.{ .top = 6, .leading = 14, .bottom = 6, .trailing = 14 })

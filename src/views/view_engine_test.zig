@@ -2256,3 +2256,126 @@ test "video player: a scrolled-away player registers an empty visible part" {
     try std.testing.expectApproxEqAbs(@as(f32, 500), regions.items[0].visible.y, 0.5);
     try std.testing.expectApproxEqAbs(@as(f32, 100), regions.items[0].visible.height, 0.5);
 }
+
+test "native view: in a window it registers its frame and paints nothing" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var regions: std.ArrayList(mod.NativeRegion) = .empty;
+    context.native_regions = &regions;
+    var marker: u8 = 0;
+    var canvas = renderer.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+
+    const tree = mod.VStack(.{ mod.NativeView(&marker).cornerRadius(6), mod.Text("Below") }).clipped();
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 320, .height = 200 }, &canvas);
+
+    try std.testing.expectEqual(@as(usize, 1), regions.items.len);
+    const region = regions.items[0];
+    try std.testing.expect(region.handle == @as(*anyopaque, &marker));
+    try std.testing.expectEqual(@as(f32, 6), region.corner_radius);
+    try std.testing.expectApproxEqAbs(@as(f32, 320), region.rect.width, 0.5);
+    try std.testing.expect(region.visible.width > 0 and region.visible.height <= region.rect.height);
+    for (canvas.commands.items) |command| switch (command) {
+        .fillRoundedRect => |fill| try std.testing.expect(fill.rect.width != region.rect.width or fill.rect.height != region.rect.height),
+        else => {},
+    };
+}
+
+test "native view: headless, or with no handle, it is a placeholder and registers nothing" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var marker: u8 = 0;
+    var framebuffer = try environment.renderToFramebuffer(&context, mod.NativeView(&marker), .{ .x = 0, .y = 0, .width = 64, .height = 40 }, 64, 40);
+    defer framebuffer.deinit();
+    try std.testing.expect(framebuffer.at(4, 4).approxEql(context.theme.colors.control_background, 0.02));
+
+    var regions: std.ArrayList(mod.NativeRegion) = .empty;
+    context.native_regions = &regions;
+    var canvas = renderer.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+    try mod.ViewRenderer.render(&context, mod.NativeView(null), .{ .x = 0, .y = 0, .width = 64, .height = 40 }, &canvas);
+    try std.testing.expectEqual(@as(usize, 0), regions.items.len);
+}
+
+test "native view: a scrolled-away view registers nothing, one straddling the edge only its visible part" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var regions: std.ArrayList(mod.NativeRegion) = .empty;
+    context.native_regions = &regions;
+    context.visible = .{ .x = 0, .y = 500, .width = 320, .height = 100 };
+    var marker: u8 = 0;
+    var canvas = renderer.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+    try mod.ViewRenderer.render(&context, mod.NativeView(&marker), .{ .x = 0, .y = 0, .width = 320, .height = 180 }, &canvas);
+    try std.testing.expectEqual(@as(usize, 0), regions.items.len);
+    try mod.ViewRenderer.render(&context, mod.NativeView(&marker), .{ .x = 0, .y = 450, .width = 320, .height = 180 }, &canvas);
+    try std.testing.expectEqual(@as(usize, 1), regions.items.len);
+    try std.testing.expectApproxEqAbs(@as(f32, 500), regions.items[0].visible.y, 0.5);
+    try std.testing.expectApproxEqAbs(@as(f32, 100), regions.items[0].visible.height, 0.5);
+}
+
+/// A body for the mono editor test: one editor, its face chosen by `mono`.
+const EditorProbe = struct {
+    const Self = @This();
+
+    /// The editor's text.
+    field: mod.TextFieldState,
+
+    /// The editor's scroll.
+    scroll: mod.ScrollState = .{},
+
+    /// Whether the editor draws in the fixed-width face.
+    mono: bool,
+
+    /// The editor, with no gutter, filling the frame.
+    ///
+    /// - `self`: the probe.
+    /// - Returns: the tree.
+    fn body(self: *Self) mod.View {
+        const editor = mod.TextEditor(&self.field, &self.scroll, false);
+        return if (self.mono) editor.mono() else editor;
+    }
+
+    /// The rightmost column of the frame's top 30 rows that differs from the
+    /// editor's ground (sampled at its top left, inside the border): where the
+    /// text ends.
+    ///
+    /// - `rgba`: the frame, `width` pixels wide.
+    /// - `width`: the frame's width.
+    /// - Returns: the column.
+    fn inkRight(rgba: []const u8, width: usize) usize {
+        const ground = rgba[(4 * width + 4) * 4 ..][0..3];
+        var right: usize = 0;
+        for (4..30) |row| {
+            for (4..width - 4) |column| {
+                const pixel = rgba[(row * width + column) * 4 ..][0..3];
+                if (@abs(@as(i32, pixel[0]) - ground[0]) > 60) right = @max(right, column);
+            }
+        }
+        return right;
+    }
+};
+
+test "view: a TextEditor's .mono() draws it in the fixed-width face" {
+    const allocator = std.testing.allocator;
+    const previous = mod.BuildScope.shared().viewport();
+    defer mod.BuildScope.shared().setViewport(previous.width, previous.height);
+    var rights: [2]usize = undefined;
+    for ([_]bool{ false, true }, &rights) |mono, *right| {
+        var probe: EditorProbe = .{ .field = mod.TextFieldState.init(allocator), .mono = mono };
+        defer probe.field.deinit();
+        try probe.field.setText("iiiiiiiiii");
+        const rgba = try mod.Screenshot.render(allocator, &probe, EditorProbe.body, .{ .width = 400, .height = 40, .theme = renderer.MacosTheme.light });
+        defer allocator.free(rgba);
+        right.* = EditorProbe.inkRight(rgba, 400);
+    }
+    // Ten narrow i's in the proportional face; ten full cells in the mono one.
+    try std.testing.expect(rights[0] > 8);
+    try std.testing.expect(rights[1] > rights[0] + 30);
+}

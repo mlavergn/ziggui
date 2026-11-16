@@ -126,6 +126,14 @@ pub const Modifiers = struct {
     /// scroll) — for prose/prompt inputs. Ignored when line numbers are on (a
     /// code editor stays non-wrapping). See `.softWrap()`.
     soft_wrap: bool = false,
+    /// How the `Toggle`s in this subtree draw, or null to inherit. See `.toggleStyle()`.
+    toggle_style: ?mod.ToggleStyle = null,
+    /// A `Form`: its subtree's form labels share a column as wide as the
+    /// widest of them, and its toggles default to checkboxes.
+    form_columns: bool = false,
+    /// A `LabeledContent`'s label: framed to its `Form`'s label column, its
+    /// text at the trailing edge.
+    form_label: bool = false,
 };
 
 // -----------------------------------------------------------------------------

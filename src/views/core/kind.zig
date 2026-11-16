@@ -296,6 +296,14 @@ pub const VideoPlayerData = struct {
     player: *mod.Player,
 };
 
+/// A `NativeView`: a platform view the app owns, placed over the window.
+pub const NativeViewData = struct {
+    const Self = @This();
+
+    /// The platform view (an `NSView` on macOS), or null for a placeholder; the app owns it.
+    handle: ?*anyopaque,
+};
+
 /// What a view is.
 pub const Kind = union(enum) {
     const Self = @This();
@@ -358,6 +366,8 @@ pub const Kind = union(enum) {
     drawing: DrawingData,
     /// A player's picture (see `VideoPlayer`).
     videoPlayer: VideoPlayerData,
+    /// A platform view the app owns (see `NativeView`).
+    nativeView: NativeViewData,
     /// A transparent container whose children are spliced into the enclosing
     /// stack (used by `ForEach`).
     group: []const mod.View,

@@ -285,8 +285,12 @@ pub const PickerData = views.PickerData;
 pub const DrawingData = views.DrawingData;
 /// A `VideoPlayer`'s payload.
 pub const VideoPlayerData = views.VideoPlayerData;
+/// A `NativeView`'s payload.
+pub const NativeViewData = views.NativeViewData;
 /// The modifiers applied around a view's content.
 pub const Modifiers = views.Modifiers;
+/// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
+pub const ToggleStyle = views.ToggleStyle;
 /// A `.sheet`/`.alert`/`.popover` modifier.
 pub const OverlayModifier = views.OverlayModifier;
 /// A `.frame(...)` modifier's sizes and alignment.
@@ -341,6 +345,8 @@ pub const HitRegion = views.HitRegion;
 pub const HoverRegion = views.HoverRegion;
 /// A `VideoPlayer`'s frame registered while painting.
 pub const VideoRegion = views.VideoRegion;
+/// A `NativeView`'s frame registered while painting.
+pub const NativeRegion = views.NativeRegion;
 /// An accessibility role.
 pub const A11yRole = views.A11yRole;
 /// One node of the accessibility tree.
@@ -516,8 +522,10 @@ pub const NavigationPath = views.NavigationPath;
 pub const NavigationSplitView = views.NavigationSplitView;
 /// A `NavigationSplitView` whose sidebar is an inset panel.
 pub const NavigationSplitViewInset = views.NavigationSplitViewInset;
-/// A button that pushes a route.
+/// A list row that pushes a route: its title and a trailing chevron.
 pub const NavigationLink = views.NavigationLink;
+/// A `NavigationLink` row led by an icon.
+pub const NavigationLinkIcon = views.NavigationLinkIcon;
 /// A button that pops a route.
 pub const NavigationBackButton = views.NavigationBackButton;
 /// A button that opens a popover of items.
@@ -576,6 +584,18 @@ pub const RadioGroup = views.RadioGroup;
 pub const TableColumn = views.TableColumn;
 /// A multi-column table of text rows.
 pub const Table = views.Table;
+/// A settings form in columns: labels right-aligned in one column, sections divided.
+pub const Form = views.Form;
+/// A group of a `Form`'s rows.
+pub const Section = views.Section;
+/// A `Form` row: a label in the form's label column, its controls beside it.
+pub const LabeledContent = views.LabeledContent;
+/// An app's settings: a toolbar of tabs over the selected page.
+pub const Settings = views.Settings;
+/// A `Table` whose columns the user drags wider or narrower.
+pub const TableResizable = views.TableResizable;
+/// The column widths a user dragged in a `TableResizable`.
+pub const TableColumnCustomization = views.TableColumnCustomization;
 /// The order a column is sorted in (`.forward`, `.reverse`), as SwiftUI's `SortOrder`.
 pub const SortOrder = views.SortOrder;
 /// A `DataTable`'s sort column and direction.
@@ -838,6 +858,12 @@ pub const PlayerBackend = views.PlayerBackend;
 pub const Player = views.Player;
 /// A player's picture in the view tree.
 pub const VideoPlayer = views.VideoPlayer;
+/// The standard controls over a `VideoPlayer`: full screen, volume, transport, scrubber.
+pub const VideoPlayerControls = views.VideoPlayerControls;
+/// What a `VideoPlayerControls` keeps across frames; app-owned.
+pub const VideoPlayerControlsState = views.VideoPlayerControlsState;
+/// A platform view the app owns, placed where layout puts it.
+pub const NativeView = views.NativeView;
 
 // -----------------------------------------------------------------------------
 // Testing

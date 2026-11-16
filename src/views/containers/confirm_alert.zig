@@ -9,7 +9,7 @@ const log = std.log.scoped(.ziggui_confirm_alert);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 
-/// The question's panel: `title`, `detail`, then the refusal (`esc`) and the agreement (`↩`, destructive unless `Confirm.destructive` is false).
+/// The question's panel: `title`, `detail`, then the refusal and the agreement (destructive unless `Confirm.destructive` is false), plain buttons.
 ///
 /// The keys are the app's to route: Enter (or `y`) agrees and Esc (or `n`) refuses in every app on ziggui.
 ///
@@ -26,8 +26,8 @@ pub fn ConfirmAlert(question: *const mod.Confirm, no_label: []const u8, on_no: m
         if (question.detail.len > 0) mod.WrappedText(mod.DisplayText.clean(allocator, question.detail)).size(12).foreground(tokens.secondary_label).frameMaxWidth().frameAlign(.leading) else mod.Empty(),
         mod.HStack(.{
             mod.Spacer(),
-            mod.ButtonKeyed(no_label, "esc", .normal, on_no),
-            mod.ButtonKeyed(question.yes_label, "↩", if (question.destructive) .destructive else .prominent, on_yes),
+            mod.ButtonRoled(no_label, .normal, on_no),
+            mod.ButtonRoled(question.yes_label, if (question.destructive) .destructive else .prominent, on_yes),
         }).spacing(8),
     }).spacing(12).alignment(.leading).padding(20).frameMinWidth(400);
 }

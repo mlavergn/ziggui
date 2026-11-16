@@ -39,6 +39,12 @@ pub const TestCanvas = struct {
     /// The `onHover` regions the last `render` registered.
     hovers: std.ArrayList(mod.HoverRegion) = .empty,
 
+    /// Where the pointer rests for the next `render`, or null (outside the window).
+    hover_point: ?renderer.Point = null,
+
+    /// Where the primary button is held for the next `render`, or null.
+    press_point: ?renderer.Point = null,
+
     /// The overlays (popovers, sheets, alerts) the last `render` drew.
     overlays: std.ArrayList(mod.OverlayRequest) = .empty,
 
@@ -105,6 +111,8 @@ pub const TestCanvas = struct {
         var context = mod.Context.init(self.theme, &self.cache, arena, &self.hits);
         context.icon_cache = &self.icon_cache;
         context.hover_regions = &self.hovers;
+        context.hover_point = self.hover_point;
+        context.press_point = self.press_point;
         context.overlays = &self.overlays;
         var canvas = renderer.Canvas.init(arena);
         const full: renderer.Rect = .{ .x = 0, .y = 0, .width = @floatFromInt(width), .height = @floatFromInt(height) };

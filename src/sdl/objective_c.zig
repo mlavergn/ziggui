@@ -139,6 +139,15 @@ pub const ObjectiveC = struct {
         return Self.send(Id, allocated, "init", .{});
     }
 
+    /// Retains an object, so it lives until a matching `release`; nil is ignored.
+    ///
+    /// - `object`: the object.
+    /// - Returns: the object.
+    pub fn retain(object: Id) Id {
+        if (object != null) _ = Self.send(Id, object, "retain", .{});
+        return object;
+    }
+
     /// Releases an owned object; nil is ignored.
     ///
     /// - `object`: the object.

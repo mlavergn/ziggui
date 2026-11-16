@@ -13,6 +13,9 @@ const mod = @import("module.zig");
 /// the wheel can drive it and the caret can be followed. Pass `line_numbers` to
 /// show a gutter. The event loop routes editing keys to whichever field is
 /// focused, so no extra wiring is needed beyond owning the two states.
+/// `.mono()` draws it in the bundled fixed-width face (JetBrains Mono), gutter
+/// included, as a code editor wants; the caret, selection and clicks measure
+/// in the same face, so they stay on the glyphs. `.font()`/`.size()` set its size.
 ///
 /// - `editor_state`: its buffer, caret and selection.
 /// - `scroll_state`: its vertical scroll.

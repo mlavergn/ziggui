@@ -393,6 +393,20 @@ const Window = struct {
             .animator_fn = Self.animator,
         };
         defer target.showcase.platform = .{};
+        // The Native View section shows a real AppKit view in a window.
+        // The Video panel's full-screen button takes the window with it.
+        target.media.set_full_screen_fn = Self.setFullScreen;
+        target.media.is_full_screen_fn = Self.isFullScreen;
+        defer {
+            target.media.set_full_screen_fn = null;
+            target.media.is_full_screen_fn = null;
+        }
+        const native_sample = Self.makeNativeSample();
+        target.media.native_sample = native_sample;
+        defer {
+            target.media.native_sample = null;
+            Self.releaseNativeSample(native_sample);
+        }
 
         const app = ziggui.App.shared();
         app.setThemeProvider(Self.theme);
@@ -409,6 +423,63 @@ const Window = struct {
             .min_height = 420,
             .theme = target.theme(),
         }, gallery.Gallery.body, null);
+    }
+
+    /// Makes the Native View section's platform view: on macOS a layer-hosting
+    /// `NSView`, tinted and labelled, which `NativeView` places; elsewhere none.
+    ///
+    /// - Returns: the view, or null where there is no host.
+    fn makeNativeSample() ?*anyopaque {
+        return if (comptime gallery.is_macos) Self.makeAppKitSample() else null;
+    }
+
+    /// Makes the macOS sample view for `makeNativeSample`.
+    ///
+    /// - Returns: the view, owned by the caller.
+    fn makeAppKitSample() ?*anyopaque {
+        const pool = ziggui.sdl.ObjectiveC.pushPool();
+        defer ziggui.sdl.ObjectiveC.popPool(pool);
+        const layer = ziggui.sdl.ObjectiveC.new("CALayer");
+        ziggui.sdl.ObjectiveC.send(void, layer, "setBackgroundColor:", .{ziggui.sdl.ObjectiveC.send(ziggui.sdl.Id, ziggui.sdl.ObjectiveC.send(ziggui.sdl.Id, ziggui.sdl.ObjectiveC.class("NSColor"), "systemTealColor", .{}), "CGColor", .{})});
+        const label = ziggui.sdl.ObjectiveC.new("CATextLayer");
+        ziggui.sdl.ObjectiveC.send(void, label, "setString:", .{ziggui.sdl.ObjectiveC.string("An AppKit NSView, placed by ziggui")});
+        ziggui.sdl.ObjectiveC.send(void, label, "setFontSize:", .{@as(f64, 15)});
+        ziggui.sdl.ObjectiveC.send(void, label, "setContentsScale:", .{@as(f64, 2)});
+        ziggui.sdl.ObjectiveC.send(void, label, "setAlignmentMode:", .{ziggui.sdl.ObjectiveC.string("center")});
+        ziggui.sdl.ObjectiveC.send(void, label, "setForegroundColor:", .{ziggui.sdl.ObjectiveC.send(ziggui.sdl.Id, ziggui.sdl.ObjectiveC.send(ziggui.sdl.Id, ziggui.sdl.ObjectiveC.class("NSColor"), "whiteColor", .{}), "CGColor", .{})});
+        // Width- and height-sizable, so it follows the view's size.
+        ziggui.sdl.ObjectiveC.send(void, label, "setAutoresizingMask:", .{@as(u32, 2 | 16)});
+        ziggui.sdl.ObjectiveC.send(void, layer, "addSublayer:", .{label});
+        ziggui.sdl.ObjectiveC.release(label);
+        const view = ziggui.sdl.ObjectiveC.send(ziggui.sdl.Id, ziggui.sdl.ObjectiveC.send(ziggui.sdl.Id, ziggui.sdl.ObjectiveC.class("NSView"), "alloc", .{}), "initWithFrame:", .{ziggui.sdl.CGRect{}});
+        // Layer-hosting: the layer is set before `wantsLayer`.
+        ziggui.sdl.ObjectiveC.send(void, view, "setLayer:", .{layer});
+        ziggui.sdl.ObjectiveC.send(void, view, "setWantsLayer:", .{@as(u8, 1)});
+        ziggui.sdl.ObjectiveC.release(layer);
+        return view;
+    }
+
+    /// Frees the Native View section's platform view, once the loop is done with it.
+    ///
+    /// - `view`: the view `makeNativeSample` made, or null.
+    fn releaseNativeSample(view: ?*anyopaque) void {
+        if (comptime gallery.is_macos) ziggui.sdl.ObjectiveC.release(view);
+    }
+
+    /// Takes the window into full screen or out of it (the Video panel's
+    /// full-screen button).
+    ///
+    /// - `full_screen`: true for full screen.
+    fn setFullScreen(full_screen: bool) void {
+        ziggui.App.shared().setFullScreen(full_screen);
+    }
+
+    /// Reports whether the window is in full screen (the Video panel's
+    /// check that it still is).
+    ///
+    /// - Returns: true in full screen.
+    fn isFullScreen() bool {
+        return ziggui.App.shared().isFullScreen();
     }
 
     /// Minimizes the window (the Window section's minimize button).

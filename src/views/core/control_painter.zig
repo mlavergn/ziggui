@@ -23,6 +23,10 @@ pub const KeyCapColors = struct {
 pub const ControlPainter = struct {
     const Self = @This();
 
+    /// The shade laid over a glass pill button while it is pressed: darker in
+    /// either scheme, as `MacosTheme`'s clear glass does.
+    const pressed_shade = renderer.Color.black.withAlpha(0.12);
+
     /// The y at which something `height` tall is centered in `rect`.
     ///
     /// - `rect`: the rect.
@@ -43,13 +47,16 @@ pub const ControlPainter = struct {
         const dim: f32 = if (context.disabled) 0.4 else 1.0;
         // The theme's painter draws the button chrome and tells us the label color.
         const hovered = if (context.hover_point) |point| rect.contains(point) else false;
+        const pressed = Self.isPressed(context, rect);
         const surface = context.surface(canvas);
         var label_color: renderer.Color = undefined;
         if (button.icon != null and button.role == .normal and context.theme.painter.glass_surface != null) {
             // Icon-label buttons are the macOS *toolbar pill* style: a freestanding
             // glass capsule rather than the gently-rounded in-content button.
             try context.theme.painter.glass_surface.?(surface, rect, rect.height / 2);
-            if (hovered and !context.disabled) {
+            if (pressed) {
+                try surface.fill(rect, rect.height / 2, pressed_shade);
+            } else if (hovered and !context.disabled) {
                 try surface.fill(rect, rect.height / 2, context.theme.colors.hover);
             }
             label_color = if (context.disabled) context.theme.colors.tertiary_label else context.theme.colors.label;
@@ -57,6 +64,7 @@ pub const ControlPainter = struct {
             label_color = try context.theme.painter.button(surface, rect, button.role, .{
                 .disabled = context.disabled,
                 .hovered = hovered and !context.disabled,
+                .pressed = pressed,
             });
             // A plain (text-only) button takes a color asked for with `.foreground()`.
             if (button.role == .plain and !context.disabled) {
@@ -160,6 +168,7 @@ pub const ControlPainter = struct {
     /// - `canvas`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
     pub fn paintToggle(context: *const mod.Context, toggle: mod.ToggleData, rect: renderer.Rect, canvas: *renderer.Canvas) !void {
+        if (context.resolvedToggleStyle() == .checkbox) return Self.paintCheckbox(context, toggle, rect, canvas);
         const opacity = context.opacity;
         const pixel_size = context.theme.typography.body.size;
         // label on the leading edge
@@ -181,7 +190,9 @@ pub const ControlPainter = struct {
         try context.hit_regions.append(context.arena, .{ .rect = rect, .action = .{ .toggle = toggle.value }, .disabled = context.disabled });
     }
 
-    /// Paints a slider: the theme's groove, fill and handle over the view's geometry.
+    /// Paints a slider: the theme's groove, fill and handle over the view's
+    /// geometry; with a `.foreground` color, flat in that color instead
+    /// (`paintTintedSlider`).
     ///
     /// - `context`: the context.
     /// - `slider`: the slider.
@@ -198,10 +209,14 @@ pub const ControlPainter = struct {
         const knob_center_x = track.x + track.width * fraction;
         const knob_rect = renderer.Rect{ .x = knob_center_x - radius, .y = rect.midY() - radius, .width = 2 * radius, .height = 2 * radius };
         const hovered = if (context.hover_point) |point| rect.contains(point) else false;
-        try context.theme.painter.slider(context.surface(canvas), track, fraction, knob_rect, .{
-            .disabled = context.disabled,
-            .hovered = hovered and !context.disabled,
-        });
+        if (context.tint) |tint| {
+            try Self.paintTintedSlider(context.surface(canvas), track, fraction, knob_rect, if (context.disabled) tint.multiplyAlpha(0.4) else tint);
+        } else {
+            try context.theme.painter.slider(context.surface(canvas), track, fraction, knob_rect, .{
+                .disabled = context.disabled,
+                .hovered = hovered and !context.disabled,
+            });
+        }
         try context.hit_regions.append(context.arena, .{
             .rect = rect,
             .action = .{ .slider = .{ .binding = slider.value, .min = slider.min, .max = slider.max, .track = track } },
@@ -310,6 +325,7 @@ pub const ControlPainter = struct {
         const label_color = try context.theme.painter.button(context.surface(canvas), rect, .normal, .{
             .disabled = context.disabled,
             .hovered = hovered and !context.disabled,
+            .pressed = Self.isPressed(context, rect),
         });
         const dim: f32 = if (context.disabled) 0.4 else 1;
         const color = label_color.multiplyAlpha(context.opacity * dim);
@@ -358,6 +374,76 @@ pub const ControlPainter = struct {
                 .disabled = context.disabled,
             });
         }
+    }
+
+    /// Paints a checkbox toggle: a box on the leading edge (the accent with a
+    /// check mark while on, the control's ground with its border while off),
+    /// then the label. A tap anywhere on it flips it.
+    ///
+    /// - `context`: the context.
+    /// - `toggle`: the toggle.
+    /// - `rect`: its frame.
+    /// - `canvas`: where it is painted.
+    /// - Returns: nothing; propagates allocation failure.
+    fn paintCheckbox(context: *const mod.Context, toggle: mod.ToggleData, rect: renderer.Rect, canvas: *renderer.Canvas) !void {
+        const colors = &context.theme.colors;
+        const dim: f32 = if (context.disabled) 0.4 else 1;
+        const opacity = context.opacity * dim;
+        const box = renderer.Rect{
+            .x = rect.x,
+            .y = Self.verticalCenter(rect, mod.ControlMetrics.checkbox_size),
+            .width = mod.ControlMetrics.checkbox_size,
+            .height = mod.ControlMetrics.checkbox_size,
+        };
+        const radius = context.theme.metrics.radius(mod.ControlMetrics.checkbox_radius);
+        const surface = context.surface(canvas);
+        if (toggle.value.get()) {
+            try surface.fill(box, radius, colors.accent.multiplyAlpha(dim));
+            if (context.icon_cache) |cache| renderer.TextPainter.shared().drawIcon(canvas, cache, renderer.Icon.check.codepoint(), box.insetBy(2, 2), context.scale, colors.on_accent.multiplyAlpha(opacity)) catch |err| log.debug("check not drawn [{t}]", .{err});
+        } else {
+            try surface.fill(box, radius, colors.control_background.multiplyAlpha(dim));
+            try surface.stroke(box, radius, context.theme.metrics.hairline, colors.control_border.multiplyAlpha(dim));
+        }
+        if (toggle.label.len > 0) {
+            const pixel_size = context.theme.typography.body.size;
+            const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
+            const origin = renderer.Point{ .x = box.maxX() + mod.ControlMetrics.checkbox_gap, .y = Self.verticalCenter(rect, line_height) };
+            context.drawText(canvas, toggle.label, pixel_size, context.foreground.multiplyAlpha(opacity), origin) catch |err| log.debug("text not drawn [{t}]", .{err});
+        }
+        try context.hit_regions.append(context.arena, .{ .rect = rect, .action = .{ .toggle = toggle.value }, .disabled = context.disabled });
+    }
+
+    /// Paints a slider flat in one color, as media controls draw theirs over
+    /// a picture: the groove in the color at a third, the filled part and the
+    /// knob in the color, the knob on a soft shadow. It reads on any ground,
+    /// which the theme's slider (made for the window's) does not.
+    ///
+    /// - `surface`: where it is painted.
+    /// - `track`: the groove's frame.
+    /// - `fraction`: how much of the groove is filled, 0 to 1.
+    /// - `knob`: the knob's frame.
+    /// - `color`: the slider's color.
+    /// - Returns: nothing; propagates allocation failure.
+    fn paintTintedSlider(surface: renderer.Surface, track: renderer.Rect, fraction: f32, knob: renderer.Rect, color: renderer.Color) !void {
+        const track_radius = track.height / 2;
+        try surface.fill(track, track_radius, color.multiplyAlpha(0.35));
+        try surface.fill(.{ .x = track.x, .y = track.y, .width = track.width * fraction, .height = track.height }, track_radius, color);
+        const radius = knob.width / 2;
+        try surface.fillCircle(.{ .x = knob.midX(), .y = knob.midY() + 0.75 }, radius, renderer.Color.black.withAlpha(0.25 * color.a));
+        try surface.fillCircle(.{ .x = knob.midX(), .y = knob.midY() }, radius, color);
+    }
+
+    /// Whether a control draws pressed: enabled, with the primary button held
+    /// after going down inside it, and the pointer still over it.
+    ///
+    /// - `context`: the context, with its press and hover points.
+    /// - `rect`: the control's frame.
+    /// - Returns: true while it is held.
+    fn isPressed(context: *const mod.Context, rect: renderer.Rect) bool {
+        if (context.disabled) return false;
+        const press = context.press_point orelse return false;
+        const hover = context.hover_point orelse return false;
+        return rect.contains(press) and rect.contains(hover);
     }
 };
 

@@ -83,6 +83,14 @@ pub const AvFoundationPlayer = @import("av_foundation_player.zig").AvFoundationP
 pub const MediaFoundationPlayer = @import("media_foundation_player.zig").MediaFoundationPlayer;
 /// The Linux media player (GStreamer): a stub for now.
 pub const GstreamerPlayer = @import("gstreamer_player.zig").GstreamerPlayer;
+/// This OS's host for `NativeView`: placement, overlay hiding and keyboard focus.
+pub const NativeBackend = @import("native_backend.zig").NativeBackend;
+/// Asks for frames for a moment after the window's content resizes, so placed views land.
+pub const ResizeSettle = @import("resize_settle.zig").ResizeSettle;
+/// The macOS native-view host: app `NSView`s above the Metal view.
+pub const AppKitNativeHost = @import("app_kit_native_host.zig").AppKitNativeHost;
+/// The Linux and Windows native-view host: a stub for now.
+pub const NativeHostStub = @import("native_host_stub.zig").NativeHostStub;
 /// The Objective-C runtime bridge the AVFoundation player uses.
 pub const ObjectiveC = @import("objective_c.zig").ObjectiveC;
 /// An Objective-C object pointer (`id`).
@@ -125,7 +133,7 @@ test {
         /// - Returns: true when the test references its declarations.
         fn descends(comptime name: []const u8) bool {
             if (std.mem.eql(u8, name, "sdl_c")) return false;
-            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
+            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
             if (std.mem.eql(u8, name, "Win32")) return os_tag == .windows;
             if (std.mem.eql(u8, name, "StatusNotifier")) return os_tag == .linux;
             return true;
