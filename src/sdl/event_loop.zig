@@ -81,6 +81,8 @@ fn WindowFrame(comptime AppState: type) type {
         panel_body: ?*const fn (*AppState) views.View = null,
         /// Where this frame's hover point lives (main window or panel).
         hover: ?*?renderer.Point = null,
+        /// Where this frame's press point lives (the main window only).
+        press: ?*?renderer.Point = null,
         /// Where this frame's `onHover` regions go (the main window only).
         hover_regions: ?*std.ArrayList(views.HoverRegion) = null,
         /// Resize the window to the view tree's content height each frame
@@ -92,6 +94,9 @@ fn WindowFrame(comptime AppState: type) type {
         /// Collect this frame's `VideoPlayer` regions and put the platform
         /// players' pictures behind them (the main window, where the OS can).
         presents_video: bool = false,
+        /// Collect this frame's `NativeView` regions and place the app's
+        /// platform views over them (the main window, where the OS can).
+        presents_native: bool = false,
         texture: *?*sdl_c.SDL_Texture,
         texture_width: *c_int,
         texture_height: *c_int,
@@ -198,6 +203,7 @@ fn WindowFrame(comptime AppState: type) type {
             context.icon_cache = self.icon_cache;
             context.fonts = app.fonts;
             context.hover_point = if (self.hover) |hover| hover.* else null;
+            context.press_point = if (self.press) |press| press.* else null;
             if (self.hover_regions) |list| {
                 list.* = .empty; // arena-backed, like `hits`
                 context.hover_regions = list;
@@ -206,6 +212,10 @@ fn WindowFrame(comptime AppState: type) type {
             // registers it here only when the OS can show a picture behind it.
             var video_regions: std.ArrayList(views.VideoRegion) = .empty;
             if (self.presents_video) context.video_regions = &video_regions;
+            // Arena-backed too; a `NativeView` registers its frame here only
+            // when the OS can place a platform view over the surface.
+            var native_regions: std.ArrayList(views.NativeRegion) = .empty;
+            if (self.presents_native) context.native_regions = &native_regions;
 
             // Auto-height panel: measure the tree and resize the window to it,
             // clamped to the screen's usable height. Swift's MenuBarExtra panel
@@ -268,6 +278,9 @@ fn WindowFrame(comptime AppState: type) type {
             views.ViewRenderer.renderScaled(&context, root, .{ .x = 0, .y = 0, .width = point_width, .height = point_height }, scale, &canvas) catch |err| log.debug("view tree not drawn [{t}]", .{err});
             // The pictures move with the frame that erased their holes.
             if (self.presents_video) mod.VideoBackend.present(self.window, video_regions.items);
+            // The platform views sit over the surface, so nothing ziggui draws
+            // can cover them: an overlay (or the text menu) hides them instead.
+            if (self.presents_native) mod.NativeBackend.present(self.window, native_regions.items, overlays.items.len > 0 or views.TextContextMenu.shared().isOpen());
             // Holes must reach the window's compositor as transparency.
             const see_through = self.transparent or video_regions.items.len > 0;
 
@@ -411,23 +424,77 @@ const EventRouter = struct {
     }
 
     /// Waits up to `timeout_ms` for an event; when one comes, handles it and
-    /// every event already queued. Returns whether one came.
+    /// every event already queued. Returns whether one came that can change
+    /// what is drawn (not only keys a focused platform view takes alone).
     ///
     /// - `self`: the router.
     /// - `timeout_ms`: how long to wait, in milliseconds.
-    /// - Returns: true when an event came.
+    /// - Returns: true when an event came that wants a frame.
     fn waitForEvent(self: *const Self, timeout_ms: c_int) bool {
         var event: sdl_c.SDL_Event = undefined;
         if (sdl_c.SDL_WaitEventTimeout(&event, timeout_ms)) {
+            // Keys a focused platform view takes alone change nothing ziggui
+            // draws: a batch of only those wakes no frame.
+            var drawn = !Self.nativeKeyOnly(&event);
             self.handle(&event);
             if (Self.endsBatch(&event)) return true;
             while (sdl_c.SDL_PollEvent(&event)) {
+                if (!Self.nativeKeyOnly(&event)) drawn = true;
                 self.handle(&event);
                 if (Self.endsBatch(&event)) return true;
             }
-            return true;
+            return drawn;
         }
         return false;
+    }
+
+    /// Reports whether `event` is a key only the placed platform view holding
+    /// the keyboard acts on (a key-up, typed text, or a key-down without ⌘ or
+    /// Ctrl, in the main window): `nativeOwns` drops it, and nothing ziggui
+    /// draws changes, so typing in a web view redraws nothing.
+    ///
+    /// - `event`: the event, before it is handled.
+    /// - Returns: true for a key the view takes alone.
+    fn nativeKeyOnly(event: *const sdl_c.SDL_Event) bool {
+        if (!mod.NativeBackend.presents) return false;
+        const window_id = switch (event.type) {
+            sdl_c.SDL_EVENT_KEY_UP => event.key.windowID,
+            sdl_c.SDL_EVENT_KEY_DOWN => if ((event.key.mod & (sdl_c.SDL_KMOD_GUI | sdl_c.SDL_KMOD_CTRL)) != 0) return false else event.key.windowID,
+            sdl_c.SDL_EVENT_TEXT_INPUT => event.text.windowID,
+            else => return false,
+        };
+        const panel = mod.Panel.shared();
+        if (panel.id != 0 and window_id == panel.id) return false;
+        return mod.NativeBackend.hasFocus();
+    }
+
+    /// Reports whether a main-window event belongs to a placed platform view
+    /// (see `NativeView`) rather than to ziggui. A press on one is its own; a
+    /// press elsewhere takes the keyboard back for ziggui. While one holds the
+    /// keyboard, a key with ⌘ (or Ctrl) is offered to the app's key handler,
+    /// since AppKit gives the view no Edit menu to act on it, and every other
+    /// key and typed text is the view's alone.
+    ///
+    /// - `event`: the event.
+    /// - Returns: true when ziggui must not handle it.
+    fn nativeOwns(event: *sdl_c.SDL_Event) bool {
+        const app = mod.App.shared();
+        switch (event.type) {
+            sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                if (mod.NativeBackend.contains(app.eventPoint(event.button.x, event.button.y))) return true;
+                mod.NativeBackend.release();
+                return false;
+            },
+            sdl_c.SDL_EVENT_KEY_DOWN => {
+                if (!mod.NativeBackend.hasFocus()) return false;
+                if ((event.key.mod & (sdl_c.SDL_KMOD_GUI | sdl_c.SDL_KMOD_CTRL)) != 0) {
+                    if (app.key_handler) |handler| _ = handler(event.key.key, @intCast(event.key.mod));
+                }
+                return true;
+            },
+            sdl_c.SDL_EVENT_KEY_UP, sdl_c.SDL_EVENT_TEXT_INPUT => return mod.NativeBackend.hasFocus(),
+            else => return false,
+        }
     }
 
     /// Handles one event.
@@ -451,7 +518,15 @@ const EventRouter = struct {
             sdl_c.SDL_EVENT_WINDOW_FOCUS_LOST, sdl_c.SDL_EVENT_WINDOW_CLOSE_REQUESTED, sdl_c.SDL_EVENT_WINDOW_MOUSE_LEAVE => event.window.windowID == panel.id,
             else => false,
         };
+        // A release ends the press and any drag whoever takes it: an app's
+        // handler that consumes it must not leave a button drawn pressed.
+        if (event.type == sdl_c.SDL_EVENT_MOUSE_BUTTON_UP) {
+            if (event.button.button == sdl_c.SDL_BUTTON_LEFT) app.press_point = null;
+            views.PointerInput.shared().endDrag();
+        }
         if (!on_panel and !views.TextContextMenu.shared().isOpen()) if (app.mouse_handler) |handler| if (mod.MouseEvent.fromSdl(event)) |mouse| if (handler(mouse)) return;
+        // A platform view holding the keyboard, or under the pointer, owns the event.
+        if (!on_panel and Self.nativeOwns(event)) return;
         const target_hits: []const views.HitRegion = if (on_panel) panel.hits else self.hits;
         const target_scrolls: []const views.ScrollRegion = if (on_panel) panel.scrolls else self.scrolls;
         switch (event.type) {
@@ -462,7 +537,11 @@ const EventRouter = struct {
             // A quit handler may refuse (see `App.setQuitHandler`).
             sdl_c.SDL_EVENT_QUIT => app.hooks.requestQuit(self.running),
             // Clicking anywhere else dismisses the popover, like a native panel.
-            sdl_c.SDL_EVENT_WINDOW_FOCUS_LOST => if (on_panel) panel.hide() else if (app.focus_handler) |handler| handler(false),
+            sdl_c.SDL_EVENT_WINDOW_FOCUS_LOST => if (on_panel) panel.hide() else {
+                // A release outside a window that lost focus may never arrive.
+                app.press_point = null;
+                if (app.focus_handler) |handler| handler(false);
+            },
             sdl_c.SDL_EVENT_WINDOW_FOCUS_GAINED => if (event.window.windowID != panel.id) if (app.focus_handler) |handler| handler(true),
             // The flags are read as the event is handled, after a maximize's
             // own resize has set them, so only a restored frame is kept.
@@ -476,6 +555,8 @@ const EventRouter = struct {
                 // A press hides the hover hint until the pointer rests on another view.
                 views.HelpTip.shared().press();
                 const point = app.eventPoint(event.button.x, event.button.y);
+                // The button under it draws pressed until the release.
+                if (!on_panel and event.button.button == sdl_c.SDL_BUTTON_LEFT) app.press_point = point;
                 if (event.button.button == sdl_c.SDL_BUTTON_RIGHT) {
                     // Right-click pops the text context menu when over an editable
                     // field; elsewhere it just dismisses any open menu.
@@ -520,7 +601,6 @@ const EventRouter = struct {
                 }
                 app.setTextCursor(views.PointerInput.shared().textCursorAt(target_hits, motion_point));
             },
-            sdl_c.SDL_EVENT_MOUSE_BUTTON_UP => views.PointerInput.shared().endDrag(),
             sdl_c.SDL_EVENT_WINDOW_MOUSE_LEAVE => if (on_panel) {
                 panel.hover = null;
             } else {
@@ -665,23 +745,37 @@ pub fn EventLoop(comptime AppState: type) type {
         // The popover panel (a second, hidden window). It uses its own
         // SDL_Renderer + CPU raster path, so the main window's GPU backend and
         // swapchain stay untouched.
+        /// The panel's window, or null without a panel.
         panel_window: ?*sdl_c.SDL_Window = null,
+        /// The panel's renderer.
         panel_renderer: ?*sdl_c.SDL_Renderer = null,
+        /// The texture the panel's frame is uploaded to.
         panel_texture: ?*sdl_c.SDL_Texture = null,
+        /// The panel texture's width, in pixels.
         panel_texture_width: c_int = 0,
+        /// The panel texture's height, in pixels.
         panel_texture_height: c_int = 0,
+        /// The panel's rasterized frame, reused across frames.
         panel_framebuffer: renderer.Framebuffer = .empty,
+        /// The panel frame's RGBA8 pixels, reused across frames.
         panel_rgba: []u8 = &.{},
+        /// The panel's per-frame arena.
         panel_arena: std.heap.ArenaAllocator = undefined,
 
         // Fonts. The bundled monochrome emoji font is wired as a fallback so
         // codepoints Inter lacks (emoji, etc.) still render; it lives for the
         // whole loop, so the `&emoji_font.face` pointer stays valid.
+        /// The bundled text face (Inter).
         font: renderer.Font = undefined,
+        /// The bundled emoji face, the text face's fallback.
         emoji_font: renderer.Font = undefined,
+        /// Glyphs of `font`.
         cache: renderer.GlyphCache = undefined,
+        /// The bundled icon face (Lucide).
         icon_font: renderer.Font = undefined,
+        /// Glyphs of `icon_font`.
         icon_cache: renderer.GlyphCache = undefined,
+        /// The faces by weight, italic and mono.
         fonts: *renderer.FontSet = undefined,
 
         /// The main window's per-frame arena.
@@ -695,12 +789,19 @@ pub fn EventLoop(comptime AppState: type) type {
 
         // The main window's software-path texture and pixel buffers (reused
         // across frames; freed at shutdown).
+        /// The texture the software path's frame is uploaded to.
         texture: ?*sdl_c.SDL_Texture = null,
+        /// The texture's width, in pixels.
         texture_width: c_int = 0,
+        /// The texture's height, in pixels.
         texture_height: c_int = 0,
+        /// The software path's rasterized frame.
         framebuffer: renderer.Framebuffer = .empty,
+        /// The software path's frame as RGBA8 pixels.
         rgba: []u8 = &.{},
+        /// The performance counter's ticks per second, for frame timing.
         perf_frequency: u64 = 0,
+        /// Frame timings, logged with `ZIGGUI_FRAME_LOG`.
         statistics: FrameStatistics = .{},
 
         /// Caches wrapped-text layout across frames so a long, static
@@ -713,8 +814,11 @@ pub fn EventLoop(comptime AppState: type) type {
         // fires). The lists are backed by `resize_arena` (their items hold
         // arena-allocated callbacks), so they are never deinit'd with the
         // allocator: `resize_arena.deinit()` reclaims everything.
+        /// The arena of frames drawn from the live-resize watch.
         resize_arena: std.heap.ArenaAllocator = undefined,
+        /// The tap regions of a frame drawn from the live-resize watch.
         resize_hits: std.ArrayList(views.HitRegion) = .empty,
+        /// The scroll regions of a frame drawn from the live-resize watch.
         resize_scrolls: std.ArrayList(views.ScrollRegion) = .empty,
 
         /// The loop runs while this holds.
@@ -842,8 +946,10 @@ pub fn EventLoop(comptime AppState: type) type {
                 .state = state,
                 .body = body,
                 .hover = &app.hover_point,
+                .press = &app.press_point,
                 .hover_regions = &app.hover_regions,
                 .presents_video = mod.VideoBackend.presents,
+                .presents_native = mod.NativeBackend.presents,
                 .texture = &self.texture,
                 .texture_width = &self.texture_width,
                 .texture_height = &self.texture_height,
@@ -895,6 +1001,8 @@ pub fn EventLoop(comptime AppState: type) type {
             sdl_c.SDL_RemoveEventWatch(WindowFrame(AppState).resizeWatch, &self.frame);
             // Before the window goes: the pictures leave it, players live on.
             mod.VideoBackend.uninstall();
+            // And the app's platform views leave it; the app still owns them.
+            mod.NativeBackend.detachAll();
             app.window = null;
             app.running = null;
             self.resize_arena.deinit();

@@ -50,8 +50,10 @@ pub const NavigationPath = @import("navigation_path.zig").NavigationPath;
 pub const NavigationSplitView = @import("navigation.zig").NavigationSplitView;
 /// A `NavigationSplitView` whose sidebar is an inset panel.
 pub const NavigationSplitViewInset = @import("navigation.zig").NavigationSplitViewInset;
-/// A button that pushes a route.
+/// A list row that pushes a route: its title and a trailing chevron.
 pub const NavigationLink = @import("navigation.zig").NavigationLink;
+/// A `NavigationLink` row led by an icon.
+pub const NavigationLinkIcon = @import("navigation.zig").NavigationLinkIcon;
 /// A button that pops a route.
 pub const NavigationBackButton = @import("navigation.zig").NavigationBackButton;
 /// A button that opens a popover of items.
@@ -88,6 +90,18 @@ pub const RadioGroup = @import("radio_group.zig").RadioGroup;
 pub const TableColumn = @import("table_column.zig").TableColumn;
 /// A multi-column table of text rows.
 pub const Table = @import("table.zig").Table;
+/// A settings form in columns: labels right-aligned in one column, sections divided.
+pub const Form = @import("form.zig").Form;
+/// A group of a `Form`'s rows.
+pub const Section = @import("form.zig").Section;
+/// A `Form` row: a label in the form's label column, its controls beside it.
+pub const LabeledContent = @import("form.zig").LabeledContent;
+/// An app's settings: a toolbar of tabs over the selected page.
+pub const Settings = @import("settings.zig").Settings;
+/// A `Table` whose columns the user drags wider or narrower.
+pub const TableResizable = @import("table.zig").TableResizable;
+/// The column widths a user dragged in a `TableResizable`.
+pub const TableColumnCustomization = @import("table_column_customization.zig").TableColumnCustomization;
 /// The order a column is sorted in (`.forward`, `.reverse`), as SwiftUI's `SortOrder`.
 pub const SortOrder = @import("sort_order.zig").SortOrder;
 /// A `DataTable`'s sort column and order.
@@ -141,6 +155,8 @@ pub const Rectangle = @import("../module.zig").Rectangle;
 pub const TestCanvas = @import("../module.zig").TestCanvas;
 /// An icon from the icon font (from the views module).
 pub const Icon = @import("../module.zig").Icon;
+/// A toggle (a `Form` test's rows), from the views module.
+pub const Toggle = @import("../module.zig").Toggle;
 /// A filled circle (from the views module).
 pub const Circle = @import("../module.zig").Circle;
 /// A push button (from the views module).
@@ -184,6 +200,9 @@ test {
     _ = @import("radio_group.zig");
     _ = @import("table_column.zig");
     _ = @import("table.zig");
+    _ = @import("form.zig");
+    _ = @import("settings.zig");
+    _ = @import("table_column_customization.zig");
     _ = @import("sort_order.zig");
     _ = @import("sort_column.zig");
     _ = @import("data_column.zig");

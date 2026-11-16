@@ -98,8 +98,18 @@ pub const ViewLowering = struct {
     pub fn buildNode(parent_context: *const mod.Context, view: mod.View) std.mem.Allocator.Error!renderer.Node {
         var styled = parent_context.*;
         styled.applyFontModifiers(view);
+        styled.applyEnvironment(view);
+        // A form's labels share one column, as wide as the widest of them.
+        if (view.modifiers.form_columns) styled.form_label_width = Self.widestFormLabel(&styled, view);
         const context = &styled;
         var node = try Self.buildContentNode(context, view);
+        // Always a node of its own, so the painter can step into it: outside a
+        // form it has no width and sizes to the label.
+        if (view.modifiers.form_label) {
+            const child = try context.arena.create(renderer.Node);
+            child.* = node;
+            node = .{ .frame = .{ .width = context.form_label_width, .alignment = .topTrailing, .child = child } };
+        }
         if (view.modifiers.padding) |insets| {
             const child = try context.arena.create(renderer.Node);
             child.* = node;
@@ -190,6 +200,11 @@ pub const ViewLowering = struct {
                 const pixel_size = context.theme.typography.body.size;
                 const label_width: f32 = if (toggle.label.len > 0) renderer.TextShaper.init(context.cache.face).measureLineWidth(toggle.label, pixel_size) else 0;
                 const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
+                if (context.resolvedToggleStyle() == .checkbox) {
+                    // As wide as the box and its label: a click beside it is not on it.
+                    const width = mod.ControlMetrics.checkbox_size + (if (toggle.label.len > 0) mod.ControlMetrics.checkbox_gap + label_width else 0);
+                    return .{ .leaf = renderer.SizingHints.fixedSize(.{ .width = width, .height = @max(line_height, mod.ControlMetrics.checkbox_size) }) };
+                }
                 const gap: f32 = if (toggle.label.len > 0) 8 else 0;
                 const height = @max(line_height, mod.ControlMetrics.switch_height);
                 return .{ .leaf = .{
@@ -258,6 +273,12 @@ pub const ViewLowering = struct {
                 .ideal = .{ .width = 480, .height = 270 },
                 .max = .{ .width = infinity, .height = infinity },
             } },
+            // A platform view fills what it is offered, like a picture.
+            .nativeView => return .{ .leaf = .{
+                .min = .{},
+                .ideal = .{ .width = 480, .height = 320 },
+                .max = .{ .width = infinity, .height = infinity },
+            } },
             .scroll, .scrollState, .geometry => return .{ .leaf = .{
                 .min = .{},
                 .ideal = .{ .width = 200, .height = 200 },
@@ -323,6 +344,39 @@ pub const ViewLowering = struct {
             .width = icon_width + label_width + key_width + 2 * mod.ControlMetrics.control_horizontal_padding,
             .height = @max(line_height, context.theme.metrics.control_height),
         };
+    }
+
+    /// The width of the widest form label in `view`'s subtree, each measured
+    /// in its own font, as layout (and the painter, which lays a scroll view's
+    /// content out again) reaches a `Form`; a form nested in it keeps its own
+    /// column. A `GeometryReader`'s content, built only as it paints, is not seen.
+    ///
+    /// - `context`: the context at the form.
+    /// - `view`: the form, or a view inside it.
+    /// - Returns: the width, 0 with no label.
+    pub fn widestFormLabel(context: *const mod.Context, view: mod.View) f32 {
+        var styled = context.*;
+        styled.applyFontModifiers(view);
+        if (view.modifiers.form_label) {
+            return switch (view.kind) {
+                .text => |text| renderer.TextShaper.init(styled.cache.face).measureLineWidth(text.string, styled.resolvedFontSize(view)),
+                else => 0,
+            };
+        }
+        var widest: f32 = 0;
+        switch (view.kind) {
+            .stack => |stack| for (stack.children) |child| {
+                if (!child.modifiers.form_columns) widest = @max(widest, Self.widestFormLabel(&styled, child));
+            },
+            .scroll => |scroll| if (!scroll.content.modifiers.form_columns) {
+                widest = @max(widest, Self.widestFormLabel(&styled, scroll.content.*));
+            },
+            .scrollState => |scroll| if (!scroll.content.modifiers.form_columns) {
+                widest = @max(widest, Self.widestFormLabel(&styled, scroll.content.*));
+            },
+            else => {},
+        }
+        return widest;
     }
 };
 

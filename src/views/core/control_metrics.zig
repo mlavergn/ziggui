@@ -14,6 +14,12 @@ pub const ControlMetrics = struct {
     pub const switch_width: f32 = 36;
     /// A switch's height.
     pub const switch_height: f32 = 16;
+    /// A checkbox's side (`.toggleStyle(.checkbox)`).
+    pub const checkbox_size: f32 = 14;
+    /// The gap between a checkbox and its label.
+    pub const checkbox_gap: f32 = 6;
+    /// A checkbox's corner radius, before the theme scales it.
+    pub const checkbox_radius: f32 = 4;
     /// A slider's height.
     pub const slider_height: f32 = 20;
     /// A slider knob's radius.

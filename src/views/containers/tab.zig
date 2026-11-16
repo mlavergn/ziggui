@@ -3,9 +3,10 @@
 const std = @import("std");
 const log = std.log.scoped(.ziggui_tab);
 const mod = @import("module.zig");
+const renderer = @import("renderer");
 
-/// One page of a `TabView`: a title for its tab-bar segment plus the content
-/// shown when that tab is selected.
+/// One page of a `TabView` or `Settings`: a title for its tab, the content
+/// shown when it is selected, and in `Settings` a symbol over the title.
 pub const Tab = struct {
     const Self = @This();
 
@@ -14,6 +15,10 @@ pub const Tab = struct {
 
     /// What the tab shows.
     content: mod.View,
+
+    /// The symbol over the title in a `Settings` toolbar (SwiftUI's
+    /// `tabItem { Label(_, systemImage:) }`); a `TabView` shows none.
+    icon: ?renderer.Icon = null,
 };
 
 // -----------------------------------------------------------------------------

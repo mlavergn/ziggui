@@ -16,13 +16,15 @@ Since 1.0.0 ziggui includes what used to be the separate zigui library, and buil
 
 ## Features
 
-- **Views:** text and rich text, buttons, toggles, sliders, steppers, pickers, segmented controls, text fields and a text editor, images, icons (the Lucide set), shapes and gradients. Stacks, grids, lists, tables, scroll views, tabs, navigation split views, menus and context menus. Sheets, alerts and popovers.
+- **Views:** text and rich text, buttons, toggles (switches or checkboxes), sliders, steppers, pickers, segmented controls, text fields and a text editor (proportional or monospaced), images, icons (the Lucide set), shapes and gradients. Stacks, grids, lists, tables with resizable columns, scroll views, tabs, navigation stacks of list rows and navigation split views, menus and context menus. Sheets, alerts and popovers.
+- **Settings:** `Settings` draws an app's settings as macOS does, a toolbar of tabs over the selected page, and `Form`, `Section` and `LabeledContent` lay a page out in columns: labels right-aligned in one column as wide as the widest, controls beside them, checkboxes by default.
 - **Themes:** five native-looking families (macOS, Windows 10, Windows 2000, KDE Plasma, Material), each light and dark, with an accent color. An app with its own design system can recolor every widget.
 - **Rendering:** SDL_GPU on Metal, Vulkan or Direct3D 12, falling back to the software rasterizer automatically. Bundled fonts (Inter, JetBrains Mono, Noto Emoji) and a TrueType parser that treats font files as untrusted.
 - **Widgets for real apps:** a virtual list that also scrolls sideways, a diff view whose long lines scroll or wrap, draggable split views, hover popovers and hover hints, chat pieces (bubbles, code blocks, disclosure groups, status marks), badges and key caps, setting, selectable and reorderable rows, a key/value editor, a token field, a search field, and an in-window file-or-folder picker.
 - **The app's frame:** the macOS top band and, on Linux and Windows, a drawn title bar with the platform's window buttons and an in-window menu bar. One menu table builds both macOS's menu bar and the drawn one. A notice strip, confirm alerts, empty states, pane titles and a key-hint status line.
 - **Desktop integration:** native menus, a status item or tray icon (an SNI icon over D-Bus on Linux), panels, clipboard, file dialogs, revealing a file in Finder or Explorer, Linux desktop entries, and reopening the window where it was.
-- **Video:** a player modeled on `AVPlayer`, drawn by the platform's own player behind the window's surface, with ziggui's controls painted over it (AVFoundation on macOS).
+- **Video:** a player modeled on `AVPlayer`, drawn by the platform's own player behind the window's surface (AVFoundation on macOS), with standard controls painted over it: full screen, volume, skip, play, a scrubber, subtitles and speed.
+- **Native views:** `NativeView` places a platform view the app owns (an `NSView` such as a web view) where layout puts it, hides it while an overlay is open, and moves the keyboard between it and ziggui (macOS; a placeholder elsewhere).
 - **Secure fields:** a password field draws dots, never copies its text, and wipes it from memory when it leaves.
 
 A component gallery shows every view in every theme.

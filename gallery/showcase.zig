@@ -80,6 +80,35 @@ const chat_items = [_]ziggui.SidebarItem{
     .{ .label = "GPU renderer plan", .detail = "Yesterday" },
 };
 
+/// A row of the Navigation panel's stack: its title, its icon and the route it pushes.
+const NavigationEntry = struct {
+    const Self = @This();
+
+    /// The row's title, and the pushed view's.
+    title: []const u8,
+
+    /// The row's leading symbol.
+    icon: ziggui.IconName,
+
+    /// The route the row pushes.
+    route: i64,
+};
+
+/// The Navigation panel's first level: folders, routes 1 to 3.
+const navigation_folders = [_]NavigationEntry{
+    .{ .title = "Inbox", .icon = .inbox, .route = 1 },
+    .{ .title = "Archive", .icon = .archive, .route = 2 },
+    .{ .title = "Trash", .icon = .trash2, .route = 3 },
+};
+
+/// The Navigation panel's second level, the same in every folder: messages,
+/// routes `folder * 10 + 1` to `folder * 10 + 3`.
+const navigation_messages = [_]NavigationEntry{
+    .{ .title = "Welcome to ziggui", .icon = .mail, .route = 1 },
+    .{ .title = "Build passed", .icon = .mail, .route = 2 },
+    .{ .title = "Weekly notes", .icon = .mail, .route = 3 },
+};
+
 /// The Text Editor panel's opening text.
 const editor_sample =
     "// ziggui TextEditor\n" ++
@@ -146,6 +175,9 @@ pub const Showcase = struct {
 
     /// The Table panel's selected row.
     table_selection: ziggui.State(i64),
+
+    /// The Table panel's column widths, as the user dragged them.
+    table_columns: ziggui.TableColumnCustomization = .{},
 
     // Effects and overlays
 
@@ -312,7 +344,7 @@ pub const Showcase = struct {
     pub fn controlsPanel(self: *Self, theme: ziggui.Theme) ziggui.View {
         const ignore = ziggui.Callback.init(Self, self, Self.noop);
         return ziggui.VStack(.{
-            Self.card(theme, "Buttons", ziggui.VStack(.{
+            Self.card(theme, "Buttons", "ziggui.Button · ziggui.ButtonRoled · ziggui.IconButton", ziggui.VStack(.{
                 ziggui.HStack(.{
                     ziggui.ButtonRoled("Primary", .prominent, ziggui.Callback.init(Self, self, Self.animate)),
                     ziggui.Button("Glass", ignore),
@@ -327,24 +359,24 @@ pub const Showcase = struct {
                     ziggui.Spacer(),
                 }).spacing(10),
             }).spacing(10)),
-            Self.card(theme, "Toggles", ziggui.VStack(.{
+            Self.card(theme, "Toggles", "ziggui.Toggle", ziggui.VStack(.{
                 Self.row("Wi‑Fi", ziggui.Toggle("", self.wifi.binding())),
                 ziggui.Divider(),
                 Self.row("Notifications", ziggui.Toggle("", self.notifications.binding())),
             }).spacing(8)),
-            Self.card(theme, "Slider & Progress", ziggui.VStack(.{
+            Self.card(theme, "Slider & Progress", "ziggui.Slider · ziggui.ProgressView", ziggui.VStack(.{
                 ziggui.Slider(self.slider.binding(), 0, 1).frameMaxWidth(),
                 ziggui.ProgressView(self.slider.get()).frameMaxWidth(),
             }).spacing(12)),
-            Self.card(theme, "Stepper & Pickers", ziggui.VStack(.{
+            Self.card(theme, "Stepper & Pickers", "ziggui.Stepper · ziggui.Picker", ziggui.VStack(.{
                 Self.row("Quantity", ziggui.Stepper("", self.stepper.binding(), 0, 10, 1)),
                 ziggui.Divider(),
                 Self.row("Size", ziggui.Picker(self.picker.binding(), &picker_options).frameWidth(220)),
                 ziggui.Divider(),
                 Self.row("Range", ziggui.Picker(self.range.binding(), &range_options).frameWidth(220)),
             }).spacing(8)),
-            Self.card(theme, "Radio group", ziggui.RadioGroup(self.radio.binding(), &radio_options)),
-            Self.card(theme, "Text field", ziggui.VStack(.{
+            Self.card(theme, "Radio group", "ziggui.RadioGroup", ziggui.RadioGroup(self.radio.binding(), &radio_options)),
+            Self.card(theme, "Text field", "ziggui.TextField", ziggui.VStack(.{
                 ziggui.TextField("Type your name…", &self.name).frameHeight(36).cornerRadius(8).frameMaxWidth(),
                 ziggui.Text("Right-click for Cut / Copy / Paste / Select All.")
                     .font(.footnote).foreground(theme.colors.secondary_label),
@@ -361,19 +393,19 @@ pub const Showcase = struct {
     pub fn textPanel(self: *const Self, theme: ziggui.Theme) ziggui.View {
         _ = self;
         return ziggui.VStack(.{
-            Self.card(theme, "Type scale", ziggui.VStack(.{
+            Self.card(theme, "Type scale", "ziggui.Text", ziggui.VStack(.{
                 Self.leading(ziggui.Text("Large Title").font(.largeTitle)),
                 Self.leading(ziggui.Text("Title").font(.title)),
                 Self.leading(ziggui.Text("Headline").font(.headline)),
                 Self.leading(ziggui.Text("Body — the quick brown fox.").font(.body)),
                 Self.leading(ziggui.Text("Footnote").font(.footnote).foreground(theme.colors.secondary_label)),
             }).spacing(6)),
-            Self.card(theme, "Wrapped paragraph", ziggui.WrappedText(
+            Self.card(theme, "Wrapped paragraph", "ziggui.WrappedText", ziggui.WrappedText(
                 "WrappedText word-wraps to the width it is given, growing taller as the " ++
                     "column narrows. Reach for it for paragraphs, descriptions, captions.",
             ).foreground(theme.colors.label)),
-            Self.card(theme, "Label", Self.leading(ziggui.Label("Tagged item", theme.colors.accent))),
-            Self.card(theme, "Icon gallery", ziggui.LazyVGrid(6, 10, &icon_gallery, Self.iconCell).frameMaxWidth()),
+            Self.card(theme, "Label", "ziggui.Label", Self.leading(ziggui.Label("Tagged item", theme.colors.accent))),
+            Self.card(theme, "Icon gallery", "ziggui.Icon · ziggui.LazyVGrid", ziggui.LazyVGrid(6, 10, &icon_gallery, Self.iconCell).frameMaxWidth()),
         }).spacing(16);
     }
 
@@ -386,7 +418,7 @@ pub const Showcase = struct {
     pub fn shapesPanel(self: *const Self, theme: ziggui.Theme) ziggui.View {
         _ = self;
         return ziggui.VStack(.{
-            Self.card(theme, "Primitives", ziggui.HStack(.{
+            Self.card(theme, "Primitives", "ziggui.Rectangle · ziggui.RoundedRectangle · ziggui.Circle · ziggui.Capsule · ziggui.Ellipse", ziggui.HStack(.{
                 ziggui.Rectangle(swatches[3]).frame(56, 56),
                 ziggui.RoundedRectangle(swatches[2], 12).frame(56, 56),
                 ziggui.Circle(swatches[0]).frame(56, 56),
@@ -394,13 +426,13 @@ pub const Showcase = struct {
                 ziggui.Ellipse(swatches[6]).frame(80, 56),
                 ziggui.Spacer(),
             }).spacing(12)),
-            Self.card(theme, "LinearGradient", ziggui.LinearGradient(
+            Self.card(theme, "LinearGradient", "ziggui.LinearGradient", ziggui.LinearGradient(
                 swatches[5],
                 swatches[1],
                 .{ .x = 0, .y = 0 },
                 .{ .x = 1, .y = 1 },
             ).frameMaxWidth().frameHeight(90).cornerRadius(12)),
-            Self.card(theme, "Dividers", ziggui.VStack(.{
+            Self.card(theme, "Dividers", "ziggui.Divider · ziggui.VDivider", ziggui.VStack(.{
                 Self.leading(ziggui.Text("above")),
                 ziggui.Divider(),
                 ziggui.HStack(.{
@@ -410,11 +442,11 @@ pub const Showcase = struct {
                     ziggui.Spacer(),
                 }).spacing(12),
             }).spacing(8)),
-            Self.card(theme, "Image (generated)", ziggui.HStack(.{
+            Self.card(theme, "Image (generated)", "ziggui.Image", ziggui.HStack(.{
                 ziggui.Image(.{ .width = demo_image_side, .height = demo_image_side, .pixels = &demo_image }).frame(64, 64),
                 ziggui.WrappedText("A 64×64 RGBA gradient built at comptime and drawn via the Image component."),
             }).spacing(12)),
-            Self.card(theme, "Material (frosted over gradient)", ziggui.ZStack(.{
+            Self.card(theme, "Material (frosted over gradient)", ".backgroundMaterial(.regular)", ziggui.ZStack(.{
                 ziggui.LinearGradient(theme.colors.accent, swatches[5], .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 1 })
                     .frameMaxWidth().frameHeight(120),
                 ziggui.Text("Regular material").font(.headline)
@@ -439,23 +471,23 @@ pub const Showcase = struct {
             ).padding(12) },
         };
         return ziggui.VStack(.{
-            Self.card(theme, "HStack · Spacer · ZStack", ziggui.VStack(.{
+            Self.card(theme, "HStack · Spacer · ZStack", "ziggui.HStack · ziggui.Spacer · ziggui.ZStack", ziggui.VStack(.{
                 ziggui.HStack(.{ ziggui.Text("leading"), ziggui.Spacer(), ziggui.Text("trailing") }).frameMaxWidth(),
                 ziggui.ZStack(.{
                     ziggui.RoundedRectangle(swatches[7], 10).frameMaxWidth().frameHeight(60),
                     ziggui.Text("ZStack overlay").foreground(ziggui.Color.white).font(.headline),
                 }),
             }).spacing(10)),
-            Self.card(theme, "LazyVGrid", ziggui.LazyVGrid(4, 8, &swatches, Self.swatchCell).frameMaxWidth()),
-            Self.card(theme, "LazyHGrid", ziggui.LazyHGrid(2, 8, &swatches, Self.swatchCell).frameHeight(96)),
-            Self.card(theme, "List", ziggui.VStack(.{
+            Self.card(theme, "LazyVGrid", "ziggui.LazyVGrid", ziggui.LazyVGrid(4, 8, &swatches, Self.swatchCell).frameMaxWidth()),
+            Self.card(theme, "LazyHGrid", "ziggui.LazyHGrid", ziggui.LazyHGrid(2, 8, &swatches, Self.swatchCell).frameHeight(96)),
+            Self.card(theme, "List", "ziggui.VStack · ziggui.Icon · ziggui.Divider", ziggui.VStack(.{
                 Self.listRow(theme, .user, "Profile"),
                 ziggui.Divider(),
                 Self.listRow(theme, .bell, "Notifications"),
                 ziggui.Divider(),
                 Self.listRow(theme, .lock, "Privacy"),
             }).spacing(0)),
-            Self.card(theme, "TabView + ScrollView", ziggui.TabView(self.tab.binding(), &tabs).frameMaxWidth().frameHeight(170)),
+            Self.card(theme, "TabView + ScrollView", "ziggui.TabView · ziggui.ScrollView", ziggui.TabView(self.tab.binding(), &tabs).frameMaxWidth().frameHeight(170)),
         }).spacing(16);
     }
 
@@ -469,9 +501,10 @@ pub const Showcase = struct {
     pub fn tablePanel(self: *Self, theme: ziggui.Theme, title: []const u8) ziggui.View {
         return ziggui.VStack(.{
             Self.header(title),
-            ziggui.Text("A multi-column table with a header and selectable rows:")
-                .foreground(theme.colors.secondary_label).frameMaxWidth(),
-            ziggui.Table(&table_columns, &table_rows, self.table_selection.binding())
+            Self.leading(ziggui.Text("A multi-column table with a header and selectable rows; drag a column's edge in the header to resize it:")
+                .foreground(theme.colors.secondary_label)),
+            Self.leading(ziggui.Text("ziggui.TableResizable · ziggui.TableColumnCustomization").font(.caption).mono().foreground(theme.colors.secondary_label)),
+            ziggui.TableResizable(&table_columns, &table_rows, self.table_selection.binding(), &self.table_columns)
                 .background(theme.colors.control_background)
                 .cornerRadius(theme.metrics.corner_radius)
                 .border(theme.colors.separator, theme.metrics.hairline)
@@ -492,6 +525,7 @@ pub const Showcase = struct {
             Self.header(title),
             ziggui.Text("Multi-line editing with selection, line numbers, and mouse drag. Click in and type.")
                 .font(.footnote).foreground(theme.colors.secondary_label).frameMaxWidth(),
+            Self.leading(ziggui.Text("ziggui.TextEditor").font(.caption).mono().foreground(theme.colors.secondary_label)),
             ziggui.TextEditor(&self.editor, &self.editor_scroll, true).frameMaxWidth().frameMaxHeight(),
         }).spacing(12).padding(20).frameMaxWidth().frameMaxHeight();
     }
@@ -509,19 +543,19 @@ pub const Showcase = struct {
             ziggui.BuildScope.shared().allocator().print("Last key-up: keycode 0x{x}", .{self.last_key_up.get()}) catch @panic("oom");
         const taps_text = ziggui.BuildScope.shared().allocator().print("{d} taps", .{self.pass_taps.get()}) catch @panic("oom");
         return ziggui.VStack(.{
-            Self.card(theme, "Modal presentations", ziggui.HStack(.{
+            Self.card(theme, "Modal presentations", ".sheet · .alert", ziggui.HStack(.{
                 ziggui.Button("Show sheet", ziggui.Callback.init(Self, self, Self.openSheet)),
                 ziggui.Button("Show alert", ziggui.Callback.init(Self, self, Self.openAlert)),
                 ziggui.Spacer(),
             }).spacing(10)),
-            Self.card(theme, "Menu", ziggui.HStack(.{
+            Self.card(theme, "Menu", "ziggui.Menu", ziggui.HStack(.{
                 ziggui.Menu("Options", &self.menu_open, .{
                     ziggui.Button("Animate", ziggui.Callback.init(Self, self, Self.animate)),
                     ziggui.Button("Show sheet", ziggui.Callback.init(Self, self, Self.openSheet)),
                 }),
                 ziggui.Spacer(),
             })),
-            Self.card(theme, "Popover", ziggui.HStack(.{
+            Self.card(theme, "Popover", ".popover", ziggui.HStack(.{
                 ziggui.Button("Toggle popover", ziggui.Callback.init(Self, self, Self.togglePopover))
                     .popover(self.show_popover.binding(), ziggui.VStack(.{
                     ziggui.Text("Popover").font(.headline),
@@ -529,22 +563,22 @@ pub const Showcase = struct {
                 }).spacing(8).padding(14).frameWidth(220)),
                 ziggui.Spacer(),
             })),
-            Self.card(theme, "Popover passthrough", ziggui.HStack(.{
+            Self.card(theme, "Popover passthrough", ".popover · .popoverPassthrough", ziggui.HStack(.{
                 ziggui.Button("Open popover", ziggui.Callback.init(Self, self, Self.togglePassPopover))
                     .popover(self.show_pass_popover.binding(), ziggui.WrappedText("The button beside this trigger still takes taps; anywhere else closes it.").padding(14).frameWidth(220)),
                 ziggui.Button("Tap me while it is open", ziggui.Callback.init(Self, self, Self.passTap)).popoverPassthrough(),
                 ziggui.Text(taps_text).foreground(theme.colors.secondary_label),
                 ziggui.Spacer(),
             }).spacing(10)),
-            Self.card(theme, "onHover", ziggui.HStack(.{
+            Self.card(theme, "onHover", ".onHover", ziggui.HStack(.{
                 ziggui.RoundedRectangle(if (self.hovering.get()) theme.colors.accent else theme.colors.control_track, 8)
                     .frame(120, 44)
                     .onHover(.{ .context = self, .function = Self.hovered }),
                 ziggui.Text(if (self.hovering.get()) "Pointer inside" else "Point at the box").foreground(theme.colors.secondary_label),
                 ziggui.Spacer(),
             }).spacing(12)),
-            Self.card(theme, "Custom title bar (Config.custom_titlebar)", self.titleBarDemo(theme)),
-            Self.card(theme, "Key-ups and quitting", ziggui.VStack(.{
+            Self.card(theme, "Custom title bar (Config.custom_titlebar)", "ziggui.Drawing · Theme.drawTitleBar · .modalPassthrough", self.titleBarDemo(theme)),
+            Self.card(theme, "Key-ups and quitting", "ziggui.App.setKeyUpHandler · ziggui.Toggle", ziggui.VStack(.{
                 Self.leading(ziggui.Text(key_up_text).foreground(theme.colors.secondary_label)),
                 Self.row("Ask before quitting (close button, ⌘Q)", ziggui.Toggle("", self.ask_quit.binding())),
             }).spacing(10)),
@@ -559,14 +593,14 @@ pub const Showcase = struct {
     /// - Returns: the panel's view.
     pub fn effectsPanel(self: *Self, theme: ziggui.Theme) ziggui.View {
         return ziggui.VStack(.{
-            Self.card(theme, "Animation", ziggui.VStack(.{
+            Self.card(theme, "Animation", "ziggui.Animator · ziggui.ProgressView", ziggui.VStack(.{
                 ziggui.ProgressView(self.progress.get()).frameMaxWidth(),
                 ziggui.HStack(.{
                     ziggui.Button("Animate value", ziggui.Callback.init(Self, self, Self.animate)),
                     ziggui.Spacer(),
                 }),
             }).spacing(10)),
-            Self.card(theme, "Liquid glass toolbar", ziggui.ZStack(.{
+            Self.card(theme, "Liquid glass toolbar", ".glassEffect", ziggui.ZStack(.{
                 ziggui.LinearGradient(
                     ziggui.Color.fromRgb8(88, 86, 214),
                     ziggui.Color.fromRgb8(255, 45, 85),
@@ -575,7 +609,7 @@ pub const Showcase = struct {
                 ).frameMaxWidth().frameHeight(110).cornerRadius(12),
                 self.glassToolbar(),
             }).frameMaxWidth()),
-            Self.card(theme, "Opacity · border · corner radius", ziggui.HStack(.{
+            Self.card(theme, "Opacity · border · corner radius", ".opacity · .border · .cornerRadius", ziggui.HStack(.{
                 ziggui.RoundedRectangle(swatches[0], 10).frame(64, 64).opacity(0.4),
                 ziggui.RoundedRectangle(swatches[2], 10).frame(64, 64).border(theme.colors.label, 2),
                 ziggui.RoundedRectangle(swatches[3], 24).frame(64, 64),
@@ -584,36 +618,22 @@ pub const Showcase = struct {
         }).spacing(16);
     }
 
-    /// The Navigation panel, title included: a stack of links whose detail
-    /// replaces the panel while pushed, and an inset split view. It fills the
-    /// pane, so the gallery does not scroll it.
+    /// The Navigation panel, title included: a list of links that push a
+    /// view in place of the panel (folders, then their messages), each pushed
+    /// view led by a back button that pops it, and an inset split view. It
+    /// fills the pane, so the gallery does not scroll it.
     ///
     /// - `self`: the showcase.
     /// - `theme`: the theme this frame draws with.
     /// - `title`: the panel's title.
     /// - Returns: the panel's view.
     pub fn navigationPanel(self: *Self, theme: ziggui.Theme, title: []const u8) ziggui.View {
-        if (self.navigation.top()) |route| {
-            return ziggui.VStack(.{
-                Self.leading(ziggui.NavigationBackButton("‹ Back", &self.navigation)),
-                Self.header("Detail"),
-                ziggui.WrappedText(ziggui.BuildScope.shared().allocator().print(
-                    "You pushed route {d}. NavigationPath holds the route stack; NavigationBackButton pops it.",
-                    .{route},
-                ) catch @panic("oom")),
-                ziggui.Spacer(),
-            }).spacing(12).padding(20).frameMaxWidth().frameMaxHeight().padding(20);
-        }
+        if (self.navigation.top()) |route| return self.navigationDetail(theme, title, route);
         return ziggui.VStack(.{
             Self.header(title),
-            ziggui.Text("Tap a row to push a detail view onto the stack.")
-                .foreground(theme.colors.secondary_label).frameMaxWidth(),
-            Self.card(theme, "Stack", ziggui.VStack(.{
-                ziggui.NavigationLink("Inbox", 1, &self.navigation).frameMaxWidth(),
-                ziggui.NavigationLink("Archive", 2, &self.navigation).frameMaxWidth(),
-                ziggui.NavigationLink("Trash", 3, &self.navigation).frameMaxWidth(),
-            }).spacing(6)),
-            Self.card(theme, "Inset split view (chat style)", ziggui.NavigationSplitViewInset(
+            Self.leading(ziggui.Text("Tap a row to push its view onto the stack; ‹ pops it.").foreground(theme.colors.secondary_label)),
+            Self.card(theme, "Stack", "ziggui.NavigationLinkIcon · ziggui.NavigationPath", self.navigationList(&navigation_folders, 0)),
+            Self.card(theme, "Inset split view (chat style)", "ziggui.NavigationSplitViewInset · ziggui.SidebarStyled", ziggui.NavigationSplitViewInset(
                 ziggui.VStack(.{
                     ziggui.SidebarStyled(&chat_items, self.chat_selection.binding(), .prominent),
                     ziggui.Spacer(),
@@ -637,7 +657,7 @@ pub const Showcase = struct {
     /// - Returns: the panel's view.
     pub fn geometryPanel(self: *const Self, theme: ziggui.Theme) ziggui.View {
         return ziggui.VStack(.{
-            Self.card(theme, "GeometryReader: content built for the size it is given", ziggui.GeometryReader(Self, self, Self.geometryContent)
+            Self.card(theme, "GeometryReader: content built for the size it is given", "ziggui.GeometryReader", ziggui.GeometryReader(Self, self, Self.geometryContent)
                 .frameMaxWidth()
                 .frameHeight(96)),
         }).spacing(16);
@@ -867,6 +887,61 @@ pub const Showcase = struct {
         }).spacing(8).alignment(.leading).frameMaxWidth().frameAlign(.leading);
     }
 
+    /// A view pushed on the Navigation panel's stack: a back button named
+    /// for the view under it, the pushed view's title, then a folder's
+    /// messages to push further, or a message's text.
+    ///
+    /// - `self`: the showcase.
+    /// - `theme`: the theme this frame draws with.
+    /// - `title`: the panel's title, the view under a folder.
+    /// - `route`: the pushed route.
+    /// - Returns: the pushed view.
+    fn navigationDetail(self: *Self, theme: ziggui.Theme, title: []const u8, route: i64) ziggui.View {
+        const allocator = ziggui.BuildScope.shared().allocator();
+        const folder = route < 10;
+        const under = if (folder) title else Self.navigationTitle(@divTrunc(route, 10));
+        const back = allocator.print("‹ {s}", .{under}) catch @panic("oom");
+        const content = if (folder)
+            Self.card(theme, "Messages", "ziggui.NavigationLinkIcon", self.navigationList(&navigation_messages, route * 10))
+        else
+            ziggui.WrappedText(allocator.print("Two views deep. ‹ {s} pops back one; leaving the section empties the stack.", .{under}) catch @panic("oom"))
+                .foreground(theme.colors.secondary_label)
+                .frameMaxWidth()
+                .frameAlign(.leading);
+        return ziggui.VStack(.{
+            Self.leading(ziggui.NavigationBackButton(back, &self.navigation)),
+            Self.header(Self.navigationTitle(route)),
+            content,
+            ziggui.Spacer(),
+        }).spacing(12).frameMaxHeight().padding(20);
+    }
+
+    /// The Navigation panel's link rows, a divider between each two.
+    ///
+    /// - `self`: the showcase.
+    /// - `entries`: the rows.
+    /// - `base`: added to each entry's route (the folder's, times 10, for its messages).
+    /// - Returns: the list.
+    fn navigationList(self: *Self, entries: []const NavigationEntry, base: i64) ziggui.View {
+        const rows = ziggui.BuildScope.shared().allocator().alloc(ziggui.View, entries.len * 2 - 1) catch @panic("oom");
+        for (entries, 0..) |entry, index| {
+            if (index > 0) rows[index * 2 - 1] = ziggui.Divider();
+            rows[index * 2] = ziggui.NavigationLinkIcon(entry.title, entry.icon, base + entry.route, &self.navigation);
+        }
+        return ziggui.VStack(rows).spacing(0);
+    }
+
+    /// The title of a Navigation panel route: a folder (1 to 3) or one of
+    /// its messages (`folder * 10 + 1` to `+ 3`).
+    ///
+    /// - `route`: the route.
+    /// - Returns: its title.
+    fn navigationTitle(route: i64) []const u8 {
+        const entries: []const NavigationEntry = if (route < 10) &navigation_folders else &navigation_messages;
+        const index: usize = @intCast(@mod(route, 10) - 1);
+        return entries[index].title;
+    }
+
     /// A panel's title, pinned to the leading edge, as the gallery titles its scrolled panels.
     ///
     /// - `title`: the title.
@@ -876,23 +951,27 @@ pub const Showcase = struct {
     }
 
     /// A grouped-form section, macOS 26 style: a headline above a rounded
-    /// block in the secondary background.
+    /// block in the secondary background, the code names it shows under it.
     ///
     /// - `theme`: the theme this frame draws with.
     /// - `title`: the section's headline.
+    /// - `names`: what it shows, as code names it (`ziggui.Table`), drawn under it.
     /// - `content`: the section's contents.
     /// - Returns: the section.
-    fn card(theme: ziggui.Theme, title: []const u8, content: ziggui.View) ziggui.View {
+    fn card(theme: ziggui.Theme, title: []const u8, names: []const u8, content: ziggui.View) ziggui.View {
         return ziggui.VStack(.{
             ziggui.HStack(.{
                 ziggui.Text(title).font(.headline),
                 ziggui.Spacer(),
             }).frameMaxWidth(),
-            content.frameMaxWidth()
-                .padding(14)
-                .background(theme.colors.secondary_background)
-                .cornerRadius(theme.metrics.corner_radius)
-                .frameMaxWidth(),
+            ziggui.VStack(.{
+                content.frameMaxWidth()
+                    .padding(14)
+                    .background(theme.colors.secondary_background)
+                    .cornerRadius(theme.metrics.corner_radius)
+                    .frameMaxWidth(),
+                Self.leading(ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label)),
+            }).spacing(4).frameMaxWidth(),
         }).spacing(8)
             .frameMaxWidth();
     }

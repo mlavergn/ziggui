@@ -137,3 +137,30 @@ test "a plain button takes its own foreground, never an ancestor's" {
     try std.testing.expect(own_red > 0.3);
     try std.testing.expect(inherited_red < 0.1);
 }
+
+test "a held button draws pressed, and only while the pointer stays on it" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    const Idle = struct {
+        const Self = @This();
+        /// Does nothing: the button is only drawn.
+        fn nothing() void {}
+    };
+    const center = renderer.Point{ .x = 60, .y = 20 };
+    var shades: [3]renderer.Color = undefined;
+    const pointers = [_][2]?renderer.Point{ .{ center, null }, .{ center, center }, .{ .{ .x = 200, .y = 80 }, center } };
+    for (pointers, &shades) |pointer, *shade| {
+        canvas.begin(renderer.MacosTheme.light);
+        canvas.hover_point = pointer[0];
+        canvas.press_point = pointer[1];
+        const view = mod.ButtonRoled("", .prominent, mod.Callback.action(Idle.nothing)).frame(120, 40);
+        canvas.end();
+        var framebuffer = try canvas.render(view, 120, 40);
+        defer framebuffer.deinit();
+        shade.* = framebuffer.at(60, 20);
+    }
+    // Hovered, then held: the press darkens it.
+    try std.testing.expect(!std.meta.eql(shades[0], shades[1]));
+    // Held, but the pointer slid off: no longer pressed (it draws at rest).
+    try std.testing.expect(!std.meta.eql(shades[1], shades[2]));
+}

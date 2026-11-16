@@ -182,6 +182,16 @@ pub const Player = struct {
         if (self.nativeHandle()) |handle| self.backend.?.set_muted(handle, muted);
     }
 
+    /// The volume as a binding, for a `Slider(player.volumeBinding(), 0, 1)`:
+    /// it reads `volume` and writes through `setVolume`. Its context is the
+    /// player, so a slider dragged across frames stays the same slider.
+    ///
+    /// - `self`: the player.
+    /// - Returns: the binding.
+    pub fn volumeBinding(self: *Self) mod.Binding(f32) {
+        return .{ .context = self, .get_fn = Self.boundVolume, .set_fn = Self.bindVolume };
+    }
+
     /// Samples the player's state, once a frame: a second call in the frame
     /// (the app's, then its `VideoPlayer`'s) returns the first one's sample,
     /// unless a call between them changed the player. With no backend
@@ -252,6 +262,24 @@ pub const Player = struct {
         if (self.seek_target) |target| backend.seek(handle, target);
         if (self.rate > 0) backend.set_rate(handle, self.rate);
         return handle;
+    }
+
+    /// `volumeBinding`'s reader.
+    ///
+    /// - `context`: the player.
+    /// - Returns: its volume.
+    fn boundVolume(context: *anyopaque) f32 {
+        const self: *Self = @ptrCast(@alignCast(context));
+        return self.volume;
+    }
+
+    /// `volumeBinding`'s writer.
+    ///
+    /// - `context`: the player.
+    /// - `volume`: the new volume, as `setVolume` takes it.
+    fn bindVolume(context: *anyopaque, volume: f32) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.setVolume(volume);
     }
 
     /// Whether the seek to `target` has landed: the playhead is within
@@ -467,6 +495,19 @@ test "player: without a backend it keeps what it was asked for and reports it" {
     try std.testing.expect(observation.has_item);
     try std.testing.expectEqual(mod.PlayerStatus.unknown, observation.status);
     try std.testing.expect(player.nativeHandle() == null);
+}
+
+test "player: its volume binding reads the volume and sets it as setVolume does" {
+    Player.setBackend(null);
+    var player = Player.init(std.testing.allocator);
+    defer player.deinit();
+    const binding = player.volumeBinding();
+    binding.set(0.25);
+    try std.testing.expectEqual(@as(f32, 0.25), player.volume);
+    try std.testing.expectEqual(@as(f32, 0.25), binding.get());
+    // Clamped, as `setVolume` clamps.
+    binding.set(-3);
+    try std.testing.expectEqual(@as(f32, 0), binding.get());
 }
 
 test "player: the native player is made on first need and given what was asked before" {

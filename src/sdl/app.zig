@@ -100,6 +100,11 @@ pub const App = struct {
     /// the window. Fed into `Context.hover_point` each frame for hover highlights.
     hover_point: ?renderer.Point = null,
 
+    /// Where the primary button went down in the main window, while it is held;
+    /// null otherwise. Fed into `Context.press_point` each frame, so a button
+    /// draws pressed while the pointer holds it.
+    press_point: ?renderer.Point = null,
+
     /// The main window's `onHover` regions from the last frame (arena-backed, like
     /// the hit regions), compared with each pointer move by `views.PointerInput.hover`.
     hover_regions: std.ArrayList(views.HoverRegion) = .empty,
@@ -241,8 +246,19 @@ pub const App = struct {
     ///
     /// - `self`: the app.
     pub fn toggleFullScreen(self: *const Self) void {
+        self.setFullScreen(!self.isFullScreen());
+    }
+
+    /// Puts the main window in full screen or takes it out, whichever state
+    /// it is in now: a view that fills the window asks for the state it
+    /// wants, so a window the user moved some other way does not go wrong.
+    ///
+    /// - `self`: the app.
+    /// - `full_screen`: true for full screen.
+    pub fn setFullScreen(self: *const Self, full_screen: bool) void {
         const window = self.window orelse return;
-        _ = sdl_c.SDL_SetWindowFullscreen(window, !self.isFullScreen());
+        if (self.isFullScreen() == full_screen) return;
+        _ = sdl_c.SDL_SetWindowFullscreen(window, full_screen);
     }
 
     /// Reports whether the main window is in full screen.

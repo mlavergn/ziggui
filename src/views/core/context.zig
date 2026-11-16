@@ -75,6 +75,13 @@ pub const Context = struct {
     opacity: f32 = 1,
     /// The subtree is disabled.
     disabled: bool = false,
+    /// How the subtree's `Toggle`s draw (`.toggleStyle()`).
+    toggle_style: mod.ToggleStyle = .automatic,
+    /// The subtree is inside a `Form`: its automatic toggles are checkboxes.
+    in_form: bool = false,
+    /// The width of the enclosing `Form`'s label column (its widest label),
+    /// set as layout reaches the form; null outside one.
+    form_label_width: ?f32 = null,
     /// Optional sink for overlay requests (sheets/alerts/popovers). When null,
     /// overlay modifiers are silently ignored — the 0-overlay fast path.
     overlays: ?*std.ArrayList(mod.OverlayRequest) = null,
@@ -93,6 +100,11 @@ pub const Context = struct {
     /// `VideoPlayer` then erases its frame and registers it here. When null
     /// (headless, or a platform with no player yet) it draws a placeholder.
     video_regions: ?*std.ArrayList(mod.VideoRegion) = null,
+    /// Optional sink for `NativeView` frames. The SDL runtime sets it where
+    /// it can place a platform view over the window's surface: a `NativeView`
+    /// then registers its frame here and paints nothing. When null (headless,
+    /// or a platform with no host yet) it draws a placeholder.
+    native_regions: ?*std.ArrayList(mod.NativeRegion) = null,
     /// Frames of `popoverPassthrough` views, which popover dismiss regions
     /// leave out. `ViewRenderer.render` supplies a list when this is null.
     passthrough: ?*std.ArrayList(renderer.Rect) = null,
@@ -109,6 +121,10 @@ pub const Context = struct {
     /// on mouse-motion (and the main loop already redraws per event, so hover
     /// highlights track the cursor for free).
     hover_point: ?renderer.Point = null,
+    /// Where the primary button went down, in layout points, while it is held;
+    /// null otherwise. A button under both this and `hover_point` draws pressed,
+    /// so a click shows on the control itself (the tap already ran on the press).
+    press_point: ?renderer.Point = null,
     /// Glyph cache for the bundled icon font (`Font.icons()`). When null, `Icon`
     /// and `IconButton` paint nothing — wire it (app + tests) to draw icons.
     icon_cache: ?*renderer.GlyphCache = null,
@@ -219,6 +235,25 @@ pub const Context = struct {
                 self.cache = font_set.cache(.{ .weight = self.font_weight, .italic = self.font_italic, .mono = self.font_mono });
             }
         }
+    }
+
+    /// Folds a view's environment modifiers into the inherited context: its
+    /// toggle style, and whether the subtree is inside a `Form`.
+    ///
+    /// - `self`: the context, changed in place.
+    /// - `view`: the view.
+    pub fn applyEnvironment(self: *Self, view: mod.View) void {
+        if (view.modifiers.toggle_style) |style| self.toggle_style = style;
+        if (view.modifiers.form_columns) self.in_form = true;
+    }
+
+    /// The style a `Toggle` here draws in: the inherited one, an automatic
+    /// one a checkbox inside a `Form` and a switch elsewhere.
+    ///
+    /// - `self`: the context.
+    /// - Returns: `.switch` or `.checkbox`.
+    pub fn resolvedToggleStyle(self: *const Self) mod.ToggleStyle {
+        return self.toggle_style.resolved(self.in_form);
     }
 
     /// The faces rich text is drawn in.

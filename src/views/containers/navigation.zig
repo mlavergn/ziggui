@@ -29,6 +29,33 @@ const NavigationPush = struct {
         const self: *Self = @ptrCast(@alignCast(context.?));
         self.navigation.push(self.route) catch |err| log.err("navigation push failed [{any}]", .{err});
     }
+
+    /// A list row that pushes `route` when tapped: the icon (when given) in
+    /// the accent, the title, and a chevron at the trailing edge, the whole
+    /// row hit-tested and highlighted under the pointer.
+    ///
+    /// - `icon`: the leading symbol, or null for none.
+    /// - `label`: the row's title.
+    /// - `route`: the route pushed.
+    /// - `navigation`: the route stack; app-owned.
+    /// - Returns: the row.
+    fn row(icon: ?renderer.Icon, label: []const u8, route: i64, navigation: *mod.NavigationPath) mod.View {
+        const scope = mod.BuildScope.shared();
+        const tokens = scope.tokens();
+        const push = scope.allocator().create(Self) catch @panic("oom");
+        push.* = .{ .navigation = navigation, .route = route };
+        return mod.HStack(.{
+            if (icon) |symbol| mod.Icon(symbol, 16, tokens.accent) else mod.Empty(),
+            mod.Text(label).foreground(tokens.label),
+            mod.Spacer(),
+            mod.Icon(.chevronRight, 14, tokens.tertiary_label),
+        }).spacing(10)
+            .padding(8)
+            .frameMaxWidth()
+            .hoverFill(tokens.hover)
+            .cornerRadius(6)
+            .onTap(.{ .context = push, .function = Self.apply });
+    }
 };
 
 /// A two-column master/detail layout: a fixed-width `sidebar` pane (filled with
@@ -71,17 +98,29 @@ pub fn NavigationSplitViewInset(sidebar: mod.View, detail: mod.View) mod.View {
     });
 }
 
-/// A button that, when tapped, pushes `route` onto `navigation`'s route stack.
-/// Reuses the plain `.callback` hit action (no new interaction kind needed).
+/// A list row that pushes `route` onto `navigation`'s route stack when tapped,
+/// as SwiftUI's `NavigationLink` draws in a `List`: the title, then a chevron
+/// at the trailing edge. Stack the rows (with `Divider`s between them) and
+/// switch the body on `navigation.top()` to show what was pushed.
 ///
-/// - `label`: the button's title.
+/// - `label`: the row's title.
 /// - `route`: the route pushed.
 /// - `navigation`: the route stack; app-owned.
-/// - Returns: the button.
+/// - Returns: the row.
 pub fn NavigationLink(label: []const u8, route: i64, navigation: *mod.NavigationPath) mod.View {
-    const push = mod.BuildScope.shared().allocator().create(NavigationPush) catch @panic("oom");
-    push.* = .{ .navigation = navigation, .route = route };
-    return mod.Button(label, .{ .context = push, .function = NavigationPush.apply });
+    return NavigationPush.row(null, label, route, navigation);
+}
+
+/// A `NavigationLink` row led by `icon` in the accent, as a `Label` in a
+/// SwiftUI `List` row.
+///
+/// - `label`: the row's title.
+/// - `icon`: the leading symbol.
+/// - `route`: the route pushed.
+/// - `navigation`: the route stack; app-owned.
+/// - Returns: the row.
+pub fn NavigationLinkIcon(label: []const u8, icon: renderer.Icon, route: i64, navigation: *mod.NavigationPath) mod.View {
+    return NavigationPush.row(icon, label, route, navigation);
 }
 
 /// A button that pops the top route off `navigation` (the navigation "back"
@@ -101,4 +140,26 @@ test {
     std.testing.refAllDecls(@This());
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "a NavigationLink row pushes from anywhere along it, its chevron included" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    var navigation = mod.NavigationPath.init(std.testing.allocator);
+    defer navigation.deinit();
+    canvas.begin(renderer.MacosTheme.light);
+    const view = mod.VStack(.{
+        NavigationLink("Inbox", 1, &navigation),
+        NavigationLinkIcon("Archive", .archive, 2, &navigation),
+    }).spacing(0);
+    canvas.end();
+    var framebuffer = try canvas.render(view, 300, 80);
+    defer framebuffer.deinit();
+    // The first row's trailing edge, where its chevron is.
+    try std.testing.expect(canvas.tap(.{ .x = 290, .y = 10 }));
+    try std.testing.expectEqual(@as(?i64, 1), navigation.top());
+    // The second row, past its title.
+    try std.testing.expect(canvas.tap(.{ .x = 200, .y = 50 }));
+    try std.testing.expectEqual(@as(?i64, 2), navigation.top());
+    try std.testing.expectEqual(@as(usize, 2), navigation.depth());
 }

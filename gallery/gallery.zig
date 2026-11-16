@@ -82,6 +82,12 @@ pub const Section = enum {
     /// A video player with controls drawn over its picture.
     video,
 
+    /// A platform view the app owns, placed where layout puts it.
+    native,
+
+    /// An app's settings: tabs over columned forms.
+    settings,
+
     /// Every section, as sidebar rows.
     pub const items = blk: {
         const values = @typeInfo(Self).@"enum".field_values;
@@ -123,6 +129,8 @@ pub const Section = enum {
             .reorder => "Reorder",
             .files => "File Browser",
             .video => "Video",
+            .native => "Native View",
+            .settings => "Settings",
         };
     }
 
@@ -156,6 +164,8 @@ pub const Section = enum {
             .reorder => .gripVertical,
             .files => .folderOpen,
             .video => .monitorPlay,
+            .native => .pictureInPicture2,
+            .settings => .settings,
         };
     }
 
@@ -345,6 +355,9 @@ pub const Gallery = struct {
     /// The Video panel and its player.
     media: gallery.Media,
 
+    /// The Settings panel and its state.
+    settings: gallery.SettingsPanel,
+
     /// Whether the Chat panel's tool call is unfolded.
     tool_open: bool = false,
 
@@ -413,6 +426,7 @@ pub const Gallery = struct {
             .editor = editor,
             .kit = kit,
             .media = gallery.Media.init(allocator),
+            .settings = gallery.SettingsPanel.init(allocator),
         };
         return self;
     }
@@ -421,6 +435,7 @@ pub const Gallery = struct {
     ///
     /// - `self`: the gallery to tear down.
     pub fn deinit(self: *Self) void {
+        self.settings.deinit();
         self.media.deinit();
         self.kit.deinit();
         self.editor.deinit();
@@ -441,7 +456,8 @@ pub const Gallery = struct {
         return accent.theme(self.family(), self.dark.get());
     }
 
-    /// Builds the window's view tree: the sidebar beside the selected panel.
+    /// Builds the window's view tree: the sidebar beside the selected panel,
+    /// or the Video panel's player alone while it is full screen.
     ///
     /// Called once per frame, inside `BuildScope.begin`/`end`.
     ///
@@ -450,6 +466,10 @@ pub const Gallery = struct {
     pub fn body(self: *Self) ziggui.View {
         self.track(Section.at(self.section.get()));
         const active_theme = self.theme();
+        // The Video panel's player, full screen: nothing else shows but the
+        // sheet and alerts (the quit question).
+        self.media.syncFullScreen();
+        if (self.media.expanded) return self.showcase.presentations(self.media.expandedView(), active_theme);
         const root = ziggui.NavigationSplitView(
             self.sidebar(active_theme),
             self.detail(active_theme),
@@ -493,14 +513,20 @@ pub const Gallery = struct {
         return self.menu_bar.appKeyDown(live, if (live) self.barMenus() else &.{}, keycode, modifiers);
     }
 
-    /// A key went down (ziggui's raw event): the Menu Bar panel's keys, then
-    /// the Editor panel's shortcuts while it shows with nothing modal over it.
+    /// A key went down (ziggui's raw event): Esc takes the Video panel's
+    /// player out of full screen, unless a sheet or alert is up; then the Menu Bar panel's keys, then the
+    /// Editor panel's shortcuts while it shows with nothing modal over it.
     ///
     /// - `self`: the gallery.
     /// - `keycode`: the event's `SDL_Keycode`.
     /// - `modifiers`: its `SDL_Keymod` mask.
     /// - Returns: true when a panel used it.
     pub fn keyDown(self: *Self, keycode: u32, modifiers: u16) bool {
+        // Not under a sheet or alert (the quit question): Esc is theirs then.
+        if (self.media.expanded and keycode == ziggui.SdlKey.escape and !self.showcase.presentsModal()) {
+            self.media.toggleExpanded();
+            return true;
+        }
         if (self.menuKeyDown(keycode, modifiers)) return true;
         if (self.showcase.presentsModal()) return false;
         if (Section.at(self.section.get()) != .editor) return false;
@@ -677,6 +703,8 @@ pub const Gallery = struct {
             .reorder => self.kit.reorderPanel(active_theme),
             .files => self.kit.filesPanel(active_theme),
             .video => self.media.videoPanel(active_theme),
+            .native => self.media.nativePanel(active_theme),
+            .settings => self.settings.panel(active_theme),
         };
     }
 
@@ -702,7 +730,7 @@ pub const Gallery = struct {
     fn chatPanel(self: *Self, active_theme: ziggui.Theme) ziggui.View {
         const toggle = ziggui.Callback.init(Self, self, Self.toggleTool);
         return ziggui.VStack(.{
-            Self.card(active_theme, "Status marks", ziggui.HStack(.{
+            Self.card(active_theme, "Status marks", "ziggui.StatusMark", ziggui.HStack(.{
                 ziggui.StatusMark(.idle, 10),     ziggui.Text("idle").font(.footnote),
                 ziggui.StatusMark(.busy, 10),     ziggui.Text("busy").font(.footnote),
                 ziggui.StatusMark(.waiting, 10),  ziggui.Text("waiting").font(.footnote),
@@ -710,13 +738,13 @@ pub const Gallery = struct {
                 ziggui.StatusMark(.stopped, 10),  ziggui.Text("stopped").font(.footnote),
                 ziggui.Spacer(),
             }).spacing(6)),
-            Self.card(active_theme, "Chips", ziggui.HStack(.{
+            Self.card(active_theme, "Chips", "ziggui.Chip", ziggui.HStack(.{
                 ziggui.Chip("Ask before edits", .shield, toggle),
                 ziggui.Chip("Opus", .sparkles, toggle),
                 ziggui.Chip("screenshot.png · 84 KB", .image, null),
                 ziggui.Spacer(),
             }).spacing(8)),
-            Self.card(active_theme, "Transcript", ziggui.VStack(.{
+            Self.card(active_theme, "Transcript", "ziggui.Bubble · ziggui.DisclosureGroup · ziggui.CodeBlock · ziggui.Quote", ziggui.VStack(.{
                 Self.leading(ziggui.Bubble(ziggui.WrappedText("List the files and explain the build."), active_theme.colors.accent.withAlpha(0.16))),
                 ziggui.DisclosureGroup(
                     ziggui.Text("ls -la").font(.footnote).mono(),
@@ -739,11 +767,11 @@ pub const Gallery = struct {
     fn panesPanel(self: *Self, active_theme: ziggui.Theme) ziggui.View {
         const on_hunk = ziggui.IndexCallback.init(Self, self, Self.selectHunk);
         return ziggui.VStack(.{
-            Self.card(active_theme, "Table rows over a virtual list (10,000 rows)", ziggui.VStack(.{
+            Self.card(active_theme, "Table rows over a virtual list (10,000 rows)", "ziggui.TableHeader · ziggui.TableRow · ziggui.VirtualList", ziggui.VStack(.{
                 ziggui.TableHeader(&file_columns),
                 ziggui.VirtualList(Self, self, file_count, file_row_height, &self.files_scroll, Self.fileRow).frameHeight(150),
             }).spacing(0)),
-            Self.card(active_theme, "DiffView (tap a row to select its hunk; scroll sideways for long lines)", ziggui.VStack(.{
+            Self.card(active_theme, "DiffView (tap a row to select its hunk; scroll sideways for long lines)", "ziggui.DiffView", ziggui.VStack(.{
                 ziggui.DiffView(&sample_diff, self.hunk_selected, &self.diff_scroll, on_hunk),
             }).spacing(0).frameHeight(diff_rows_shown * ziggui.diff_row_height)),
         }).spacing(16);
@@ -785,7 +813,7 @@ pub const Gallery = struct {
                 Self.pane(active_theme, "Bottom", "Each pane is laid out at the size the split gives it."),
             ),
         );
-        return Self.card(active_theme, "HSplitView over a VSplitView", split
+        return Self.card(active_theme, "HSplitView over a VSplitView", "ziggui.HSplitView · ziggui.VSplitView", split
             .frameMaxWidth()
             .frameHeight(260)
             .border(active_theme.colors.separator, 1));
@@ -797,7 +825,7 @@ pub const Gallery = struct {
     /// - `active_theme`: the theme this frame draws with.
     /// - Returns: the panel's view.
     fn menuBarPanel(self: *Self, active_theme: ziggui.Theme) ziggui.View {
-        return Self.card(active_theme, "MenuBar (click a title, point at the next; Alt opens the first menu)", ziggui.VStack(.{
+        return Self.card(active_theme, "MenuBar (click a title, point at the next; Alt opens the first menu)", "ziggui.MenuBar", ziggui.VStack(.{
             ziggui.MenuBar(&self.menu_bar, self.barMenus(), .{}),
             ziggui.Divider(),
             ziggui.VStack(.{
@@ -823,7 +851,7 @@ pub const Gallery = struct {
         };
         const folded = ziggui.MenuBarMenu.fold(ziggui.BuildScope.shared().allocator(), self.barMenus()) catch @panic("oom");
         return ziggui.VStack(.{
-            Self.card(active_theme, "TitleBar with Windows' buttons (the theme colors the bar)", ziggui.TitleBar(
+            Self.card(active_theme, "TitleBar with Windows' buttons (the theme colors the bar)", "ziggui.TitleBar · ziggui.MenuBar · ziggui.WindowButtons", ziggui.TitleBar(
                 ziggui.HStack(.{
                     ziggui.Icon(.boxes, 16, foreground).paddingInsets(.{ .leading = 10 }),
                     ziggui.MenuBar(&self.title_menus[0], self.barMenus(), .{ .foreground = foreground, .fill = false }),
@@ -831,7 +859,7 @@ pub const Gallery = struct {
                 "~/src/mlavergn/ziggui",
                 ziggui.WindowButtons(.windows, false, actions),
             ).border(active_theme.colors.separator, 1)),
-            Self.card(active_theme, "Narrow, with GNOME's buttons and the menus folded", Self.leading(ziggui.TitleBar(
+            Self.card(active_theme, "Narrow, with GNOME's buttons and the menus folded", "ziggui.TitleBar · ziggui.MenuBar · ziggui.WindowButtons", Self.leading(ziggui.TitleBar(
                 ziggui.HStack(.{
                     ziggui.Icon(.boxes, 16, foreground).paddingInsets(.{ .leading = 10 }),
                     ziggui.MenuBar(&self.title_menus[1], folded, .{ .foreground = foreground, .fill = false }),
@@ -852,11 +880,11 @@ pub const Gallery = struct {
         const typing = [_]ziggui.KeyHint{ .{ .key = "enter", .action = "send" }, .{ .key = "shift+enter", .action = "new line" }, .{ .key = "esc", .action = "stop" }, .{ .key = "/", .action = "commands" } };
         const listing = [_]ziggui.KeyHint{ .{ .key = "↑↓", .action = "rows" }, .{ .key = "space", .action = "stage" }, .{ .key = "ctrl+N", .action = "new" }, .{ .key = "alt", .action = "menus" } };
         return ziggui.VStack(.{
-            Self.card(active_theme, "StatusLine while typing", ziggui.VStack(.{
+            Self.card(active_theme, "StatusLine while typing", "ziggui.StatusLine", ziggui.VStack(.{
                 Self.leading(ziggui.Text("Sent to claude-ziggui.").font(.footnote).foreground(active_theme.colors.secondary_label)).padding(6),
                 ziggui.StatusLine(&typing),
             }).spacing(0).border(active_theme.colors.separator, 1)),
-            Self.card(active_theme, "StatusLine over a list", ziggui.StatusLine(&listing).border(active_theme.colors.separator, 1)),
+            Self.card(active_theme, "StatusLine over a list", "ziggui.StatusLine", ziggui.StatusLine(&listing).border(active_theme.colors.separator, 1)),
         }).spacing(16);
     }
 
@@ -881,7 +909,7 @@ pub const Gallery = struct {
             }).spacing(2).alignment(.leading).paddingInsets(.{ .top = 4, .leading = 10, .bottom = 4, .trailing = 10 }).frameMaxWidth().frameAlign(.leading), &self.hover, index, details);
         }
         return ziggui.VStack(.{
-            Self.card(active_theme, "Rest the pointer on a row (HoverPopover over a HoverState)", Self.leading(ziggui.StackBuilder.fromSlice(.vertical, 0, .leading, rows).frameWidth(240).popoverPassthrough())),
+            Self.card(active_theme, "Rest the pointer on a row (HoverPopover over a HoverState)", "ziggui.HoverPopover", Self.leading(ziggui.StackBuilder.fromSlice(.vertical, 0, .leading, rows).frameWidth(240).popoverPassthrough())),
         }).spacing(16);
     }
 
@@ -920,20 +948,25 @@ pub const Gallery = struct {
         }).spacing(6).padding(12).frameMaxWidth().frameMaxHeight();
     }
 
-    /// A titled group: a headline above a rounded block in the secondary background.
+    /// A titled group: a headline above a rounded block in the secondary background,
+    /// the code names it shows under it.
     ///
     /// - `active_theme`: the theme this frame draws with.
     /// - `title`: the group's headline.
+    /// - `names`: what it shows, as code names it (`ziggui.Table`), drawn under it.
     /// - `content`: the group's contents.
     /// - Returns: the group's view.
-    fn card(active_theme: ziggui.Theme, title: []const u8, content: ziggui.View) ziggui.View {
+    fn card(active_theme: ziggui.Theme, title: []const u8, names: []const u8, content: ziggui.View) ziggui.View {
         return ziggui.VStack(.{
             Self.leading(ziggui.Text(title).font(.headline)),
-            content.frameMaxWidth()
-                .padding(14)
-                .background(active_theme.colors.secondary_background)
-                .cornerRadius(active_theme.metrics.corner_radius)
-                .frameMaxWidth(),
+            ziggui.VStack(.{
+                content.frameMaxWidth()
+                    .padding(14)
+                    .background(active_theme.colors.secondary_background)
+                    .cornerRadius(active_theme.metrics.corner_radius)
+                    .frameMaxWidth(),
+                Self.leading(ziggui.Text(names).font(.caption).mono().foreground(active_theme.colors.secondary_label)),
+            }).spacing(4).frameMaxWidth(),
         }).spacing(8).frameMaxWidth();
     }
 
@@ -1169,6 +1202,21 @@ test "the Editor section takes the keyboard and its shortcuts, and gives them up
     shown.section.set(@backingInt(Section.chat));
     try Frame.draw(&shown);
     try std.testing.expectEqual(@as(?*ziggui.TextFieldState, null), ziggui.Focus.shared().focused());
+}
+
+test "Esc takes the expanded video back to its panel, unless an alert is up" {
+    const allocator = std.testing.allocator;
+
+    var shown = try Gallery.init(allocator);
+    defer shown.deinit();
+
+    shown.media.expanded = true;
+    shown.showcase.openAlert();
+    try std.testing.expect(!shown.keyDown(ziggui.SdlKey.escape, 0));
+    try std.testing.expect(shown.media.expanded);
+    shown.showcase.closeAlert();
+    try std.testing.expect(shown.keyDown(ziggui.SdlKey.escape, 0));
+    try std.testing.expect(!shown.media.expanded);
 }
 
 test "leaving Navigation empties its stack; key-ups and quits reach the Overlays panel" {

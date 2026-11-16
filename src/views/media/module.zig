@@ -1,6 +1,8 @@
 //! Media playback: a `Player` modeled on AVFoundation's `AVPlayer`, the
 //! `PlayerBackend` the SDL runtime plugs a platform player into, and the
-//! `VideoPlayer` view that shows a player's picture.
+//! `VideoPlayer` view that shows a player's picture, with
+//! `VideoPlayerControls` for the standard controls over it. Also `NativeView`, which
+//! shows a platform view the app owns (a web view, say) where layout puts it.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_media_module);
@@ -21,6 +23,12 @@ pub const PlayerBackend = @import("player_backend.zig").PlayerBackend;
 pub const Player = @import("player.zig").Player;
 /// A player's picture in the view tree.
 pub const VideoPlayer = @import("video_player.zig").VideoPlayer;
+/// The standard controls over a `VideoPlayer`: full screen, volume, transport, scrubber.
+pub const VideoPlayerControls = @import("video_player_controls.zig").VideoPlayerControls;
+/// What a `VideoPlayerControls` keeps across frames; app-owned.
+pub const VideoPlayerControlsState = @import("video_player_controls_state.zig").VideoPlayerControlsState;
+/// A platform view the app owns, placed where layout puts it.
+pub const NativeView = @import("native_view.zig").NativeView;
 
 // -----------------------------------------------------------------------------
 // From the views module
@@ -30,6 +38,45 @@ pub const View = @import("../module.zig").View;
 
 /// The frame clock a player keys its per-frame sample to, from the views module.
 pub const FrameClock = @import("../module.zig").FrameClock;
+
+/// A two-way handle into a value (`Player.volumeBinding`), from the views module.
+pub const Binding = @import("../module.zig").Binding;
+
+/// What a control's tap calls, from the views module.
+pub const Callback = @import("../module.zig").Callback;
+
+/// The frame's arena and tokens, from the views module.
+pub const BuildScope = @import("../module.zig").BuildScope;
+
+/// Stacks built from views, from the views module.
+pub const StackBuilder = @import("../module.zig").StackBuilder;
+
+/// Children side by side, from the views module.
+pub const HStack = @import("../module.zig").HStack;
+
+/// Children stacked vertically, from the views module.
+pub const VStack = @import("../module.zig").VStack;
+
+/// Children layered front to back, from the views module.
+pub const ZStack = @import("../module.zig").ZStack;
+
+/// Flexible space in a stack, from the views module.
+pub const Spacer = @import("../module.zig").Spacer;
+
+/// A view that draws nothing, from the views module.
+pub const Empty = @import("../module.zig").Empty;
+
+/// A symbol from the icon set, from the views module.
+pub const Icon = @import("../module.zig").Icon;
+
+/// A line of text, from the views module.
+pub const Text = @import("../module.zig").Text;
+
+/// A value picked along a track, from the views module.
+pub const Slider = @import("../module.zig").Slider;
+
+/// Draws and taps views in tests, from the views module.
+pub const TestCanvas = @import("../module.zig").TestCanvas;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -43,4 +90,7 @@ test {
     _ = @import("player_backend.zig");
     _ = @import("player.zig");
     _ = @import("video_player.zig");
+    _ = @import("native_view.zig");
+    _ = @import("video_player_controls_state.zig");
+    _ = @import("video_player_controls.zig");
 }

@@ -59,8 +59,12 @@ pub const PickerData = @import("kind.zig").PickerData;
 pub const DrawingData = @import("kind.zig").DrawingData;
 /// A `VideoPlayer`'s payload.
 pub const VideoPlayerData = @import("kind.zig").VideoPlayerData;
+/// A `NativeView`'s payload.
+pub const NativeViewData = @import("kind.zig").NativeViewData;
 /// The modifiers applied around a view's content.
 pub const Modifiers = @import("modifiers.zig").Modifiers;
+/// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
+pub const ToggleStyle = @import("toggle_style.zig").ToggleStyle;
 /// A `.sheet`/`.alert`/`.popover` modifier.
 pub const OverlayModifier = @import("modifiers.zig").OverlayModifier;
 /// A `.frame(...)` modifier's sizes and alignment.
@@ -133,6 +137,8 @@ pub const HitRegion = @import("hit_region.zig").HitRegion;
 pub const HoverRegion = @import("hover_region.zig").HoverRegion;
 /// A `VideoPlayer`'s frame registered while painting.
 pub const VideoRegion = @import("video_region.zig").VideoRegion;
+/// A `NativeView`'s frame registered while painting.
+pub const NativeRegion = @import("native_region.zig").NativeRegion;
 /// An accessibility role.
 pub const A11yRole = @import("a11y_role.zig").A11yRole;
 /// One node of the accessibility tree.
@@ -250,6 +256,7 @@ test {
     _ = @import("view.zig");
     _ = @import("kind.zig");
     _ = @import("modifiers.zig");
+    _ = @import("toggle_style.zig");
     _ = @import("frame_specification.zig");
     _ = @import("fill.zig");
     _ = @import("material.zig");
@@ -268,6 +275,7 @@ test {
     _ = @import("hit_region.zig");
     _ = @import("hover_region.zig");
     _ = @import("video_region.zig");
+    _ = @import("native_region.zig");
     _ = @import("a11y_role.zig");
     _ = @import("a11y_node.zig");
     _ = @import("overlay_request.zig");

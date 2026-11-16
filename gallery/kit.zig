@@ -154,7 +154,7 @@ pub const Kit = struct {
     /// - Returns: the panel's view.
     pub fn badgesPanel(self: *Self, theme: ziggui.Theme) ziggui.View {
         return ziggui.VStack(.{
-            Self.card(theme, "Badge in each tone (.mono() for a code)", ziggui.HStack(.{
+            Self.card(theme, "Badge in each tone (.mono() for a code)", "ziggui.Badge", ziggui.HStack(.{
                 ziggui.Badge("idle", .neutral),
                 ziggui.Badge("connected", .success),
                 ziggui.Badge("refused", .danger),
@@ -164,7 +164,7 @@ pub const Kit = struct {
                 ziggui.Badge("-32601", .danger).mono(),
                 ziggui.Spacer(),
             }).spacing(6)),
-            Self.card(theme, "KeyCap", ziggui.HStack(.{
+            Self.card(theme, "KeyCap", "ziggui.KeyCap", ziggui.HStack(.{
                 ziggui.KeyCap("⌘K"),
                 ziggui.KeyCap("esc"),
                 ziggui.KeyCap("↩"),
@@ -173,7 +173,7 @@ pub const Kit = struct {
                 ziggui.KeyCap("ctrl+S"),
                 ziggui.Spacer(),
             }).spacing(6)),
-            Self.card(theme, "ButtonKeyed in each role", ziggui.VStack(.{
+            Self.card(theme, "ButtonKeyed in each role", "ziggui.ButtonKeyed", ziggui.VStack(.{
                 ziggui.HStack(.{
                     ziggui.ButtonKeyed("Save", "↩", .prominent, ziggui.Callback.init(Self, self, Self.saved)),
                     ziggui.ButtonKeyed("Cancel", "esc", .normal, ziggui.Callback.init(Self, self, Self.cancelled)),
@@ -183,7 +183,7 @@ pub const Kit = struct {
                 }).spacing(8),
                 Self.leading(ziggui.Text(self.pressed).font(.footnote).foreground(theme.colors.secondary_label)),
             }).spacing(10)),
-            Self.card(theme, "SegmentedControl, compact and stretched", ziggui.VStack(.{
+            Self.card(theme, "SegmentedControl, compact and stretched", "ziggui.SegmentedControl", ziggui.VStack(.{
                 ziggui.HStack(.{
                     ziggui.Text("Pane"),
                     ziggui.Spacer(),
@@ -191,7 +191,7 @@ pub const Kit = struct {
                 }),
                 ziggui.SegmentedControl(self.appearance_segment.binding(), &appearance_options).frameMaxWidth(),
             }).spacing(12)),
-            Self.card(theme, "KeyHintBar (seven hints, six shown)", ziggui.KeyHintBar(&bar_hints).border(theme.colors.separator, 1)),
+            Self.card(theme, "KeyHintBar (seven hints, six shown)", "ziggui.KeyHintBar", ziggui.KeyHintBar(&bar_hints).border(theme.colors.separator, 1)),
         }).spacing(16);
     }
 
@@ -202,14 +202,14 @@ pub const Kit = struct {
     /// - Returns: the panel's view.
     pub fn formsPanel(self: *Self, theme: ziggui.Theme) ziggui.View {
         return ziggui.VStack(.{
-            Self.card(theme, "SettingRow", ziggui.VStack(.{
+            Self.card(theme, "SettingRow", "ziggui.SettingRow", ziggui.VStack(.{
                 ziggui.SettingRow("Skip initialize", "Send standalone requests to a legacy server, without the initialize handshake or a session.", ziggui.Toggle("", self.skip_initialize.binding())),
                 ziggui.Divider(),
                 ziggui.SettingRow("Strip inbound auth", "", ziggui.Toggle("", self.strip_auth.binding())),
             }).spacing(10)),
-            Self.card(theme, "KeyValueEditor", ziggui.KeyValueEditor(&self.headers, "Header", "Value")),
-            Self.card(theme, "TokenField (Enter commits; commas split)", ziggui.TokenField(&self.toolsets, "Add toolsets")),
-            Self.card(theme, "SearchField (× clears)", ziggui.SearchField("Filter this folder", &self.search, null, null)),
+            Self.card(theme, "KeyValueEditor", "ziggui.KeyValueEditor", ziggui.KeyValueEditor(&self.headers, "Header", "Value")),
+            Self.card(theme, "TokenField (Enter commits; commas split)", "ziggui.TokenField", ziggui.TokenField(&self.toolsets, "Add toolsets")),
+            Self.card(theme, "SearchField (× clears)", "ziggui.SearchField", ziggui.SearchField("Filter this folder", &self.search, null, null)),
         }).spacing(16);
     }
 
@@ -222,12 +222,12 @@ pub const Kit = struct {
     pub fn rowsPanel(self: *Self, theme: ziggui.Theme) ziggui.View {
         const call = ziggui.Callback.init(Self, self, Self.saved);
         return ziggui.VStack(.{
-            Self.card(theme, "PaneHeader", ziggui.StackBuilder.make(.vertical, 0, .leading, .{ziggui.PaneHeader("deepwiki", "https://mcp.deepwiki.com/mcp · legacy, 2025-11-25", ziggui.HStack(.{
+            Self.card(theme, "PaneHeader", "ziggui.PaneHeader", ziggui.StackBuilder.make(.vertical, 0, .leading, .{ziggui.PaneHeader("deepwiki", "https://mcp.deepwiki.com/mcp · legacy, 2025-11-25", ziggui.HStack(.{
                 ziggui.Badge("connected", .success),
                 ziggui.Button("Disconnect", call),
-                ziggui.ButtonKeyed("Call", "↩", .prominent, call),
+                ziggui.ButtonRoled("Call", .prominent, call),
             }).spacing(8))}).background(theme.colors.window_background).cornerRadius(theme.metrics.corner_radius)),
-            Self.card(theme, "SelectableRow: a focused list, then an unfocused one", ziggui.HStack(.{
+            Self.card(theme, "SelectableRow: a focused list, then an unfocused one", "ziggui.SelectableRow", ziggui.HStack(.{
                 Self.sampleList(&rows_order, &self.row_selection, true, null),
                 Self.sampleList(&rows_order, &self.row_selection, false, null),
             }).spacing(16).alignment(.top)),
@@ -244,8 +244,8 @@ pub const Kit = struct {
         if (self.reorder.takeMove()) |move| move.apply(usize, &self.reorder_order);
         self.reorder_preview = reorder_frozen;
         return ziggui.VStack(.{
-            Self.card(theme, "ReorderableRow: drag a row up or down", Self.sampleList(&self.reorder_order, &self.reorder_selection, true, &self.reorder)),
-            Self.card(theme, "Mid-drag: the second row held two rows down", Self.sampleList(&reorder_start, &self.reorder_selection, true, &self.reorder_preview)),
+            Self.card(theme, "ReorderableRow: drag a row up or down", "ziggui.ReorderableRow", Self.sampleList(&self.reorder_order, &self.reorder_selection, true, &self.reorder)),
+            Self.card(theme, "Mid-drag: the second row held two rows down", "ziggui.ReorderableRow", Self.sampleList(&reorder_start, &self.reorder_selection, true, &self.reorder_preview)),
         }).spacing(16);
     }
 
@@ -261,7 +261,7 @@ pub const Kit = struct {
         else
             "Picks nothing: the selection is hidden.";
         return ziggui.VStack(.{
-            Self.card(theme, "FileBrowser: a tap selects, a double-click opens a folder", ziggui.FileBrowser(&self.files, true).frameHeight(280)),
+            Self.card(theme, "FileBrowser: a tap selects, a double-click opens a folder", "ziggui.FileBrowser", ziggui.FileBrowser(&self.files, true).frameHeight(280)),
             Self.leading(ziggui.Text(said).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated()),
         }).spacing(16);
     }
@@ -322,22 +322,27 @@ pub const Kit = struct {
     }
 
     /// A titled group: a headline above a rounded block in the secondary
-    /// background, the content wrapped so its own padding survives.
+    /// background, the content wrapped so its own padding survives, the code
+    /// names it shows under it.
     ///
     /// - `theme`: the theme this frame draws with.
     /// - `title`: the group's headline.
+    /// - `names`: what it shows, as code names it (`ziggui.Table`), drawn under it.
     /// - `content`: the group's contents.
     /// - Returns: the group's view.
-    fn card(theme: ziggui.Theme, title: []const u8, content: ziggui.View) ziggui.View {
+    fn card(theme: ziggui.Theme, title: []const u8, names: []const u8, content: ziggui.View) ziggui.View {
         return ziggui.VStack(.{
             Self.leading(ziggui.Text(title).font(.headline)),
-            // Wrapped, so the card's padding does not replace the content's own.
-            ziggui.StackBuilder.make(.vertical, 0, .leading, .{content})
-                .frameMaxWidth()
-                .padding(14)
-                .background(theme.colors.secondary_background)
-                .cornerRadius(theme.metrics.corner_radius)
-                .frameMaxWidth(),
+            ziggui.VStack(.{
+                // Wrapped, so the card's padding does not replace the content's own.
+                ziggui.StackBuilder.make(.vertical, 0, .leading, .{content})
+                    .frameMaxWidth()
+                    .padding(14)
+                    .background(theme.colors.secondary_background)
+                    .cornerRadius(theme.metrics.corner_radius)
+                    .frameMaxWidth(),
+                Self.leading(ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label)),
+            }).spacing(4).frameMaxWidth(),
         }).spacing(8).frameMaxWidth();
     }
 

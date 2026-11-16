@@ -47,10 +47,6 @@ const NativePlayer = struct {
     host_layer: mod.Id,
     /// The layer-hosting `NSView`, in the window's content view below SDL's.
     container: mod.Id,
-    /// The container's frame last set, in the content view's coordinates.
-    container_frame: mod.CGRect = .{},
-    /// The player layer's frame last set, in the host layer's.
-    layer_frame: mod.CGRect = .{},
     /// The corner radius last set.
     corner_radius: f64 = 0,
     /// The container is hidden.
@@ -140,6 +136,10 @@ pub const AvFoundationPlayer = struct {
     /// Counts `present` calls, so a player not shown in the latest is hidden.
     var frame_number: u64 = 0;
 
+    /// The content view's resizes, after which the pictures are placed (and
+    /// SDL's surface made clear) again until a transition has settled.
+    var settle: mod.ResizeSettle = .{};
+
     /// Puts each region's player picture where its view is, and hides every
     /// player no view showed this frame. Runs on the main thread after the
     /// view tree painted, before the frame is presented.
@@ -154,6 +154,11 @@ pub const AvFoundationPlayer = struct {
         const ns_window: mod.Id = sdl_c.SDL_GetPointerProperty(sdl_c.SDL_GetWindowProperties(window), sdl_c.SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, null);
         const content = mod.ObjectiveC.send(mod.Id, ns_window, "contentView", .{});
         if (content == null) return;
+        const size = mod.ObjectiveC.send(mod.CGRect, content, "bounds", .{}).size;
+        const settling = settle.note(size.width, size.height, views.FrameClock.shared().time());
+        // A full-screen transition can make SDL's surface opaque again, which
+        // would cover the pictures with black.
+        if (settling and regions.len > 0) Self.clearSurfaces(content);
         mod.ObjectiveC.send(void, mod.ObjectiveC.class("CATransaction"), "begin", .{});
         mod.ObjectiveC.send(void, mod.ObjectiveC.class("CATransaction"), "setDisableActions:", .{@as(u8, 1)});
         for (regions) |region| {
@@ -467,7 +472,10 @@ pub const AvFoundationPlayer = struct {
 
     /// Shows a player's picture at its region: the view in `content` below
     /// SDL's, framed to the part on screen, the layer to the whole frame
-    /// inside it. Unchanged frames are left alone.
+    /// inside it. Each frame is compared with the one AppKit holds, not the
+    /// one last asked for: a full-screen transition moves the views behind
+    /// our back. The host layer is the container's own, which AppKit places
+    /// in the window: only its size is set here, never its position.
     ///
     /// - `native`: the player.
     /// - `content`: the window's content view.
@@ -488,18 +496,19 @@ pub const AvFoundationPlayer = struct {
         const flipped = mod.ObjectiveC.send(u8, content, "isFlipped", .{}) != 0;
         const top: f64 = if (flipped) visible.y else bounds.size.height - visible.y - visible.height;
         const container_frame = mod.CGRect{ .origin = .{ .x = visible.x, .y = top }, .size = .{ .width = visible.width, .height = visible.height } };
-        if (!container_frame.eql(native.container_frame)) {
+        if (!container_frame.eql(mod.ObjectiveC.send(mod.CGRect, native.container, "frame", .{}))) {
             mod.ObjectiveC.send(void, native.container, "setFrame:", .{container_frame});
-            mod.ObjectiveC.send(void, native.host_layer, "setFrame:", .{mod.CGRect{ .size = container_frame.size }});
-            native.container_frame = container_frame;
+        }
+        const host_bounds = mod.CGRect{ .size = container_frame.size };
+        if (!host_bounds.eql(mod.ObjectiveC.send(mod.CGRect, native.host_layer, "bounds", .{}))) {
+            mod.ObjectiveC.send(void, native.host_layer, "setBounds:", .{host_bounds});
         }
         const layer_frame = mod.CGRect{
             .origin = .{ .x = region.rect.x - visible.x, .y = region.rect.y - visible.y },
             .size = .{ .width = region.rect.width, .height = region.rect.height },
         };
-        if (!layer_frame.eql(native.layer_frame)) {
+        if (!layer_frame.eql(mod.ObjectiveC.send(mod.CGRect, native.player_layer, "frame", .{}))) {
             mod.ObjectiveC.send(void, native.player_layer, "setFrame:", .{layer_frame});
-            native.layer_frame = layer_frame;
         }
         const radius: f64 = region.corner_radius;
         if (radius != native.corner_radius) {
@@ -513,7 +522,8 @@ pub const AvFoundationPlayer = struct {
     }
 
     /// Makes SDL's Metal surfaces in `content` non-opaque, so Core Animation
-    /// blends the frame (its erased holes) over the pictures beneath it.
+    /// blends the frame (its erased holes) over the pictures beneath it; a
+    /// surface already so is left alone.
     ///
     /// - `content`: the window's content view.
     fn clearSurfaces(content: mod.Id) void {
@@ -523,12 +533,12 @@ pub const AvFoundationPlayer = struct {
         for (0..count) |index| {
             const view = mod.ObjectiveC.send(mod.Id, subviews, "objectAtIndex:", .{@as(u64, index)});
             const layer = mod.ObjectiveC.send(mod.Id, view, "layer", .{});
-            if (layer != null and mod.ObjectiveC.send(u8, layer, "isKindOfClass:", .{metal_layer_class}) != 0) {
+            if (layer != null and mod.ObjectiveC.send(u8, layer, "isKindOfClass:", .{metal_layer_class}) != 0 and mod.ObjectiveC.send(u8, layer, "isOpaque", .{}) != 0) {
                 mod.ObjectiveC.send(void, layer, "setOpaque:", .{@as(u8, 0)});
             }
         }
         const own_layer = mod.ObjectiveC.send(mod.Id, content, "layer", .{});
-        if (own_layer != null and mod.ObjectiveC.send(u8, own_layer, "isKindOfClass:", .{metal_layer_class}) != 0) {
+        if (own_layer != null and mod.ObjectiveC.send(u8, own_layer, "isKindOfClass:", .{metal_layer_class}) != 0 and mod.ObjectiveC.send(u8, own_layer, "isOpaque", .{}) != 0) {
             mod.ObjectiveC.send(void, own_layer, "setOpaque:", .{@as(u8, 0)});
         }
     }

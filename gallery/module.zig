@@ -12,6 +12,9 @@ const builtin = @import("builtin");
 /// Whether this is a debug build.
 pub const is_debug = builtin.mode == .debug;
 
+/// Whether this build targets macOS (`main.zig`'s Native View sample is an AppKit view).
+pub const is_macos = builtin.os.tag == .macos;
+
 /// One page of the gallery, in sidebar order.
 pub const Section = @import("gallery.zig").Section;
 /// The component gallery: its state and the view tree it builds each frame.
@@ -26,6 +29,8 @@ pub const Editor = @import("editor.zig").Editor;
 pub const Kit = @import("kit.zig").Kit;
 /// The Video panel: a `VideoPlayer` and its player.
 pub const Media = @import("media.zig").Media;
+/// The Settings panel: an app's settings (`ziggui.Settings`), and their state.
+pub const SettingsPanel = @import("settings_panel.zig").SettingsPanel;
 
 // -----------------------------------------------------------------------------
 // Test Fixtures

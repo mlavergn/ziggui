@@ -35,6 +35,10 @@ pub const ViewPainter = struct {
         // a color set on a pane or a row leaves its plain buttons as they are.
         child_context.tint = view.modifiers.foreground;
         child_context.applyFontModifiers(view);
+        child_context.applyEnvironment(view);
+        // A form's label column, for content laid out again as it paints (a
+        // scroll view's), which lowering's own context never reaches.
+        if (view.modifiers.form_columns) child_context.form_label_width = mod.ViewLowering.widestFormLabel(&child_context, view);
         // An accessibility-hidden view drops itself and its whole subtree from the
         // a11y tree by clearing the sink for this branch.
         if (view.modifiers.a11y_hidden) child_context.a11y = null;
@@ -75,6 +79,8 @@ pub const ViewPainter = struct {
         if (view.modifiers.fixed_width) content_layout = content_layout.children[0];
         if (view.modifiers.frame != null) content_layout = content_layout.children[0];
         if (view.modifiers.padding != null) content_layout = content_layout.children[0];
+        // A form label's column frame, innermost (`ViewLowering.buildNode`).
+        if (view.modifiers.form_label) content_layout = content_layout.children[0];
 
         // The view's own tap region goes in BEFORE its content: regions are tested
         // last-registered first, so a button inside a tappable row must win.
@@ -206,6 +212,7 @@ pub const ViewPainter = struct {
             .scrollState => |scroll| try Self.paintScrollState(context, scroll, rect, canvas),
             .geometry => |geometry| try Self.paintGeometry(context, geometry, rect, canvas),
             .videoPlayer => |video| try Self.paintVideoPlayer(context, view, video, rect, canvas),
+            .nativeView => |native| try Self.paintNativeView(context, view, native, rect, canvas),
             .textField => |field| {
                 try mod.TextViewPainter.paintTextField(context, view, field, rect, canvas);
                 // The buffer is copied only for an accessibility pass, not every paint.
@@ -431,6 +438,32 @@ pub const ViewPainter = struct {
             clock.requestFrameAt(clock.time() + mod.Player.refresh_interval_ms);
         }
         try context.emitAccessibility(view, rect, .image, "Video", "");
+    }
+
+    /// Paints a `NativeView`. Where the runtime collects native regions it
+    /// registers the frame and paints nothing, since the platform view sits
+    /// over the window's surface there; elsewhere, or with no handle, it draws
+    /// a placeholder frame with a window glyph.
+    ///
+    /// - `context`: the context.
+    /// - `view`: the view (its corner radius).
+    /// - `native`: the platform view shown.
+    /// - `rect`: its frame.
+    /// - `canvas`: where it is painted.
+    /// - Returns: nothing; propagates allocation failure.
+    fn paintNativeView(context: *const mod.Context, view: mod.View, native: mod.NativeViewData, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+        const radius = view.modifiers.corner_radius;
+        if (context.native_regions) |regions| if (native.handle) |handle| {
+            const visible = if (context.visible) |shown| (shown.intersection(rect) orelse renderer.Rect{}) else rect;
+            try regions.append(context.arena, .{ .handle = handle, .rect = rect, .visible = visible, .corner_radius = radius });
+            return;
+        };
+        const colors = context.theme.colors;
+        try canvas.fillRoundedRect(rect, radius, colors.control_background.multiplyAlpha(context.opacity));
+        try canvas.strokeRoundedRect(rect, radius, 1, colors.control_border.multiplyAlpha(context.opacity));
+        const side = @min(32, @min(rect.width, rect.height));
+        const glyph = renderer.Rect{ .x = rect.midX() - side / 2, .y = rect.midY() - side / 2, .width = side, .height = side };
+        try mod.ControlPainter.paintIcon(context, .{ .icon = .appWindow, .size = side, .color = colors.tertiary_label }, glyph, canvas);
     }
 
     /// The largest centered sub-rect of `rect` with the image's aspect ratio
