@@ -5,6 +5,7 @@
 const std = @import("std");
 const log = std.log.scoped(.ziggui_player_backend);
 const mod = @import("module.zig");
+const renderer = @import("renderer");
 
 /// One platform player's operations. Every function runs on the UI thread
 /// and takes the native handle `create` returned.
@@ -51,6 +52,13 @@ pub const PlayerBackend = struct {
     /// Selects the track at `index` of the list `tracks` returns, or no
     /// subtitles when null (audio cannot be turned off).
     select_track: *const fn (handle: *anyopaque, kind: mod.PlayerTrackKind, index: ?usize) void,
+
+    /// The latest decoded picture, for a platform whose player hands its
+    /// frames to ziggui to draw (`VideoPlayer` draws it in the window's
+    /// surface) rather than drawing them itself behind it; null where the
+    /// platform draws its own, or before the first frame. The pixels belong
+    /// to the handle and stay valid until the next call.
+    frame: ?*const fn (handle: *anyopaque) ?renderer.Image = null,
 };
 
 // -----------------------------------------------------------------------------

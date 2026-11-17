@@ -41,6 +41,9 @@ pub const Media = struct {
     /// filled it: the system's transition takes a moment to report.
     full_screen_seen: bool = false,
 
+    /// What "Load sample stream" plays: `sample_url`, or what `--video` named.
+    sample: [:0]const u8 = sample_url,
+
     /// The Native View panel's platform view: an `NSView` `main.zig` makes on
     /// macOS; null headless and elsewhere, where the panel shows the placeholder.
     native_sample: ?*anyopaque = null,
@@ -156,7 +159,7 @@ pub const Media = struct {
     ///
     /// - `self`: the panel.
     fn loadSample(self: *Self) void {
-        self.player.replaceCurrentItem(sample_url) catch |err| log.warn("sample not loaded [{t}]", .{err});
+        self.player.replaceCurrentItem(self.sample) catch |err| log.warn("sample not loaded [{t}]", .{err});
         self.player.play();
     }
 

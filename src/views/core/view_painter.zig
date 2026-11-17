@@ -408,7 +408,9 @@ pub const ViewPainter = struct {
     /// Paints a `VideoPlayer`. Where the runtime collects video regions it
     /// erases the frame, so the platform player's picture behind the window's
     /// surface shows through and views painted later draw over it, and
-    /// registers the frame; elsewhere it fills it black with a video glyph.
+    /// registers the frame; where the platform hands its frames over
+    /// (`Player.currentFrame`) it draws the latest, aspect-fit on black;
+    /// elsewhere it fills it black with a video glyph.
     /// While the player plays or waits it asks for frames, so labels drawn
     /// from `Player.observe` keep up with it.
     ///
@@ -424,6 +426,13 @@ pub const ViewPainter = struct {
             try canvas.eraseRect(rect, radius);
             const visible = if (context.visible) |shown| (shown.intersection(rect) orelse renderer.Rect{}) else rect;
             try regions.append(context.arena, .{ .player = video.player, .rect = rect, .visible = visible, .corner_radius = radius });
+        } else if (video.player.currentFrame()) |picture| {
+            // The platform hands its frames over: drawn here, in the surface,
+            // so what is stacked over the player still draws on top.
+            try canvas.fillRoundedRect(rect, radius, renderer.Color.black.multiplyAlpha(context.opacity));
+            try canvas.pushClip(rect, radius);
+            try canvas.drawVideoFrame(Self.aspectFitRect(rect, picture.width, picture.height), picture);
+            try canvas.popClip();
         } else {
             try canvas.fillRoundedRect(rect, radius, renderer.Color.black.multiplyAlpha(context.opacity));
             const side = @min(32, @min(rect.width, rect.height));

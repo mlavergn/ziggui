@@ -254,6 +254,21 @@ pub const AppKitNativeHost = struct {
         suppressed = false;
     }
 
+    /// SDL pumps AppKit itself: nothing to do.
+    pub fn beforeWait() void {}
+
+    /// SDL pumps AppKit itself: nothing to do.
+    pub fn afterWait() void {}
+
+    /// AppKit never wakes the loop with an event of its own.
+    ///
+    /// - `event_type`: the event's type.
+    /// - Returns: false.
+    pub fn isWake(event_type: u32) bool {
+        _ = event_type;
+        return false;
+    }
+
     /// Whether a key's modifiers are ⌘ alone: ⌃A in a field moves to the
     /// line's start, and ⌘⇧V or ⌘⌥C are other commands, not an edit.
     ///

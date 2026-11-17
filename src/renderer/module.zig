@@ -49,6 +49,8 @@ pub const LineCommand = @import("render/module.zig").LineCommand;
 pub const GlyphCommand = @import("render/module.zig").GlyphCommand;
 /// A `DrawCommand.image` payload.
 pub const ImageCommand = @import("render/module.zig").ImageCommand;
+/// Draw a picture that changes every frame, uncached.
+pub const VideoFrameCommand = @import("render/module.zig").VideoFrameCommand;
 /// A `DrawCommand.blurRect` payload.
 pub const BlurRectCommand = @import("render/module.zig").BlurRectCommand;
 /// A `DrawCommand.eraseRect` payload.
@@ -69,6 +71,8 @@ pub const Step = @import("render/module.zig").Step;
 pub const DrawStep = @import("render/module.zig").DrawStep;
 /// A `Step.blur` payload.
 pub const BlurStep = @import("render/module.zig").BlurStep;
+/// Draw a picture from a texture of its own, uploaded this frame.
+pub const FrameStep = @import("render/module.zig").FrameStep;
 /// A pending texture-atlas region upload.
 pub const AtlasUpload = @import("render/module.zig").AtlasUpload;
 /// The GPU scene's texture atlas bookkeeping.

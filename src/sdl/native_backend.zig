@@ -12,13 +12,15 @@ const sdl_c = @import("sdl_c");
 
 /// This OS's native-view host, as the event loop uses it. Each platform type
 /// has the same declarations: `presents`, `present`, `hasFocus`, `release`,
-/// `contains` and `detachAll`.
+/// `performEdit`, `contains`, `detachAll`, and `beforeWait`, `afterWait` and
+/// `isWake` for a toolkit whose own loop runs inside SDL's (GTK's on Linux).
 pub const NativeBackend = struct {
     const Self = @This();
 
-    /// The platform host: AppKit on macOS; a stub elsewhere for now.
+    /// The platform host: AppKit on macOS, GTK on Linux; a stub elsewhere for now.
     const Platform = switch (mod.os_tag) {
         .macos => mod.AppKitNativeHost,
+        .linux => mod.GtkNativeHost,
         else => mod.NativeHostStub,
     };
 
@@ -75,6 +77,27 @@ pub const NativeBackend = struct {
     /// before it destroys the window. The app's views live on.
     pub fn detachAll() void {
         Platform.detachAll();
+    }
+
+    /// Runs the toolkit's ready work and has its sources watched while SDL
+    /// waits; the loop calls it before each wait.
+    pub fn beforeWait() void {
+        Platform.beforeWait();
+    }
+
+    /// Stops watching the toolkit's sources and runs its ready work; the loop
+    /// calls it after each wait.
+    pub fn afterWait() void {
+        Platform.afterWait();
+    }
+
+    /// Reports whether an SDL event only woke the loop for the toolkit: it is
+    /// handled by nothing and asks for no frame.
+    ///
+    /// - `event_type`: the event's type.
+    /// - Returns: true for the toolkit's wake event.
+    pub fn isWake(event_type: u32) bool {
+        return Platform.isWake(event_type);
     }
 };
 

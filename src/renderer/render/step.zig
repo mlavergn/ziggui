@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_step);
+const mod = @import("module.zig");
 
 /// Draw `count` instances starting at `first` (indices into
 /// `GpuScene.instances`).
@@ -35,6 +36,17 @@ pub const BlurStep = struct {
     clip_radius: f32,
 };
 
+/// Draw one image instance from a texture of its own, uploaded this frame
+/// (`DrawCommand.videoFrame`), rather than from the atlas.
+pub const FrameStep = struct {
+    const Self = @This();
+
+    /// The instance drawn (its UV rect spans the whole texture).
+    first: u32,
+    /// The pixels the texture is filled with.
+    image: mod.Image,
+};
+
 /// The instance stream split into draw runs and blur breaks, in paint order.
 pub const Step = union(enum) {
     const Self = @This();
@@ -46,6 +58,8 @@ pub const Step = union(enum) {
     /// Draw a run of instances (fills) with the erase blend, cutting their
     /// shapes back to transparent (`DrawCommand.eraseRect`).
     erase: DrawStep,
+    /// Draw a picture from a texture of its own (`DrawCommand.videoFrame`).
+    frame: FrameStep,
 };
 
 // -----------------------------------------------------------------------------

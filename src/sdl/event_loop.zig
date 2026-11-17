@@ -403,7 +403,7 @@ const EventRouter = struct {
     /// - `timeout_ms`: how long to wait, in milliseconds.
     fn waitThenDrain(self: *const Self, timeout_ms: c_int) void {
         var event: sdl_c.SDL_Event = undefined;
-        if (sdl_c.SDL_WaitEventTimeout(&event, timeout_ms)) {
+        if (Self.wait(&event, timeout_ms)) {
             self.handle(&event);
             if (Self.endsBatch(&event)) return;
         }
@@ -432,20 +432,43 @@ const EventRouter = struct {
     /// - Returns: true when an event came that wants a frame.
     fn waitForEvent(self: *const Self, timeout_ms: c_int) bool {
         var event: sdl_c.SDL_Event = undefined;
-        if (sdl_c.SDL_WaitEventTimeout(&event, timeout_ms)) {
-            // Keys a focused platform view takes alone change nothing ziggui
-            // draws: a batch of only those wakes no frame.
-            var drawn = !Self.nativeKeyOnly(&event);
+        if (Self.wait(&event, timeout_ms)) {
+            // Keys a focused platform view takes alone, and the toolkit's
+            // wakes, change nothing ziggui draws: a batch of only those wakes
+            // no frame.
+            var drawn = !Self.drawsNothing(&event);
             self.handle(&event);
             if (Self.endsBatch(&event)) return true;
             while (sdl_c.SDL_PollEvent(&event)) {
-                if (!Self.nativeKeyOnly(&event)) drawn = true;
+                if (!Self.drawsNothing(&event)) drawn = true;
                 self.handle(&event);
                 if (Self.endsBatch(&event)) return true;
             }
             return drawn;
         }
         return false;
+    }
+
+    /// Waits up to `timeout_ms` for an SDL event, running the platform
+    /// toolkit's loop (GTK's on Linux) around the wait, so its work lands
+    /// while SDL sleeps.
+    ///
+    /// - `event`: receives the event.
+    /// - `timeout_ms`: how long to wait, in milliseconds.
+    /// - Returns: true when an event came.
+    fn wait(event: *sdl_c.SDL_Event, timeout_ms: c_int) bool {
+        mod.NativeBackend.beforeWait();
+        defer mod.NativeBackend.afterWait();
+        return sdl_c.SDL_WaitEventTimeout(event, timeout_ms);
+    }
+
+    /// Reports whether `event` changes nothing ziggui draws: a key only a
+    /// placed platform view takes (`nativeKeyOnly`), or the toolkit's wake.
+    ///
+    /// - `event`: the event, before it is handled.
+    /// - Returns: true when it wants no frame.
+    fn drawsNothing(event: *const sdl_c.SDL_Event) bool {
+        return Self.nativeKeyOnly(event) or mod.NativeBackend.isWake(event.type);
     }
 
     /// Reports whether `event` is a key only the placed platform view holding
@@ -506,6 +529,8 @@ const EventRouter = struct {
     /// - `self`: the router.
     /// - `event`: the event.
     fn handle(self: *const Self, event: *sdl_c.SDL_Event) void {
+        // The toolkit's wake only cut the wait short; `wait` runs its work.
+        if (mod.NativeBackend.isWake(event.type)) return;
         const app = mod.App.shared();
         const panel = mod.Panel.shared();
         // With frame logging on, also log which events wake the loop (each wake

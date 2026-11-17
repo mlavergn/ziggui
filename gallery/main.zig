@@ -10,8 +10,12 @@ pub const std_options: std.Options = .{
 
 /// The command line: `ziggui-gallery [--section <n>] [--theme <n>] [--accent <n>]
 /// [--dark] [--menu <n>] [--sheet] [--alert] [--popover] [--passthrough]
-/// [--options-menu] [--find] [--dialog] [--select] [--screenshot <out.bmp>
-/// [--gpu] [--bench <n>]]`.
+/// [--options-menu] [--find] [--dialog] [--select] [--video <url or path>]
+/// [--screenshot <out.bmp> [--gpu] [--bench <n>]]`.
+///
+/// `--video` is what the Video section's "Load sample stream" plays instead
+/// of Apple's HLS example: a URL or a local path (a Linux system may have no
+/// H.264 decoder, which the example needs).
 ///
 /// `--accent` picks the accent switcher's choice `n`: 0 (the default) keeps
 /// the theme's own accent; 1 to 8 are `ziggui.Accent.all` in order (Orange,
@@ -89,6 +93,9 @@ const Arguments = struct {
     /// How many more times to draw the screenshot, timed (0: none).
     bench: u32 = 0,
 
+    /// What the Video section plays instead of its sample, or null.
+    video: ?[:0]const u8 = null,
+
     /// Reads the argument vector; unknown or malformed arguments are logged and skipped.
     ///
     /// - `argument_vector`: the full argument vector, program name included.
@@ -130,6 +137,9 @@ const Arguments = struct {
                     log.warn("ignoring --theme {s} [{t}]", .{ argument_vector[index], err });
                     break :blk 0;
                 };
+            } else if (std.mem.eql(u8, argument, "--video") and index + 1 < argument_vector.len) {
+                index += 1;
+                arguments.video = argument_vector[index];
             } else if (std.mem.eql(u8, argument, "--screenshot") and index + 1 < argument_vector.len) {
                 index += 1;
                 arguments.screenshot = argument_vector[index];
@@ -172,6 +182,7 @@ const Arguments = struct {
         if (self.find) shown.editor.showMatch("greeting");
         if (self.dialog) shown.editor.openDialog();
         if (self.select) shown.editor.selectBetween("const greeting", "// Click");
+        if (self.video) |video| shown.media.sample = video;
     }
 };
 

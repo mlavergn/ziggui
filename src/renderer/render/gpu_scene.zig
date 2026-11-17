@@ -144,6 +144,29 @@ pub const GpuScene = struct {
                         .clip_radius = clip.radius,
                     } });
                 },
+                .videoFrame => |frame| {
+                    // A picture of its own texture, uploaded every frame: its
+                    // own step, so the backend can bind that texture.
+                    if (frame.image.width == 0 or frame.image.height == 0) continue;
+                    const count: u32 = @intCast(instances.items.len);
+                    if (count > run_start) {
+                        try steps.append(arena, .{ .draw = .{ .first = run_start, .count = count - run_start } });
+                    }
+                    const clip = ClipState.resolve(clip_rects.items, clip_radii.items, framebuffer_width, framebuffer_height);
+                    try instances.append(arena, .{
+                        .quad = Self.rectArray(frame.rect),
+                        .shape = .{ 0, 0, 0, 0 },
+                        .color0 = .{ 0, 0, 0, 0 },
+                        .color1 = .{ 0, 0, 0, 0 },
+                        .points = .{ 0, 0, 0, 0 },
+                        .atlas_rect = .{ 0, 0, 1, 1 },
+                        .clip = clip.rect,
+                        .clip_rounded_rect = clip.rounded_rect,
+                        .parameters = .{ @floatFromInt(@backingInt(InstanceKind.image)), 0, 0, clip.radius },
+                    });
+                    try steps.append(arena, .{ .frame = .{ .first = count, .image = frame.image } });
+                    run_start = count + 1;
+                },
                 .eraseRect => |erase| {
                     // An erase is a fill drawn with the destination-out blend:
                     // its own step, so the backend can switch pipelines.

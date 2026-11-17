@@ -23,9 +23,9 @@ Since 1.0.0 ziggui includes what used to be the separate zigui library, and buil
 - **Widgets for real apps:** a virtual list that also scrolls sideways, a diff view whose long lines scroll or wrap, draggable split views, hover popovers and hover hints, chat pieces (bubbles, code blocks, disclosure groups, status marks), badges and key caps, setting, selectable and reorderable rows, a key/value editor, a token field, a search field, and an in-window file-or-folder picker.
 - **The app's frame:** the macOS top band and, on Linux and Windows, a drawn title bar with the platform's window buttons and an in-window menu bar. One menu table builds both macOS's menu bar and the drawn one. A notice strip, confirm alerts, empty states, pane titles and a key-hint status line.
 - **Desktop integration:** native menus, a status item or tray icon (an SNI icon over D-Bus on Linux), panels, clipboard, file dialogs, revealing a file in Finder or Explorer, Linux desktop entries, and reopening the window where it was.
-- **Video:** a player modeled on `AVPlayer`, drawn by the platform's own player behind the window's surface (AVFoundation on macOS), with standard controls painted over it: full screen, volume, skip, play, a scrubber, subtitles and speed.
-- **Native views:** `NativeView` places a platform view the app owns (an `NSView` such as a web view) where layout puts it, hides it while an overlay is open, and moves the keyboard between it and ziggui (macOS; a placeholder elsewhere).
-- **Web pages:** `WebPage` and `WebView`, after SwiftUI's: a page in the platform's own web view (WebKit on macOS), with navigation, load failures, and bridges the page posts messages to, heard only from the origin it first loaded. ⌘C, ⌘X, ⌘V and ⌘A edit the page.
+- **Video:** a player modeled on `AVPlayer`, drawn by the platform's own player behind the window's surface (AVFoundation on macOS) or decoded by GStreamer and drawn in it (Linux, loaded at run time; it plays what the system's plugins decode), with standard controls painted over it: full screen, volume, skip, play, a scrubber, subtitles and speed.
+- **Native views:** `NativeView` places a platform view the app owns (an `NSView` such as a web view) where layout puts it, hides it while an overlay is open, and moves the keyboard between it and ziggui (macOS, and Linux on X11 with GTK widgets; a placeholder elsewhere).
+- **Web pages:** `WebPage` and `WebView`, after SwiftUI's: a page in the platform's own web view (WebKit on macOS; WebKitGTK on Linux under X11, loaded at run time, so apps run without it), with navigation, load failures, and bridges the page posts messages to, heard only from the origin it first loaded. ⌘C, ⌘X, ⌘V and ⌘A edit the page.
 - **Secure fields:** a password field draws dots, never copies its text, and wipes it from memory when it leaves.
 
 A component gallery shows every view in every theme.
@@ -35,7 +35,7 @@ A component gallery shows every view in every theme.
 | Platform | Status |
 | --- | --- |
 | macOS (Apple Silicon) | Full support, including video and web pages |
-| Linux (x86_64, ARM) | Full support except video and web pages (each reports it unsupported) |
+| Linux (x86_64, ARM) | Full support; video through GStreamer, web pages through WebKitGTK under X11 (both loaded at run time) |
 | Windows (x86_64) | Full support except video and web pages; built with mingw (MSVC builds untested) |
 
 ## Apps built on ziggui
@@ -148,7 +148,7 @@ src/views/      the views: the engine, controls, containers, text, media, and th
 src/sdl/        the SDL3 runtime: window, event loop, menus, tray, clipboard, dialogs, video, web pages, GPU
   macos/        the Objective-C bridge, AppKit, AVFoundation and WebKit code
   windows/      the Win32 calls SDL does not make, and the Windows video and web stubs
-  linux/        the D-Bus tray icon, desktop entries, and the Linux video and web stubs
+  linux/        the D-Bus tray icon, desktop entries, GTK (native views, WebKitGTK web pages) and GStreamer video
 src/module.zig  the ziggui barrel, the one module apps import
 build/          the SDL3 C build
 gallery/        the component gallery
