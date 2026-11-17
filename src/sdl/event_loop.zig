@@ -278,6 +278,9 @@ fn WindowFrame(comptime AppState: type) type {
             views.ViewRenderer.renderScaled(&context, root, .{ .x = 0, .y = 0, .width = point_width, .height = point_height }, scale, &canvas) catch |err| log.debug("view tree not drawn [{t}]", .{err});
             // The pictures move with the frame that erased their holes.
             if (self.presents_video) mod.VideoBackend.present(self.window, video_regions.items);
+            // Frames the renderer draws under those holes (Windows), where the
+            // player cannot show its picture behind the window.
+            const underlays: []const mod.VideoUnderlay = if (self.presents_video) mod.VideoBackend.underlays() else &.{};
             // The platform views sit over the surface, so nothing ziggui draws
             // can cover them: an overlay (or the text menu) hides them instead.
             if (self.presents_native) mod.NativeBackend.present(self.window, native_regions.items, overlays.items.len > 0 or views.TextContextMenu.shared().isOpen());
@@ -290,7 +293,7 @@ fn WindowFrame(comptime AppState: type) type {
                 // downscale on the final blit (SSAA), mirroring the software
                 // texture path below.
                 const clear = if (self.transparent) renderer.Color.transparent else theme.colors.window_background;
-                if (!gpu.frame(arena, canvas.commands.items, clear, supersample)) return false;
+                if (!gpu.frame(arena, canvas.commands.items, clear, supersample, underlays, scale)) return false;
             } else {
                 // Software backend. Persistent framebuffer + RGBA buffer:
                 // reallocated only when the pixel size changes, so a
@@ -305,6 +308,7 @@ fn WindowFrame(comptime AppState: type) type {
                     self.rgba.* = self.allocator.alloc(u8, byte_count) catch return false;
                 }
                 self.framebuffer.toRgba8(self.rgba.*);
+                for (underlays) |underlay| underlay.composite(self.rgba.*, scaled_width, scaled_height, scale);
 
                 // Debug: ZIGGUI_PANEL_DUMP=<path> writes the transparent (panel)
                 // frame's RGBA buffer once per size: u32 w, u32 h, then w*h*4

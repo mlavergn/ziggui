@@ -16,9 +16,11 @@ const sdl_c = @import("sdl_c");
 pub const NativeBackend = struct {
     const Self = @This();
 
-    /// The platform host: AppKit on macOS; a stub elsewhere for now.
+    /// The platform host: AppKit on macOS, child windows on Windows; a stub on
+    /// Linux for now.
     const Platform = switch (mod.os_tag) {
         .macos => mod.AppKitNativeHost,
+        .windows => mod.Win32NativeHost,
         else => mod.NativeHostStub,
     };
 

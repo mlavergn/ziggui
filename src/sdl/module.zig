@@ -13,6 +13,8 @@ const views = @import("views");
 
 /// The OS this runtime is built for (a compile-time invariant).
 pub const os_tag = builtin.os.tag;
+/// The CPU this runtime is built for (a compile-time invariant).
+pub const cpu_arch = builtin.cpu.arch;
 
 /// SDL3's C API, translated from `c.h` (keycodes, modifier masks, events).
 pub const sdl_c = @import("sdl_c");
@@ -77,9 +79,11 @@ pub const WindowHitTest = @import("window_hit_test.zig").WindowHitTest;
 pub const Gpu = @import("gpu/gpu.zig").Gpu;
 /// This OS's media player for `Player`, and the placement of its pictures.
 pub const VideoBackend = @import("video_backend.zig").VideoBackend;
+/// A video frame the player hands the renderer to draw under the surface (Windows).
+pub const VideoUnderlay = @import("video_underlay.zig").VideoUnderlay;
 /// The macOS media player: AVFoundation, its pictures behind the Metal view.
 pub const AvFoundationPlayer = @import("macos/module.zig").AvFoundationPlayer;
-/// The Windows media player (Media Foundation): a stub for now.
+/// The Windows media player: Media Foundation, its frames drawn under the surface.
 pub const MediaFoundationPlayer = @import("windows/module.zig").MediaFoundationPlayer;
 /// The Linux media player (GStreamer): a stub for now.
 pub const GstreamerPlayer = @import("linux/module.zig").GstreamerPlayer;
@@ -93,12 +97,16 @@ pub const WebBackend = @import("web_backend.zig").WebBackend;
 pub const WkWebViewBackend = @import("macos/module.zig").WkWebViewBackend;
 /// The Linux web view (WebKitGTK): a stub for now.
 pub const WebKitGtkBackend = @import("linux/module.zig").WebKitGtkBackend;
-/// The Windows web view (WebView2): a stub for now.
+/// The Windows web view: a WebView2 controller per `WebPage`, placed by the native-view host.
 pub const WebView2Backend = @import("windows/module.zig").WebView2Backend;
 /// The macOS native-view host: app `NSView`s above the Metal view.
 pub const AppKitNativeHost = @import("macos/module.zig").AppKitNativeHost;
-/// The Linux and Windows native-view host: a stub for now.
+/// The Linux native-view host: a stub for now.
 pub const NativeHostStub = @import("native_host_stub.zig").NativeHostStub;
+/// The Windows native-view host: child windows above SDL's swapchain.
+pub const Win32NativeHost = @import("windows/module.zig").Win32NativeHost;
+/// The bits of COM the Windows web view and player share.
+pub const Com = @import("windows/module.zig").Com;
 /// The Objective-C runtime bridge the AVFoundation player uses.
 pub const ObjectiveC = @import("macos/module.zig").ObjectiveC;
 /// An Objective-C object pointer (`id`).
@@ -135,7 +143,7 @@ test {
         /// Reports whether the test references a barrel declaration's own
         /// declarations: every struct's, except `sdl_c` (all of SDL's C API)
         /// and the structs built for one OS (`Cocoa`, `AvFoundationPlayer`,
-        /// `AppKitNativeHost`, `WkWebViewBackend` and `ObjectiveC` on macOS, `Win32` on Windows, `StatusNotifier`
+        /// `AppKitNativeHost`, `WkWebViewBackend` and `ObjectiveC` on macOS, `Win32`, `Win32NativeHost`, `Com`, `WebView2Backend` and `MediaFoundationPlayer` on Windows, `StatusNotifier`
         /// on Linux) on any other, so a cross-compiled `zig build test-sdl`
         /// analyzes what that platform builds.
         ///
@@ -144,7 +152,7 @@ test {
         fn descends(comptime name: []const u8) bool {
             if (std.mem.eql(u8, name, "sdl_c")) return false;
             if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
-            if (std.mem.eql(u8, name, "Win32")) return os_tag == .windows;
+            if (std.mem.eql(u8, name, "Win32") or std.mem.eql(u8, name, "Win32NativeHost") or std.mem.eql(u8, name, "Com") or std.mem.eql(u8, name, "WebView2Backend") or std.mem.eql(u8, name, "MediaFoundationPlayer")) return os_tag == .windows;
             if (std.mem.eql(u8, name, "StatusNotifier")) return os_tag == .linux;
             return true;
         }

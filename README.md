@@ -36,7 +36,7 @@ A component gallery shows every view in every theme.
 | --- | --- |
 | macOS (Apple Silicon) | Full support, including video and web pages |
 | Linux (x86_64, ARM) | Full support except video and web pages (each reports it unsupported) |
-| Windows (x86_64) | Full support except video and web pages; built with mingw (MSVC builds untested) |
+| Windows (x86_64) | Full support: video through Media Foundation, web pages through the WebView2 runtime Windows 10 and 11 ship; built with mingw (MSVC builds untested) |
 
 ## Apps built on ziggui
 
@@ -147,7 +147,7 @@ src/renderer/   pure Zig: geometry, layout, color, canvas, rasterizer, GPU scene
 src/views/      the views: the engine, controls, containers, text, media, and the widget groups
 src/sdl/        the SDL3 runtime: window, event loop, menus, tray, clipboard, dialogs, video, web pages, GPU
   macos/        the Objective-C bridge, AppKit, AVFoundation and WebKit code
-  windows/      the Win32 calls SDL does not make, and the Windows video and web stubs
+  windows/      the Win32 calls SDL does not make, the child-window host, WebView2 and Media Foundation
   linux/        the D-Bus tray icon, desktop entries, and the Linux video and web stubs
 src/module.zig  the ziggui barrel, the one module apps import
 build/          the SDL3 C build
