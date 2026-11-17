@@ -136,6 +136,8 @@ pub const NativeRegion = @import("core/module.zig").NativeRegion;
 pub const A11yRole = @import("core/module.zig").A11yRole;
 /// One node of the accessibility tree.
 pub const A11yNode = @import("core/module.zig").A11yNode;
+/// A view's accessibility traits (`.isButton`, `.isSelected`), after SwiftUI's.
+pub const AccessibilityTraits = @import("core/module.zig").AccessibilityTraits;
 /// A popover or sheet waiting to be drawn.
 pub const OverlayRequest = @import("core/module.zig").OverlayRequest;
 /// A selectable paragraph's geometry for one frame.
@@ -280,6 +282,10 @@ pub const Badge = @import("controls/module.zig").Badge;
 pub const KeyCap = @import("controls/module.zig").KeyCap;
 /// A segmented control of equal segments, a neutral thumb on a track.
 pub const SegmentedControl = @import("controls/module.zig").SegmentedControl;
+/// A segmented control of icons, each segment a Lucide icon with a title.
+pub const IconSegmentedControl = @import("controls/module.zig").IconSegmentedControl;
+/// One segment of an `IconSegmentedControl`: its icon and title.
+pub const IconSegment = @import("controls/module.zig").IconSegment;
 
 // -----------------------------------------------------------------------------
 // Containers (containers/)
@@ -488,6 +494,10 @@ pub const VirtualList = @import("panes/module.zig").VirtualList;
 pub const VirtualListBoth = @import("panes/module.zig").VirtualListBoth;
 /// A unified diff over a `VirtualList`.
 pub const DiffView = @import("panes/module.zig").DiffView;
+/// A `DiffView` whose lines can be selected and copied (`DiffSelection`).
+pub const SelectableDiffView = @import("panes/module.zig").SelectableDiffView;
+/// The lines selected in a `SelectableDiffView`, kept by the app.
+pub const DiffSelection = @import("panes/module.zig").DiffSelection;
 /// A table's header row.
 pub const TableHeader = @import("panes/module.zig").TableHeader;
 /// One table row.
@@ -592,6 +602,8 @@ pub const PlayerTrackKind = @import("media/module.zig").PlayerTrackKind;
 pub const PlayerTrack = @import("media/module.zig").PlayerTrack;
 /// A platform media player's operations, installed by the SDL runtime.
 pub const PlayerBackend = @import("media/module.zig").PlayerBackend;
+/// One picture a platform player hands to ziggui to draw, and its generation.
+pub const PlayerFrame = @import("media/module.zig").PlayerFrame;
 /// A media player modeled on `AVPlayer` (`replaceCurrentItem`, `play`, `seek`, `observe`, `tracks`).
 pub const Player = @import("media/module.zig").Player;
 /// A player's picture in the view tree.

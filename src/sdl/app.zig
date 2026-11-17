@@ -61,9 +61,13 @@ pub const App = struct {
     fonts: ?*renderer.FontSet = null,
 
     /// An optional "busy" predicate (see `setBusyCheck`).
+    ///
+    /// - Returns: true while the app has work in flight.
     busy_check: ?*const fn () bool = null,
 
     /// An optional wake-cadence provider (see `setBusyInterval`).
+    ///
+    /// - Returns: the wake interval while busy, in milliseconds; 0 when idle.
     busy_interval: ?*const fn () u32 = null,
 
     /// When the caret's blink cycle last restarted (SDL ticks).
@@ -73,27 +77,43 @@ pub const App = struct {
     caret_drawn: bool = true,
 
     /// An optional theme provider (see `setThemeProvider`).
+    ///
+    /// - Returns: the theme to draw with.
     theme_provider: ?*const fn () renderer.Theme = null,
 
     /// An optional per-frame hook (see `setFrameHook`).
     frame_hook: ?*const fn () void = null,
 
     /// An optional key-down handler (see `setKeyHandler`).
+    ///
+    /// - `keycode`: the SDL keycode (`SDLK_*`).
+    /// - `modifiers`: the modifier mask (`SDL_KMOD_*`).
+    /// - Returns: true when the app consumed the key.
     key_handler: ?*const fn (keycode: u32, modifiers: u16) bool = null,
 
     /// The key-up and quit handlers (see `views.AppHooks`).
     hooks: views.AppHooks = .{},
 
     /// An optional focus handler (see `setFocusHandler`).
+    ///
+    /// - `gained`: true when the window gained focus, false when it lost it.
     focus_handler: ?*const fn (gained: bool) void = null,
 
     /// An optional typed-text handler (see `setTextHandler`).
+    ///
+    /// - `typed`: the UTF-8 text typed.
+    /// - Returns: true when the app consumed the text.
     text_handler: ?*const fn (typed: []const u8) bool = null,
 
     /// An optional mouse handler (see `setMouseHandler`).
+    ///
+    /// - `event`: the press, release, motion or wheel.
+    /// - Returns: true when the app consumed the event.
     mouse_handler: ?*const fn (event: mod.MouseEvent) bool = null,
 
     /// Called with the path of each file dropped onto the window.
+    ///
+    /// - `path`: the dropped file's path.
     drop_handler: ?*const fn (path: []const u8) void = null,
 
     /// The cursor's last known position in logical points, or null when it has left

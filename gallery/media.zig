@@ -31,6 +31,8 @@ pub const Media = struct {
 
     /// Reports whether the window is in full screen; `main.zig` sets it,
     /// null headless.
+    ///
+    /// - Returns: true while the window is full screen.
     is_full_screen_fn: ?*const fn () bool = null,
 
     /// Whether the window was in full screen before the player filled it,

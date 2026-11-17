@@ -11,8 +11,12 @@
 //! isolated script world (`world`) no page script can reach, and a script
 //! injected into the top frame alone carries messages to them: a shim in the
 //! page's world posts a DOM event the top document alone hears, and the
-//! bridge script in the isolated world hands it to the handler. The page's
-//! address is checked against the trusted origin as each message lands.
+//! bridge script in the isolated world hands it to the handler, prefixed with
+//! the address of the document that posted it (`location.href`, read in the
+//! isolated world, where no page script can change what it says). That
+//! address is checked against the trusted origin as each message lands: the
+//! sender's own, as macOS checks the posting frame's, never the view's, which
+//! WebKit moves to a new address as soon as a load starts.
 //! Property notifications report the address and title, the back-forward
 //! list's changes the history, and `load-failed` the failures (WebKit's own
 //! error page is not shown, as `WKWebView` shows none). Linux only; other
@@ -62,7 +66,9 @@ const page_script =
 ;
 
 /// The bridge script in the isolated world: hands each message to the
-/// handler of its name, when there is one.
+/// handler of its name, when there is one, as the posting document's address,
+/// a line break (an address never holds one), then the text; a body that is
+/// not text goes as it is, for the handler to refuse.
 const bridge_script =
     \\document.addEventListener('
 ++ bridge_event ++
@@ -71,9 +77,21 @@ const bridge_script =
     \\  try { message = JSON.parse(event.detail); } catch (error) { return; }
     \\  const handlers = window.webkit && window.webkit.messageHandlers;
     \\  const handler = handlers && typeof message.name === 'string' ? handlers[message.name] : undefined;
-    \\  if (handler) handler.postMessage(message.body);
+    \\  if (!handler) return;
+    \\  handler.postMessage(typeof message.body === 'string' ? location.href + '\n' + message.body : message.body);
     \\});
 ;
+
+/// What the bridge script posts, split: the posting document's address and
+/// the page's text.
+const PostedMessage = struct {
+    const Self = @This();
+
+    /// The address of the document that posted it.
+    sender: []const u8,
+    /// The text the page posted.
+    body: []const u8,
+};
 
 /// One bridge of a page: the name its messages arrive under, and the page.
 const Bridge = struct {
@@ -173,7 +191,8 @@ pub const WebKitGtkBackend = struct {
         };
         // A new widget's reference is floating: this one is the page's.
         _ = api.g_object_ref_sink(web_view);
-        const native = std.heap.c_allocator.create(NativePage) catch {
+        const native = std.heap.c_allocator.create(NativePage) catch |err| {
+            log.warn("page not made: {s}", .{@errorName(err)});
             api.g_object_unref(web_view);
             api.g_object_unref(manager);
             return null;
@@ -257,7 +276,11 @@ pub const WebKitGtkBackend = struct {
     fn trust(handle: *anyopaque, url: [:0]const u8) void {
         const native = Self.nativeOf(handle);
         if (native.trusted_url) |trusted| std.heap.c_allocator.free(trusted);
-        native.trusted_url = std.heap.c_allocator.dupeSentinel(u8, url, 0) catch null;
+        // Without a copy no origin is trusted, and the bridges hear nothing.
+        native.trusted_url = std.heap.c_allocator.dupeSentinel(u8, url, 0) catch |err| blk: {
+            log.warn("origin not trusted: {s}", .{@errorName(err)});
+            break :blk null;
+        };
     }
 
     /// Loads `url`.
@@ -304,6 +327,13 @@ pub const WebKitGtkBackend = struct {
     fn addBridge(handle: *anyopaque, name: [:0]const u8) void {
         const native = Self.nativeOf(handle);
         const api = mod.Gtk.running() orelse return;
+        // Named before anything is registered, so a name too long to hear
+        // leaves no bridge behind.
+        var signal: [256]u8 = undefined;
+        const detailed = std.mem.printSentinel(&signal, "script-message-received::{s}", .{name}, 0) catch {
+            log.warn("bridge {s} not heard: its name is too long", .{name});
+            return;
+        };
         // Registering a name already taken fails: it goes first.
         api.webkit_user_content_manager_unregister_script_message_handler_in_world(native.manager, name, world);
         if (api.webkit_user_content_manager_register_script_message_handler_in_world(native.manager, name, world) == 0) {
@@ -313,20 +343,20 @@ pub const WebKitGtkBackend = struct {
         for (native.bridges.items) |bridge| {
             if (std.mem.eql(u8, bridge.name, name)) return;
         }
-        const bridge = std.heap.c_allocator.create(Bridge) catch return;
-        const owned = std.heap.c_allocator.dupeSentinel(u8, name, 0) catch {
+        const bridge = std.heap.c_allocator.create(Bridge) catch |err| {
+            log.warn("bridge {s} not heard: {s}", .{ name, @errorName(err) });
+            return;
+        };
+        const owned = std.heap.c_allocator.dupeSentinel(u8, name, 0) catch |err| {
             std.heap.c_allocator.destroy(bridge);
+            log.warn("bridge {s} not heard: {s}", .{ name, @errorName(err) });
             return;
         };
         bridge.* = .{ .native = native, .name = owned };
-        native.bridges.append(std.heap.c_allocator, bridge) catch {
+        native.bridges.append(std.heap.c_allocator, bridge) catch |err| {
             std.heap.c_allocator.free(owned);
             std.heap.c_allocator.destroy(bridge);
-            return;
-        };
-        var signal: [256]u8 = undefined;
-        const detailed = std.mem.printSentinel(&signal, "script-message-received::{s}", .{name}, 0) catch {
-            log.warn("bridge {s} not heard: its name is too long", .{name});
+            log.warn("bridge {s} not heard: {s}", .{ name, @errorName(err) });
             return;
         };
         Self.connect(api, native.manager, detailed, &Self.onMessage, bridge);
@@ -425,7 +455,7 @@ pub const WebKitGtkBackend = struct {
         if (reported.code == network_error_cancelled or reported.code == policy_error_interrupted) return 1;
         const message = Self.spanOf(reported.message);
         const text = if (message.len > 0) message else "The page could not be loaded.";
-        const length = Self.cutLength(text, native.failure.len);
+        const length = views.DisplayText.fitLength(text, native.failure.len);
         native.failure_length = length;
         @memcpy(native.failure[0..length], text[0..length]);
         native.report(api);
@@ -433,8 +463,9 @@ pub const WebKitGtkBackend = struct {
     }
 
     /// `script-message-received::<name>`: hands the page a string message
-    /// posted while it shows its trusted origin; any other is dropped, with
-    /// a warning. Only the top frame can post (see the file's doc).
+    /// posted by a document of its trusted origin (the address the bridge
+    /// script puts before the text); any other is dropped, with a warning.
+    /// Only the top frame can post (see the file's doc).
     ///
     /// - `manager`: the content manager; unused.
     /// - `result`: the `WebKitJavascriptResult`.
@@ -450,20 +481,24 @@ pub const WebKitGtkBackend = struct {
             log.warn("bridge ignored a message: no origin is trusted yet", .{});
             return;
         };
-        if (!mod.WebOrigin.same(trusted, Self.spanOf(api.webkit_web_view_get_uri(native.view)))) {
-            log.warn("bridge ignored a message from outside the loaded origin", .{});
-            return;
-        }
         const value = api.webkit_javascript_result_get_js_value(result) orelse return;
         if (api.jsc_value_is_string(value) == 0) {
             log.warn("bridge received a non-string body", .{});
             return;
         }
-        const body = api.jsc_value_to_string(value) orelse return;
-        defer api.g_free(body);
+        const posted = api.jsc_value_to_string(value) orelse return;
+        defer api.g_free(posted);
+        const message = Self.splitMessage(std.mem.span(posted)) orelse {
+            log.warn("bridge ignored a message without its sender's address", .{});
+            return;
+        };
+        if (!mod.WebOrigin.same(trusted, message.sender)) {
+            log.warn("bridge ignored a message from outside the loaded origin", .{});
+            return;
+        }
         delivering += 1;
         defer delivering -= 1;
-        native.page.receive(.{ .bridge = bridge.name, .body = std.mem.span(body) });
+        native.page.receive(.{ .bridge = bridge.name, .body = message.body });
     }
 
     /// A `g_idle_add` callback: drops a reference once GLib is idle.
@@ -485,25 +520,22 @@ pub const WebKitGtkBackend = struct {
         return uri.scheme.len > 0;
     }
 
+    /// Splits what the bridge script posts into the sender's address and the
+    /// text: the address runs to the first line break.
+    ///
+    /// - `posted`: the posted string.
+    /// - Returns: the address and the text, or null without a line break.
+    fn splitMessage(posted: []const u8) ?PostedMessage {
+        const end = std.mem.findScalar(u8, posted, '\n') orelse return null;
+        return .{ .sender = posted[0..end], .body = posted[end + 1 ..] };
+    }
+
     /// A C string as a slice, empty for null.
     ///
     /// - `text`: the string, or null.
     /// - Returns: the slice.
     fn spanOf(text: ?[*:0]const u8) []const u8 {
         return if (text) |present| std.mem.span(present) else "";
-    }
-
-    /// How much of `text` fits in `capacity` bytes, cut on a character, never
-    /// inside one.
-    ///
-    /// - `text`: UTF-8 text.
-    /// - `capacity`: the room.
-    /// - Returns: the length to keep.
-    fn cutLength(text: []const u8, capacity: usize) usize {
-        if (text.len <= capacity) return text.len;
-        var length = capacity;
-        while (length > 0 and (text[length] & 0xC0) == 0x80) length -= 1;
-        return length;
     }
 
     /// The page behind a handle.
@@ -533,14 +565,19 @@ test "web kit gtk backend loads only absolute addresses" {
     try std.testing.expect(!WebKitGtkBackend.isAddress(""));
 }
 
-test "web kit gtk backend cuts a long failure on a character" {
-    // "é" is two bytes: room for one byte more than "ab" keeps "ab", not half of it.
-    try std.testing.expectEqual(@as(usize, 2), WebKitGtkBackend.cutLength("abé", 3));
-    try std.testing.expectEqual(@as(usize, 4), WebKitGtkBackend.cutLength("abé", 4));
-}
-
 test "web kit gtk backend scripts carry the bridge event" {
     try std.testing.expect(std.mem.find(u8, page_script, "'" ++ bridge_event ++ "'") != null);
     try std.testing.expect(std.mem.find(u8, bridge_script, "'" ++ bridge_event ++ "'") != null);
     try std.testing.expect(std.mem.find(u8, page_script, "messageHandlers") != null);
+    // The isolated world names the sender: the page cannot.
+    try std.testing.expect(std.mem.find(u8, bridge_script, "location.href + '\\n'") != null);
+}
+
+test "web kit gtk backend splits the sender's address from the text" {
+    const message = WebKitGtkBackend.splitMessage("https://good.example/app\nhello\nworld").?;
+    try std.testing.expectEqualStrings("https://good.example/app", message.sender);
+    try std.testing.expectEqualStrings("hello\nworld", message.body);
+    try std.testing.expect(WebKitGtkBackend.splitMessage("no address") == null);
+    // An empty text is still a message.
+    try std.testing.expectEqualStrings("", WebKitGtkBackend.splitMessage("https://good.example/\n").?.body);
 }

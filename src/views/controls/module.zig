@@ -72,6 +72,10 @@ pub const Badge = @import("badge.zig").Badge;
 pub const KeyCap = @import("key_cap.zig").KeyCap;
 /// A segmented control of equal segments, a neutral thumb on a track.
 pub const SegmentedControl = @import("segmented_control.zig").SegmentedControl;
+/// A segmented control of icons, each segment a Lucide icon with a title.
+pub const IconSegmentedControl = @import("segmented_control.zig").IconSegmentedControl;
+/// One segment of an `IconSegmentedControl`: its icon and title.
+pub const IconSegment = @import("icon_segment.zig").IconSegment;
 
 /// A node of the view tree (from the views module).
 pub const View = @import("../module.zig").View;

@@ -36,7 +36,10 @@ pub const Clipboard = struct {
         if (pointer == null) return null;
         const span = std.mem.span(pointer);
         if (span.len == 0) return null;
-        return allocator.dupe(u8, span) catch null;
+        return allocator.dupe(u8, span) catch |err| {
+            log.warn("clipboard text not read: {s}", .{@errorName(err)});
+            return null;
+        };
     }
 
     /// Reads the clipboard's PNG image, if it holds one.
@@ -50,7 +53,10 @@ pub const Clipboard = struct {
         defer sdl_c.SDL_free(pointer);
         if (size == 0) return null;
         const source: [*]const u8 = @ptrCast(pointer);
-        return allocator.dupe(u8, source[0..size]) catch null;
+        return allocator.dupe(u8, source[0..size]) catch |err| {
+            log.warn("clipboard image not read: {s}", .{@errorName(err)});
+            return null;
+        };
     }
 
     /// Opens a URL (or `file://…` path) in the OS default handler: a folder in

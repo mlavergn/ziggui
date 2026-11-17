@@ -109,8 +109,6 @@ pub const GstreamerApi = struct {
     gst_mini_object_unref: *const fn (*anyopaque) callconv(.c) void,
     /// `gst_element_set_state`, resolved from its library.
     gst_element_set_state: *const fn (*anyopaque, c_int) callconv(.c) c_int,
-    /// `gst_element_get_state`, resolved from its library.
-    gst_element_get_state: *const fn (*anyopaque, ?*c_int, ?*c_int, u64) callconv(.c) c_int,
     /// `gst_element_query_position`, resolved from its library.
     gst_element_query_position: *const fn (*anyopaque, c_int, *i64) callconv(.c) mod.Gboolean,
     /// `gst_element_query_duration`, resolved from its library.
@@ -165,22 +163,22 @@ pub const GstreamerApi = struct {
     gst_app_sink_set_callbacks: *const fn (*anyopaque, *const GstAppSinkCallbacks, ?*anyopaque, ?*const anyopaque) callconv(.c) void,
 };
 
+/// Where GStreamer stands in this process.
+const GstreamerStatus = enum {
+    const Self = @This();
+
+    /// Not tried yet.
+    untried,
+    /// Running: `api` is filled.
+    running,
+    /// Tried and failed; never tried again.
+    failed,
+};
+
 /// GStreamer in this process: whether it started, and the entry points once
 /// it did.
 pub const Gstreamer = struct {
     const Self = @This();
-
-    /// Where GStreamer stands in this process.
-    const Status = enum {
-        const Self = @This();
-
-        /// Not tried yet.
-        untried,
-        /// Running: `api` is filled.
-        running,
-        /// Tried and failed; never tried again.
-        failed,
-    };
 
     /// `GST_STATE_NULL`.
     pub const state_null: c_int = 1;
@@ -190,6 +188,9 @@ pub const Gstreamer = struct {
     pub const state_playing: c_int = 4;
     /// `GST_STATE_CHANGE_FAILURE`.
     pub const state_change_failure: c_int = 0;
+    /// `GST_STATE_CHANGE_NO_PREROLL`: a live source, which has no frame to
+    /// show before it plays.
+    pub const state_change_no_preroll: c_int = 3;
     /// `GST_FORMAT_TIME`.
     pub const format_time: c_int = 3;
     /// `GST_SEEK_FLAG_FLUSH`.
@@ -210,8 +211,6 @@ pub const Gstreamer = struct {
     pub const message_buffering: c_uint = 1 << 5;
     /// `GST_MESSAGE_STATE_CHANGED`.
     pub const message_state_changed: c_uint = 1 << 6;
-    /// `GST_MESSAGE_DURATION_CHANGED`.
-    pub const message_duration_changed: c_uint = 1 << 18;
     /// `GST_MESSAGE_ELEMENT`: an element's own message (a missing plug-in).
     pub const message_element: c_uint = 1 << 15;
     /// `GST_MESSAGE_ASYNC_DONE`.
@@ -231,7 +230,7 @@ pub const Gstreamer = struct {
     };
 
     /// Where GStreamer stands.
-    var status: Status = .untried;
+    var status: GstreamerStatus = .untried;
 
     /// The entry points, once running.
     var api: GstreamerApi = undefined;
@@ -249,7 +248,7 @@ pub const Gstreamer = struct {
         }
         log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
         status = .failed;
-        if (!Self.load()) return null;
+        if (!mod.DynamicApi.load(GstreamerApi, &api, &libraries, Self.libraryOf, "video")) return null;
         var failure: ?*mod.Gerror = null;
         if (api.gst_init_check(null, null, &failure) == 0) {
             log.warn("GStreamer would not start: {s}", .{if (failure) |reported| std.mem.span(reported.message orelse "") else ""});
@@ -265,27 +264,6 @@ pub const Gstreamer = struct {
     /// - Returns: the entry points, or null.
     pub fn running() ?*const GstreamerApi {
         return if (status == .running) &api else null;
-    }
-
-    /// Opens every library and resolves every field of `GstreamerApi`.
-    ///
-    /// - Returns: false, with a warning, when one is missing.
-    fn load() bool {
-        var handles: [libraries.len]*anyopaque = undefined;
-        for (libraries, &handles) |name, *handle| {
-            handle.* = std.c.dlopen(name, .{ .LAZY = true }) orelse {
-                log.warn("video is unavailable: {s} is missing", .{name});
-                return false;
-            };
-        }
-        inline for (@typeInfo(GstreamerApi).@"struct".field_names) |name| {
-            const pointer = std.c.dlsym(handles[comptime Self.libraryOf(name)], name) orelse {
-                log.warn("video is unavailable: {s} has no {s}", .{ libraries[comptime Self.libraryOf(name)], name });
-                return false;
-            };
-            @field(api, name) = @ptrCast(@alignCast(pointer));
-        }
-        return true;
     }
 
     /// Which of `libraries` defines a `GstreamerApi` field, by its prefix.

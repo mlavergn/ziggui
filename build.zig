@@ -1,6 +1,5 @@
 const std = @import("std");
 const log = std.log.scoped(.ziggui_build);
-const builtin = @import("builtin");
 
 const zon = @import("build.zig.zon");
 const zigbuildx = @import("zigbuildx");
@@ -470,7 +469,7 @@ const Docs = struct {
         root.addOptions("config", Modules.barrelOptions(b, false));
 
         const library = b.addLibrary(.{ .name = config.name, .root_module = root, .linkage = .static });
-        if (builtin.os.tag == .macos) {
+        if (b.graph.host.result.os.tag == .macos) {
             var xcode = try zigbuildx.Xcode.init(b);
             try xcode.resolve();
             xcode.addFrameworkPath(library.root_module);
@@ -534,7 +533,7 @@ pub fn build(b: *std.Build) !void {
 
     const library = b.addLibrary(.{ .name = config.name, .root_module = modules.core, .linkage = .static });
 
-    if (builtin.os.tag == .macos) {
+    if (b.graph.host.result.os.tag == .macos) {
         var xcode = try zigbuildx.Xcode.init(b);
         try xcode.resolve();
         xcode.addFrameworkPath(library.root_module);

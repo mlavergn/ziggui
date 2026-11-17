@@ -19,6 +19,8 @@ pub const PlayerTrackKind = @import("player_track.zig").PlayerTrackKind;
 pub const PlayerTrack = @import("player_track.zig").PlayerTrack;
 /// A platform media player's operations, installed by the SDL runtime.
 pub const PlayerBackend = @import("player_backend.zig").PlayerBackend;
+/// One picture a platform player hands to ziggui to draw, and its generation.
+pub const PlayerFrame = @import("player_backend.zig").PlayerFrame;
 /// A media player modeled on `AVPlayer` (`replaceCurrentItem`, `play`, `seek`, `observe`, `tracks`).
 pub const Player = @import("player.zig").Player;
 /// A player's picture in the view tree.

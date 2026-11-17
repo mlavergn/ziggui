@@ -45,9 +45,14 @@ pub const FrameStep = struct {
     first: u32,
     /// The pixels the texture is filled with.
     image: mod.Image,
+    /// What the pictures come from (`VideoFrameCommand.key`).
+    key: usize,
+    /// Which picture this is (`VideoFrameCommand.generation`).
+    generation: u64,
 };
 
-/// The instance stream split into draw runs and blur breaks, in paint order.
+/// The instance stream split into draw runs, blur breaks, erase runs and
+/// video frames, in paint order.
 pub const Step = union(enum) {
     const Self = @This();
 

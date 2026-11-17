@@ -93,6 +93,8 @@ pub const Framebuffer = renderer.Framebuffer;
 pub const Rasterizer = renderer.Rasterizer;
 /// One instanced quad of the GPU scene.
 pub const Instance = renderer.Instance;
+/// What a GPU instance draws (`Instance.parameters[0]`), as the shaders read it.
+pub const InstanceKind = renderer.InstanceKind;
 /// A run of the GPU scene's instances, or a blur break.
 pub const Step = renderer.Step;
 /// A `Step.draw` payload.
@@ -355,6 +357,8 @@ pub const NativeRegion = views.NativeRegion;
 pub const A11yRole = views.A11yRole;
 /// One node of the accessibility tree.
 pub const A11yNode = views.A11yNode;
+/// A view's accessibility traits (`.isButton`, `.isSelected`), after SwiftUI's.
+pub const AccessibilityTraits = views.AccessibilityTraits;
 /// A popover or sheet waiting to be drawn.
 pub const OverlayRequest = views.OverlayRequest;
 /// A selectable paragraph's geometry for one frame.
@@ -478,6 +482,10 @@ pub const Badge = views.Badge;
 pub const KeyCap = views.KeyCap;
 /// A segmented control of equal segments, a neutral thumb on a track.
 pub const SegmentedControl = views.SegmentedControl;
+/// A segmented control of icons, each segment a Lucide icon with a title.
+pub const IconSegmentedControl = views.IconSegmentedControl;
+/// One segment of an `IconSegmentedControl`: its icon and title.
+pub const IconSegment = views.IconSegment;
 
 // -----------------------------------------------------------------------------
 // Containers
@@ -756,6 +764,10 @@ pub const VirtualList = views.VirtualList;
 pub const VirtualListBoth = views.VirtualListBoth;
 /// A unified diff over a `VirtualList`.
 pub const DiffView = views.DiffView;
+/// A `DiffView` whose lines can be selected and copied (`DiffSelection`).
+pub const SelectableDiffView = views.SelectableDiffView;
+/// The lines selected in a `SelectableDiffView`, kept by the app beside the diff's `ScrollState`.
+pub const DiffSelection = views.DiffSelection;
 /// A table's header row.
 pub const TableHeader = views.TableHeader;
 /// One table row.
@@ -858,6 +870,8 @@ pub const PlayerTrackKind = views.PlayerTrackKind;
 pub const PlayerTrack = views.PlayerTrack;
 /// A platform media player's operations, installed by the SDL runtime.
 pub const PlayerBackend = views.PlayerBackend;
+/// One picture a platform player hands to ziggui to draw, and its generation.
+pub const PlayerFrame = views.PlayerFrame;
 /// A media player modeled on `AVPlayer` (`replaceCurrentItem`, `play`, `seek`, `observe`, `tracks`).
 pub const Player = views.Player;
 /// A player's picture in the view tree.

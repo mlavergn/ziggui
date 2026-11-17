@@ -675,7 +675,9 @@ pub const Rasterizer = struct {
         }
     }
 
-    /// Draw an image stretched over a rect.
+    /// Draw an image stretched over a rect; one whose pixels are fewer than
+    /// its size says (a video frame a platform handed over short) draws
+    /// nothing.
     ///
     /// - `self`: the rasterizer.
     /// - `clips`: the clip stack.
@@ -684,6 +686,7 @@ pub const Rasterizer = struct {
     fn drawImage(self: *const Self, clips: []const Clip, rect: mod.Rect, image: mod.Image) void {
         const framebuffer = self.framebuffer;
         if (image.width == 0 or image.height == 0) return;
+        if (!image.isWhole()) return;
         const clipped = self.clippedBoundsOf(clips, rect, 0);
         const bounds = clipped.bounds;
         if (bounds.empty()) return;
@@ -703,7 +706,7 @@ pub const Rasterizer = struct {
                 if (texel_x < 0) continue;
                 const texel_column: u32 = @intFromFloat(texel_x);
                 if (texel_column >= image.width) continue;
-                const index = (texel_row * image.width + texel_column) * 4;
+                const index = (@as(usize, texel_row) * image.width + texel_column) * 4;
                 const source = mod.Color.fromRgba8(
                     image.pixels[index + 0],
                     image.pixels[index + 1],
@@ -917,6 +920,20 @@ test "raster: image blit copies pixels" {
     try TestRender.canvasInto(&framebuffer, &canvas);
     try std.testing.expect(framebuffer.at(0, 0).approxEql(mod.Color.green, 0.02));
     try std.testing.expect(framebuffer.at(1, 1).approxEql(mod.Color.green, 0.02));
+}
+
+test "raster: an image with fewer pixels than its size draws nothing" {
+    var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 2, 2);
+    defer framebuffer.deinit();
+    framebuffer.clear(mod.Color.white);
+    var canvas = mod.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+    // Says 2x2 (16 bytes) but holds one pixel: never read past it.
+    const pixels = [_]u8{ 0, 255, 0, 255 };
+    try canvas.drawImage(.{ .x = 0, .y = 0, .width = 2, .height = 2 }, .{ .width = 2, .height = 2, .pixels = &pixels });
+    try canvas.drawVideoFrame(.{ .x = 0, .y = 0, .width = 2, .height = 2 }, .{ .width = 2, .height = 2, .pixels = &pixels }, 1, 1);
+    try TestRender.canvasInto(&framebuffer, &canvas);
+    try std.testing.expect(framebuffer.at(1, 1).approxEql(mod.Color.white, 0.001));
 }
 
 test "raster: blurRect averages its region and leaves the outside untouched" {

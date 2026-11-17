@@ -112,18 +112,18 @@ pub const WrapCache = struct {
     pub fn wrap(self: *Self, arena: std.mem.Allocator, face: *const renderer.TtfFont, text: []const u8, pixel_size: f32, max_width: f32) []renderer.WrappedLine {
         const key = Self.keyFor(text, pixel_size, max_width);
         const slot = self.map.getOrPut(self.allocator, key) catch
-            return renderer.TextShaper.init(face).wrapText(arena, text, pixel_size, max_width) catch &.{};
+            return renderer.TextShaper.init(face).wrapText(arena, text, pixel_size, max_width) catch @panic("oom");
         if (slot.found_existing) {
             const lines = slot.value_ptr.*;
             // Guard against a (vanishingly rare) hash collision yielding offsets past
             // the current string: re-wrap in the arena rather than slice out of
             // bounds, and leave the entry, which this frame may already hold.
             if (lines.len == 0 or lines[lines.len - 1].end <= text.len) return lines;
-            return renderer.TextShaper.init(face).wrapText(arena, text, pixel_size, max_width) catch &.{};
+            return renderer.TextShaper.init(face).wrapText(arena, text, pixel_size, max_width) catch @panic("oom");
         }
         const lines = renderer.TextShaper.init(face).wrapText(self.allocator, text, pixel_size, max_width) catch {
             _ = self.map.remove(key);
-            return renderer.TextShaper.init(face).wrapText(arena, text, pixel_size, max_width) catch &.{};
+            return renderer.TextShaper.init(face).wrapText(arena, text, pixel_size, max_width) catch @panic("oom");
         };
         slot.value_ptr.* = lines;
         self.wrap_bytes += lines.len * @sizeOf(renderer.WrappedLine);

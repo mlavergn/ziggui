@@ -48,7 +48,13 @@ const FileRows = struct {
             mod.Spacer(),
             mod.Text(detail).size(11).foreground(if (selected and self.focused) text else self.tokens.tertiary_label),
         });
-        return mod.SelectableRow(content, selected, self.focused, mod.Callback.tagged(mod.FileBrowserState, self.state, FileBrowserActions.tap, index));
+        // Its path is what the row is: a double click never opens what the
+        // previous one's folder put under the pointer.
+        var identity = std.hash.Wyhash.init(0);
+        identity.update(self.state.path.items);
+        identity.update("/");
+        identity.update(node.name);
+        return mod.SelectableRow(content, selected, self.focused, mod.Callback.tagged(mod.FileBrowserState, self.state, FileBrowserActions.tap, index)).id(identity.final());
     }
 };
 
@@ -56,13 +62,13 @@ const FileRows = struct {
 const FileBrowserActions = struct {
     const Self = @This();
 
-    /// Selects entry `index`; a double-click on a folder opens it.
+    /// Selects entry `index`; a double click on a folder opens it.
     ///
     /// - `state`: the browser.
     /// - `index`: the entry tapped, an index into its nodes.
     fn tap(state: *mod.FileBrowserState, index: usize) void {
         state.select(index);
-        if (mod.PointerInput.shared().tapCount() < 2) return;
+        if (!mod.PointerInput.shared().isDoubleClick()) return;
         _ = state.enter() catch |err| log.err("folder not opened [{any}]", .{err});
     }
 

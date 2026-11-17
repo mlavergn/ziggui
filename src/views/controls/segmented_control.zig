@@ -15,11 +15,49 @@ const segment_text_size: f32 = 13;
 /// A segment's height, in points; the track adds `track_inset` above and below.
 const segment_height: f32 = 20;
 
-/// The track's inset around its segments, in points.
-const track_inset: f32 = 2;
-
 /// The space on each side of a segment's title, in points.
 const segment_padding: f32 = 10;
+
+/// An icon segment's glyph size, in points.
+const icon_size: f32 = 14;
+
+/// The chrome every segmented control shares: each segment's, and the
+/// track under them.
+const Segments = struct {
+    const Self = @This();
+
+    /// One segment's chrome around its content: `segment_height` tall, stretched
+    /// to its share, rounded, tapped to select it; the thumb when chosen, else a
+    /// hover fill.
+    ///
+    /// - `content`: the title or icon.
+    /// - `selection`: the control's selection.
+    /// - `index`: the segment's index.
+    /// - `chosen`: it is the selected one.
+    /// - `tokens`: the frame's colors.
+    /// - Returns: the segment.
+    fn chrome(content: mod.View, selection: mod.Binding(i64), index: usize, chosen: bool, tokens: mod.BuildTokens) mod.View {
+        const framed = content
+            .frameHeight(segment_height)
+            .frameMaxWidth()
+            .cornerRadius(5)
+            .onTap(mod.Callback.select(selection, @intCast(index)));
+        return if (chosen) framed.background(tokens.raised).border(tokens.separator, 1) else framed.hoverFill(tokens.hover);
+    }
+
+    /// The track under the segments: inset, filled, rounded, at its ideal width.
+    ///
+    /// - `segments`: the segments, in the build arena.
+    /// - `tokens`: the frame's colors.
+    /// - Returns: the control.
+    fn track(segments: []const mod.View, tokens: mod.BuildTokens) mod.View {
+        return mod.StackBuilder.fromSlice(.horizontal, mod.ControlMetrics.segment_track_inset, .center, segments)
+            .padding(mod.ControlMetrics.segment_track_inset)
+            .background(tokens.quaternary_fill)
+            .cornerRadius(6)
+            .fixedSize();
+    }
+};
 
 /// A segmented control over a selected index: a `quaternary_fill` track
 /// (radius 6) of equal-width segments, the selected one a neutral thumb (the
@@ -52,18 +90,39 @@ pub fn SegmentedControl(selection: mod.Binding(i64), options: []const []const u8
             .foreground(if (chosen) tokens.label else tokens.secondary_label);
         const content = mod.StackBuilder.fromSlice(.depth, 0, .center, layers)
             .size(segment_text_size)
-            .paddingInsets(.{ .leading = segment_padding, .trailing = segment_padding })
-            .frameHeight(segment_height)
-            .frameMaxWidth()
-            .cornerRadius(5)
-            .onTap(mod.Callback.select(selection, @intCast(index)));
-        segment.* = if (chosen) content.background(tokens.raised).border(tokens.separator, 1) else content.hoverFill(tokens.hover);
+            .paddingInsets(.{ .leading = segment_padding, .trailing = segment_padding });
+        segment.* = Segments.chrome(content, selection, index, chosen, tokens);
     }
-    return mod.StackBuilder.fromSlice(.horizontal, track_inset, .center, segments)
-        .padding(track_inset)
-        .background(tokens.quaternary_fill)
-        .cornerRadius(6)
-        .fixedSize();
+    return Segments.track(segments, tokens);
+}
+
+/// A segmented control of icons over a selected index: `SegmentedControl`'s
+/// track, thumb and hover fill, each segment its Lucide icon (14pt, `label`
+/// when selected, `secondary_label` otherwise) in a 32pt-wide segment, its
+/// title the segment's accessibility label and hover hint. Tapping a segment
+/// sets `selection` to its index; `.disabled(true)` ignores taps. 24pt tall;
+/// it keeps its ideal width unless the caller stretches it with
+/// `.frameMaxWidth()`, which shares the width out equally.
+///
+/// - `selection`: the selected segment's index.
+/// - `segments`: the segments' icons and titles.
+/// - Returns: the control.
+pub fn IconSegmentedControl(selection: mod.Binding(i64), segments: []const mod.IconSegment) mod.View {
+    const tokens = mod.BuildScope.shared().tokens();
+    const allocator = mod.BuildScope.shared().allocator();
+    const views = allocator.alloc(mod.View, segments.len) catch @panic("oom");
+    const selected = selection.get();
+    for (views, segments, 0..) |*view, segment, index| {
+        const chosen = selected == @as(i64, @intCast(index));
+        // Padded, not framed: the chrome's frame stretches it.
+        const content = mod.Icon(segment.icon, icon_size, if (chosen) tokens.label else tokens.secondary_label)
+            .paddingInsets(.{ .leading = (mod.ControlMetrics.icon_segment_width - icon_size) / 2, .trailing = (mod.ControlMetrics.icon_segment_width - icon_size) / 2 });
+        view.* = Segments.chrome(content, selection, index, chosen, tokens)
+            .accessibilityLabel(segment.title)
+            .accessibilityAddTraits(.{ .is_button = true, .is_selected = chosen })
+            .help(segment.title);
+    }
+    return Segments.track(views, tokens);
 }
 
 // -----------------------------------------------------------------------------
@@ -100,4 +159,31 @@ test "a segmented control sizes to its titles, stretches on request, and selects
     try std.testing.expect(wide.at(597, 12).r < 0.99);
     try std.testing.expect(canvas.tap(.{ .x = 550, .y = 12 }));
     try std.testing.expectEqual(@as(i64, 2), selection.get());
+}
+
+test "an icon segmented control draws one square-ish segment per icon, selects on tap, and ignores taps when disabled" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    var selection = renderer.State(i64).init(std.testing.allocator, 0);
+    defer selection.deinit();
+    const segments = [_]mod.IconSegment{ .{ .icon = .gitBranch, .title = "Git" }, .{ .icon = .code, .title = "Files" } };
+
+    canvas.begin(renderer.MacosTheme.light);
+    const compact = mod.HStack(.{ IconSegmentedControl(selection.binding(), &segments), mod.Spacer() });
+    canvas.end();
+    var frame = try canvas.render(compact, 300, 24);
+    defer frame.deinit();
+    // Two 32pt segments and the track: well short of the row's far edge.
+    try std.testing.expect(frame.at(1, 12).r < 0.99);
+    try std.testing.expect(frame.at(120, 12).r > 0.99);
+    try std.testing.expect(canvas.tap(.{ .x = 52, .y = 12 }));
+    try std.testing.expectEqual(@as(i64, 1), selection.get());
+
+    canvas.begin(renderer.MacosTheme.light);
+    const off = mod.HStack(.{ IconSegmentedControl(selection.binding(), &segments).disabled(true), mod.Spacer() });
+    canvas.end();
+    var disabled = try canvas.render(off, 300, 24);
+    defer disabled.deinit();
+    _ = canvas.tap(.{ .x = 18, .y = 12 });
+    try std.testing.expectEqual(@as(i64, 1), selection.get());
 }

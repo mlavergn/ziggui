@@ -11,9 +11,10 @@
 //! SDL. X sends a key to the window under the pointer when that window is
 //! inside the focused one, so a view's window listens for keys only while it
 //! holds the keyboard (`listenForKeys`): typing in a ziggui field with the
-//! pointer resting on a view still reaches the field. GTK's key bindings give the view its copy, cut, paste and select-all,
-//! so `performEdit` has nothing to do; a key with Ctrl (or Super) is offered
-//! to the app's key handler first, as the loop offers it on macOS. A press on
+//! pointer resting on a view still reaches the field. GTK's key bindings
+//! give the view its copy, cut, paste and select-all, so `performEdit` has
+//! nothing to do; a key with Ctrl (or Super) is offered to the app's key
+//! handler first, as the loop offers it on macOS. A press on
 //! ziggui's own surface hands the focus back (`release`). After the user
 //! leaves the window and comes back, the window manager focuses SDL's window,
 //! and the next frame hands the focus back to the view that held it.
@@ -105,7 +106,7 @@ pub const GtkNativeHost = struct {
         const api = mod.Gtk.start() orelse return null;
         if (!filtering) {
             filtering = true;
-            if (!mod.GlibPump.shared().start(api)) log.warn("GLib runs only as SDL events come: its watcher did not start", .{});
+            if (!mod.GlibPump.shared().start(api)) log.warn("GLib runs on a timer: its watcher did not start", .{});
             api.gdk_event_handler_set(Self.filterEvent, null, null);
         }
         return api;
@@ -158,7 +159,11 @@ pub const GtkNativeHost = struct {
         }
 
         if (reopening) {
-            if (refocus) |view| if (Self.hostOfView(view)) |host| if (!host.hidden) Self.claim(api, host);
+            if (refocus) |view| if (Self.hostOfView(view)) |host| if (!host.hidden) {
+                // In the background the view only becomes the holder again,
+                // to take the keyboard back once the user returns (below).
+                if (sdl_c.SDL_GetKeyboardFocus() == window) Self.claim(api, host) else holder = view;
+            };
             refocus = null;
         }
         // Back from another window: the window manager focused SDL's window,
@@ -186,19 +191,24 @@ pub const GtkNativeHost = struct {
     }
 
     /// Hands the keyboard back to SDL's window when a placed view holds it;
-    /// a press on ziggui's own surface calls this.
+    /// a press on ziggui's own surface calls this. The X input focus moves
+    /// only while the view has it: once the user went to another
+    /// application, that one stays focused (a view hidden or dropped on a
+    /// frame drawn in the background must not pull the focus back).
     pub fn release() void {
         const api = mod.Gtk.running() orelse return;
+        const focused = Self.hasFocus();
         const view = holder orelse return;
         holder = null;
         const host = Self.hostOfView(view) orelse return;
         Self.sendFocus(api, host, false);
         Self.listenForKeys(api, host, false);
-        const x_display = mod.Gtk.display() orelse return;
-        if (sdl_xid != 0) {
-            mod.Gtk.trapErrors();
-            _ = api.XSetInputFocus(x_display, sdl_xid, mod.Gtk.revert_to_parent, 0);
-            mod.Gtk.untrapErrors();
+        if (focused and sdl_xid != 0) {
+            if (mod.Gtk.display()) |x_display| {
+                mod.Gtk.trapErrors();
+                _ = api.XSetInputFocus(x_display, sdl_xid, mod.Gtk.revert_to_parent, 0);
+                mod.Gtk.untrapErrors();
+            }
         }
         mod.Gtk.flush();
     }
@@ -242,8 +252,11 @@ pub const GtkNativeHost = struct {
 
     /// Runs GLib's ready work and hands its descriptors to the watcher; the
     /// loop calls it before each wait.
-    pub fn beforeWait() void {
-        mod.GlibPump.shared().beforeWait();
+    ///
+    /// - Returns: the longest the wait may last, in milliseconds, or null for
+    ///   no limit (`GlibPump.beforeWait`).
+    pub fn beforeWait() ?u32 {
+        return mod.GlibPump.shared().beforeWait();
     }
 
     /// Takes GLib's descriptors back and runs its ready work; the loop calls
@@ -306,15 +319,15 @@ pub const GtkNativeHost = struct {
     fn keycodeOf(keyval: c_uint) ?u32 {
         if (keyval >= 0x20 and keyval <= 0x7e) return std.ascii.toLower(@intCast(keyval));
         return switch (keyval) {
-            0xff0d => sdl_c.SDLK_RETURN,
-            0xff1b => sdl_c.SDLK_ESCAPE,
-            0xff09 => sdl_c.SDLK_TAB,
-            0xff08 => sdl_c.SDLK_BACKSPACE,
-            0xffff => sdl_c.SDLK_DELETE,
-            0xff51 => sdl_c.SDLK_LEFT,
-            0xff52 => sdl_c.SDLK_UP,
-            0xff53 => sdl_c.SDLK_RIGHT,
-            0xff54 => sdl_c.SDLK_DOWN,
+            mod.Gtk.key_return => sdl_c.SDLK_RETURN,
+            mod.Gtk.key_escape => sdl_c.SDLK_ESCAPE,
+            mod.Gtk.key_tab => sdl_c.SDLK_TAB,
+            mod.Gtk.key_backspace => sdl_c.SDLK_BACKSPACE,
+            mod.Gtk.key_delete => sdl_c.SDLK_DELETE,
+            mod.Gtk.key_left => sdl_c.SDLK_LEFT,
+            mod.Gtk.key_up => sdl_c.SDLK_UP,
+            mod.Gtk.key_right => sdl_c.SDLK_RIGHT,
+            mod.Gtk.key_down => sdl_c.SDLK_DOWN,
             else => null,
         };
     }
@@ -407,6 +420,9 @@ pub const GtkNativeHost = struct {
         api.gtk_window_resize(window, 1, 1);
         api.gtk_widget_realize(window);
         const gdk_window = api.gtk_widget_get_window(window) orelse {
+            // The app's widget leaves first: destroying a window destroys
+            // what it holds, and the widget stays the app's (as in `drop`).
+            api.gtk_container_remove(layout, view);
             api.gtk_widget_destroy(window);
             api.g_object_unref(view);
             return null;
@@ -556,7 +572,8 @@ test "with nothing placed the GTK host holds no focus and no point" {
 test "GTK host maps shortcut keys to SDL's" {
     try std.testing.expectEqual(@as(?u32, 'q'), GtkNativeHost.keycodeOf('Q'));
     try std.testing.expectEqual(@as(?u32, 'l'), GtkNativeHost.keycodeOf('l'));
-    try std.testing.expectEqual(@as(?u32, sdl_c.SDLK_RETURN), GtkNativeHost.keycodeOf(0xff0d));
+    try std.testing.expectEqual(@as(?u32, sdl_c.SDLK_RETURN), GtkNativeHost.keycodeOf(mod.Gtk.key_return));
+    // `GDK_KEY_F1`: a key no shortcut uses.
     try std.testing.expectEqual(@as(?u32, null), GtkNativeHost.keycodeOf(0xffbe));
     const modifiers = GtkNativeHost.modifiersOf(mod.Gtk.control_mask | mod.Gtk.shift_mask);
     try std.testing.expect((modifiers & sdl_c.SDL_KMOD_CTRL) != 0 and (modifiers & sdl_c.SDL_KMOD_SHIFT) != 0);

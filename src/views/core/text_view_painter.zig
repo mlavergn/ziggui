@@ -579,8 +579,7 @@ test "a one-line field keeps a long text and its selection inside itself, the ca
     defer frame.deinit();
     // Past the field's right edge the window shows, not the selection.
     const outside = frame.at(300, 15);
-    const selection = renderer.MacosTheme.light.colors.selection;
-    try std.testing.expect(@abs(outside.b - selection.b) > 0.05 or @abs(outside.r - selection.r) > 0.05);
+    try std.testing.expect(@abs(outside.b - renderer.MacosTheme.light.colors.selection.b) > 0.05 or @abs(outside.r - renderer.MacosTheme.light.colors.selection.r) > 0.05);
     // Inside, the selection fills the field.
     const inside = frame.at(80, 15);
     try std.testing.expect(@abs(inside.b - outside.b) > 0.05 or @abs(inside.r - outside.r) > 0.05);

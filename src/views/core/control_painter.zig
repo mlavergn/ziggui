@@ -200,14 +200,13 @@ pub const ControlPainter = struct {
     /// - `canvas`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
     pub fn paintSlider(context: *const mod.Context, slider: mod.SliderData, rect: renderer.Rect, canvas: *renderer.Canvas) !void {
-        const radius = mod.ControlMetrics.slider_knob_radius;
-        const track = renderer.Rect{ .x = rect.x + radius, .y = rect.midY() - mod.ControlMetrics.slider_track_height / 2, .width = rect.width - 2 * radius, .height = mod.ControlMetrics.slider_track_height };
+        const track = renderer.Rect{ .x = rect.x + mod.ControlMetrics.slider_knob_radius, .y = rect.midY() - mod.ControlMetrics.slider_track_height / 2, .width = rect.width - 2 * mod.ControlMetrics.slider_knob_radius, .height = mod.ControlMetrics.slider_track_height };
         const denominator = if (slider.max - slider.min == 0) 1 else slider.max - slider.min;
         const fraction = std.math.clamp((slider.value.get() - slider.min) / denominator, 0, 1);
         // The view layer owns the geometry (track + knob square); the theme draws
         // the groove, fill, and handle in its own style.
         const knob_center_x = track.x + track.width * fraction;
-        const knob_rect = renderer.Rect{ .x = knob_center_x - radius, .y = rect.midY() - radius, .width = 2 * radius, .height = 2 * radius };
+        const knob_rect = renderer.Rect{ .x = knob_center_x - mod.ControlMetrics.slider_knob_radius, .y = rect.midY() - mod.ControlMetrics.slider_knob_radius, .width = 2 * mod.ControlMetrics.slider_knob_radius, .height = 2 * mod.ControlMetrics.slider_knob_radius };
         const hovered = if (context.hover_point) |point| rect.contains(point) else false;
         if (context.tint) |tint| {
             try Self.paintTintedSlider(context.surface(canvas), track, fraction, knob_rect, if (context.disabled) tint.multiplyAlpha(0.4) else tint);

@@ -20,6 +20,11 @@ pub const ControlMetrics = struct {
     pub const checkbox_gap: f32 = 6;
     /// A checkbox's corner radius, before the theme scales it.
     pub const checkbox_radius: f32 = 4;
+    /// A segmented control's track inset around its segments (and between
+    /// them).
+    pub const segment_track_inset: f32 = 2;
+    /// An icon segmented control's segment width.
+    pub const icon_segment_width: f32 = 32;
     /// A slider's height.
     pub const slider_height: f32 = 20;
     /// A slider knob's radius.

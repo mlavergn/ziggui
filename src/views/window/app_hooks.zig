@@ -13,11 +13,16 @@ pub const AppHooks = struct {
     /// Called on every key-up with the SDL keycode (`SDLK_*`) and modifier
     /// mask (`SDL_KMOD_*`), beside the key-down handler. An app tells an Alt
     /// tap from the Alt of Alt+Tab with it.
+    ///
+    /// - `key`: the SDL keycode (`SDLK_*`).
+    /// - `modifiers`: the modifier mask (`SDL_KMOD_*`).
     key_up: ?*const fn (key: u32, modifiers: u16) void = null,
 
     /// Asked when a quit is requested (`SDL_EVENT_QUIT`: ⌘Q, the app menu's
     /// Quit, a logout; or the main window's close button): true lets it end
     /// the loop, false keeps it running. `App.quit()` never asks.
+    ///
+    /// - Returns: true to end the loop, false to keep running.
     quit: ?*const fn () bool = null,
 
     /// Forwards a key-up to the handler, if one is set.

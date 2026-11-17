@@ -10,32 +10,22 @@ const mod = @import("module.zig");
 const views = @import("views");
 
 /// A window handle.
-const HWND = ?*anyopaque;
+pub const HWND = ?*anyopaque;
 /// A message's word parameter.
-const WPARAM = usize;
+pub const WPARAM = usize;
 /// A message's long parameter.
-const LPARAM = isize;
+pub const LPARAM = isize;
 /// A window procedure's result.
-const LRESULT = isize;
-/// A window procedure.
-const WndProc = *const fn (HWND, u32, WPARAM, LPARAM) callconv(.winapi) LRESULT;
+pub const LRESULT = isize;
 
-/// Win32's `WNDCLASSEXW`.
-const WNDCLASSEXW = extern struct {
+/// Win32's `RECT`.
+pub const RECT = extern struct {
     const Self = @This();
 
-    cbSize: u32 = @sizeOf(WNDCLASSEXW),
-    style: u32 = 0,
-    lpfnWndProc: WndProc,
-    cbClsExtra: i32 = 0,
-    cbWndExtra: i32 = 0,
-    hInstance: ?*anyopaque,
-    hIcon: ?*anyopaque = null,
-    hCursor: ?*anyopaque = null,
-    hbrBackground: ?*anyopaque = null,
-    lpszMenuName: ?[*:0]const u16 = null,
-    lpszClassName: [*:0]const u16,
-    hIconSm: ?*anyopaque = null,
+    left: i32 = 0,
+    top: i32 = 0,
+    right: i32 = 0,
+    bottom: i32 = 0,
 };
 
 /// Win32's `NOTIFYICONDATAW`.
@@ -93,6 +83,44 @@ const ICONINFO = extern struct {
 pub const Win32 = struct {
     const Self = @This();
 
+    /// A window procedure, shared by the Windows files.
+    pub const WndProc = *const fn (HWND, u32, WPARAM, LPARAM) callconv(.winapi) LRESULT;
+
+    /// Win32's `WNDCLASSEXW`, shared by the Windows files.
+    pub const WNDCLASSEXW = extern struct {
+        const Self = @This();
+
+        cbSize: u32 = @sizeOf(WNDCLASSEXW),
+        style: u32 = 0,
+        lpfnWndProc: WndProc,
+        cbClsExtra: i32 = 0,
+        cbWndExtra: i32 = 0,
+        hInstance: ?*anyopaque,
+        hIcon: ?*anyopaque = null,
+        hCursor: ?*anyopaque = null,
+        hbrBackground: ?*anyopaque = null,
+        lpszMenuName: ?[*:0]const u16 = null,
+        lpszClassName: [*:0]const u16,
+        hIconSm: ?*anyopaque = null,
+    };
+
+    /// `GetModuleHandleW`, shared by the Windows files.
+    pub extern "kernel32" fn GetModuleHandleW(name: ?[*:0]const u16) callconv(.winapi) ?*anyopaque;
+    /// `RegisterClassExW`, shared by the Windows files.
+    pub extern "user32" fn RegisterClassExW(window_class: *const WNDCLASSEXW) callconv(.winapi) u16;
+    /// `CreateWindowExW`, shared by the Windows files.
+    pub extern "user32" fn CreateWindowExW(extended_style: u32, class: [*:0]const u16, title: ?[*:0]const u16, style: u32, x: i32, y: i32, width: i32, height: i32, parent: HWND, menu: ?*anyopaque, instance: ?*anyopaque, parameter: ?*anyopaque) callconv(.winapi) HWND;
+    /// `DestroyWindow`, shared by the Windows files.
+    pub extern "user32" fn DestroyWindow(window: HWND) callconv(.winapi) i32;
+    /// `DefWindowProcW`, shared by the Windows files.
+    pub extern "user32" fn DefWindowProcW(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) callconv(.winapi) LRESULT;
+    /// `SetPropW`, shared by the Windows files.
+    pub extern "user32" fn SetPropW(window: HWND, name: [*:0]const u16, data: ?*anyopaque) callconv(.winapi) i32;
+    /// `RemovePropW`, shared by the Windows files.
+    pub extern "user32" fn RemovePropW(window: HWND, name: [*:0]const u16) callconv(.winapi) ?*anyopaque;
+    /// `DeleteObject`, shared by the Windows files.
+    pub extern "gdi32" fn DeleteObject(object: ?*anyopaque) callconv(.winapi) i32;
+
     const NIM_ADD = 0;
     const NIM_DELETE = 2;
     const NIM_SETVERSION = 4;
@@ -121,19 +149,13 @@ pub const Win32 = struct {
     /// The process's Win32 state.
     var shared_win32: Self = .{};
 
-    extern "kernel32" fn GetModuleHandleW(name: ?[*:0]const u16) callconv(.winapi) ?*anyopaque;
     // Resource names/types are passed as MAKEINTRESOURCE integers.
     extern "kernel32" fn FindResourceW(module: ?*anyopaque, name: usize, kind: usize) callconv(.winapi) ?*anyopaque;
-    extern "user32" fn RegisterClassExW(window_class: *const WNDCLASSEXW) callconv(.winapi) u16;
-    extern "user32" fn CreateWindowExW(extended_style: u32, class: [*:0]const u16, title: [*:0]const u16, style: u32, x: i32, y: i32, width: i32, height: i32, parent: HWND, menu: ?*anyopaque, instance: ?*anyopaque, parameter: ?*anyopaque) callconv(.winapi) HWND;
-    extern "user32" fn DestroyWindow(hwnd: HWND) callconv(.winapi) i32;
-    extern "user32" fn DefWindowProcW(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) callconv(.winapi) LRESULT;
     extern "user32" fn RegisterWindowMessageW(name: [*:0]const u16) callconv(.winapi) u32;
     extern "user32" fn CreateIconIndirect(icon_info: *const ICONINFO) callconv(.winapi) ?*anyopaque;
     extern "user32" fn DestroyIcon(icon: ?*anyopaque) callconv(.winapi) i32;
     extern "gdi32" fn CreateDIBSection(hdc: ?*anyopaque, bitmap_info: *const BITMAPINFOHEADER, usage: u32, bits: *?*anyopaque, section: ?*anyopaque, offset: u32) callconv(.winapi) ?*anyopaque;
     extern "gdi32" fn CreateBitmap(width: i32, height: i32, planes: u32, bits_per_pixel: u32, bits: ?*const anyopaque) callconv(.winapi) ?*anyopaque;
-    extern "gdi32" fn DeleteObject(object: ?*anyopaque) callconv(.winapi) i32;
     extern "shell32" fn Shell_NotifyIconW(message: u32, data: *NOTIFYICONDATAW) callconv(.winapi) i32;
 
     /// The process's Win32 state.

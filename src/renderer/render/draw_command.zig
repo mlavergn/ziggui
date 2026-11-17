@@ -93,8 +93,9 @@ pub const ImageCommand = struct {
 };
 
 /// An RGBA8 image whose pixels change from frame to frame (a video's
-/// picture), stretched over a rect. Unlike `ImageCommand` it is never cached:
-/// the GPU backend uploads it to a texture of its own on every frame.
+/// picture), stretched over a rect. Unlike `ImageCommand` it is never cached
+/// in the atlas: the GPU backend keeps a texture of its own per `key` and
+/// uploads the pixels again only when `generation` changes.
 pub const VideoFrameCommand = struct {
     const Self = @This();
 
@@ -102,6 +103,10 @@ pub const VideoFrameCommand = struct {
     rect: mod.Rect,
     /// The pixels, valid until the frame is drawn.
     image: mod.Image,
+    /// What the pictures come from (a player), stable while it lives.
+    key: usize,
+    /// Changes with each new picture from `key`.
+    generation: u64,
 };
 
 /// Blur the pixels already drawn beneath `rect`, then composite `tint` over

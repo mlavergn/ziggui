@@ -1259,6 +1259,54 @@ test "a11y: accessibilityHidden drops a node; accessibilityLabel overrides it" {
     try std.testing.expect(!saw_raw); // original label replaced, not duplicated
 }
 
+test "a11y: an icon segmented control's segments are buttons named by their titles, the chosen one selected" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var a11y: std.ArrayList(mod.A11yNode) = .empty;
+    context.a11y = &a11y;
+    var selection = renderer.State(i64).init(std.testing.allocator, 1);
+    defer selection.deinit();
+
+    var canvas = renderer.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+    const segments = [_]mod.IconSegment{ .{ .icon = .gitBranch, .title = "Git" }, .{ .icon = .code, .title = "Files" } };
+    try mod.ViewRenderer.render(&context, mod.IconSegmentedControl(selection.binding(), &segments), .{ .x = 0, .y = 0, .width = 200, .height = 24 }, &canvas);
+
+    var git: ?mod.A11yNode = null;
+    var files: ?mod.A11yNode = null;
+    for (a11y.items) |node| {
+        if (std.mem.eql(u8, node.label, "Git")) git = node;
+        if (std.mem.eql(u8, node.label, "Files")) files = node;
+    }
+    try std.testing.expectEqual(mod.A11yRole.button, git.?.role);
+    try std.testing.expectEqual(mod.A11yRole.button, files.?.role);
+    try std.testing.expect(!git.?.selected);
+    try std.testing.expect(files.?.selected);
+}
+
+test "a selectable row's id rides its tap region" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    const Probe = struct {
+        const Self = @This();
+
+        /// Does nothing: the test reads the region, not the tap.
+        fn tapped() void {}
+    };
+    canvas.begin(renderer.MacosTheme.light);
+    const row = mod.SelectableRow(mod.Text("file"), false, true, mod.Callback.action(Probe.tapped)).id(42);
+    canvas.end();
+    var frame = try canvas.render(row, 200, 22);
+    defer frame.deinit();
+    var found = false;
+    for (canvas.hits.items) |region| {
+        if (region.action == .callback and region.id == 42) found = true;
+    }
+    try std.testing.expect(found);
+}
+
 test "view: sheet enqueues an overlay, draws a scrim over content, dismisses on scrim tap" {
     var environment = mod.TestEnvironment.init();
     environment.setup();
@@ -2348,10 +2396,10 @@ const FramedBackend = struct {
     /// The picture.
     ///
     /// - `handle`: the player.
-    /// - Returns: the 4x2 picture.
-    fn frame(handle: *anyopaque) ?renderer.Image {
+    /// - Returns: the 4x2 picture, its first generation.
+    fn frame(handle: *anyopaque) ?mod.PlayerFrame {
         _ = handle;
-        return .{ .width = 4, .height = 2, .pixels = &pixels };
+        return .{ .image = .{ .width = 4, .height = 2, .pixels = &pixels }, .generation = 1 };
     }
 };
 
@@ -2375,6 +2423,8 @@ test "video player: where the platform hands its frames over, it draws the lates
         .videoFrame => |picture| {
             frames += 1;
             try std.testing.expectEqual(@as(u32, 4), picture.image.width);
+            try std.testing.expectEqual(@intFromPtr(&player), picture.key);
+            try std.testing.expectEqual(@as(u64, 1), picture.generation);
             // A 2:1 picture fit into a square: full width, half height, centered.
             try std.testing.expectApproxEqAbs(@as(f32, 200), picture.rect.width, 0.5);
             try std.testing.expectApproxEqAbs(@as(f32, 100), picture.rect.height, 0.5);

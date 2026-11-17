@@ -58,9 +58,8 @@ test {
 }
 
 test "Alignment: presets resolve fractions" {
-    const centered = mod.Alignment.center;
-    try std.testing.expectEqual(mod.HorizontalAlignment.center, centered.horizontal);
-    try std.testing.expectEqual(mod.VerticalAlignment.center, centered.vertical);
+    try std.testing.expectEqual(mod.HorizontalAlignment.center, mod.Alignment.center.horizontal);
+    try std.testing.expectEqual(mod.VerticalAlignment.center, mod.Alignment.center.vertical);
     try std.testing.expectEqual(mod.HorizontalAlignment.leading, mod.Alignment.topLeading.horizontal);
     try std.testing.expectEqual(mod.VerticalAlignment.top, mod.Alignment.topLeading.vertical);
 }

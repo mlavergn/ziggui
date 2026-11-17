@@ -17,6 +17,10 @@ pub const HitRegion = struct {
 
     /// A disabled region takes no taps.
     disabled: bool,
+    /// What the region is (`View.id`), so two presses count as a double
+    /// click only on the same thing; null leaves its place and handler to
+    /// tell it apart.
+    id: ?u64 = null,
 };
 
 // -----------------------------------------------------------------------------

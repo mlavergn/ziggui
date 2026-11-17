@@ -143,6 +143,8 @@ pub const NativeRegion = @import("native_region.zig").NativeRegion;
 pub const A11yRole = @import("a11y_role.zig").A11yRole;
 /// One node of the accessibility tree.
 pub const A11yNode = @import("a11y_node.zig").A11yNode;
+/// A view's accessibility traits (`.isButton`, `.isSelected`), after SwiftUI's.
+pub const AccessibilityTraits = @import("accessibility_traits.zig").AccessibilityTraits;
 /// A popover, sheet or alert waiting to be drawn.
 pub const OverlayRequest = @import("overlay_request.zig").OverlayRequest;
 /// A selectable paragraph's geometry for one frame.

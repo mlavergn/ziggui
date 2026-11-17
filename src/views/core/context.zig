@@ -285,7 +285,8 @@ pub const Context = struct {
 
     /// Appends an accessibility node for `view` (no-op when the a11y sink is
     /// off). The label defaults to `default_label` unless the view carries an
-    /// explicit `.accessibilityLabel(...)` override.
+    /// explicit `.accessibilityLabel(...)` override; its traits
+    /// (`.accessibilityAddTraits`) make it a button and mark it selected.
     ///
     /// - `self`: the context.
     /// - `view`: the view.
@@ -296,17 +297,20 @@ pub const Context = struct {
     /// - Returns: nothing; propagates allocation failure.
     pub fn emitAccessibility(self: *const Self, view: mod.View, rect: renderer.Rect, role: mod.A11yRole, default_label: []const u8, value: []const u8) std.mem.Allocator.Error!void {
         const list = self.a11y orelse return;
+        const traits = view.modifiers.a11y_traits;
         try list.append(self.arena, .{
             .rect = rect,
-            .role = role,
+            .role = if (traits.is_button) .button else role,
             .label = view.modifiers.a11y_label orelse default_label,
             .value = value,
+            .selected = traits.is_selected,
         });
     }
 
     /// Tail-truncates `string` to fit `max_width` at `pixel_size`, appending an
-    /// ellipsis (returns `string` unchanged when it already fits). The clipped
-    /// string is built in the frame arena. Used for `.truncated()` single-line Text.
+    /// ellipsis (returns `string` unchanged when it already fits, and nothing
+    /// when not even the ellipsis fits). The clipped string is built in the
+    /// frame arena. Used for `.truncated()` single-line Text.
     ///
     /// - `self`: the context.
     /// - `string`: the text.
@@ -319,7 +323,11 @@ pub const Context = struct {
         if (renderer.TextShaper.init(self.cache.face).measureLineWidth(string, pixel_size) <= max_width + 0.01) return string;
         const ellipsis = "…";
         const ellipsis_width = renderer.TextShaper.init(self.cache.face).measureLineWidth(ellipsis, pixel_size);
-        if (max_width <= ellipsis_width) return ellipsis; // no room even for the body — just the ellipsis
+        // No room even for the ellipsis (a frame squeezed to nothing, or less):
+        // nothing, rather than an ellipsis drawn past the frame over whatever
+        // is beside it.
+        if (max_width + 0.01 < ellipsis_width) return "";
+        if (max_width <= ellipsis_width) return ellipsis; // no room for the body — just the ellipsis
         const budget = max_width - ellipsis_width;
         // Longest UTF-8 prefix (whole codepoints) whose width fits the budget.
         // Each step is one codepoint, so over valid UTF-8 adding its width to
@@ -404,6 +412,9 @@ test "truncateToWidth cuts where measuring every prefix would" {
             const out = try context.truncateToWidth(string, 13, max_width);
             if (full <= max_width + 0.01) {
                 try std.testing.expectEqualStrings(string, out);
+            } else if (max_width + 0.01 < ellipsis_width) {
+                // Not even the ellipsis fits: nothing drawn past the frame.
+                try std.testing.expectEqualStrings("", out);
             } else if (max_width <= ellipsis_width) {
                 try std.testing.expectEqualStrings("…", out);
             } else {
@@ -427,7 +438,7 @@ test "truncateToWidth steps over bad UTF-8 a byte at a time" {
         var max_width: f32 = 0;
         while (max_width < full + 4) : (max_width += 0.37) {
             const out = try context.truncateToWidth(string, 13, max_width);
-            if (std.mem.eql(u8, out, string) or std.mem.eql(u8, out, "…")) continue;
+            if (out.len == 0 or std.mem.eql(u8, out, string) or std.mem.eql(u8, out, "…")) continue;
             // The body is a prefix cut at a step boundary.
             const body = out[0 .. out.len - "…".len];
             try std.testing.expect(std.mem.startsWith(u8, string, body));

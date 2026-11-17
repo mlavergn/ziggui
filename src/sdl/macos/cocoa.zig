@@ -37,8 +37,10 @@ pub const Cocoa = struct {
     }
 
     /// Transparent titlebar + full-size content + hidden title, and an empty
-    /// unified toolbar so the titlebar is toolbar-height (the traffic lights
-    /// sit inset, centred in a 52pt band).
+    /// toolbar in the unified compact style, so the titlebar is 40pt tall and
+    /// the traffic lights sit centred in it, 20pt from the top: the centre of
+    /// the band apps draw (`WindowChrome.top_bar_height`), level with what it
+    /// holds. (The unified style's taller titlebar put them 6pt lower.)
     ///
     /// - `window`: the main window.
     pub fn unifyTitlebar(window: *sdl_c.SDL_Window) void {
@@ -51,7 +53,7 @@ pub const Cocoa = struct {
         const toolbar = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSToolbar"), "new", .{});
         mod.ObjectiveC.send(void, toolbar, "setShowsBaselineSeparator:", .{@as(u8, 0)});
         mod.ObjectiveC.send(void, ns_window, "setToolbar:", .{toolbar});
-        mod.ObjectiveC.send(void, ns_window, "setToolbarStyle:", .{@as(i64, 3)}); // NSWindowToolbarStyleUnified
+        mod.ObjectiveC.send(void, ns_window, "setToolbarStyle:", .{@as(i64, 4)}); // NSWindowToolbarStyleUnifiedCompact
     }
 
     /// Marks this app's menu-bar icons as template images, so macOS draws them

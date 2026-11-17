@@ -76,8 +76,12 @@ fn WindowFrame(comptime AppState: type) type {
         config: mod.AppConfig,
         state: *AppState,
         /// Builds the main window's tree.
+        ///
+        /// - Returns: the view tree.
         body: *const fn (*AppState) views.View,
         /// Non-null for a panel frame: that body replaces the main window's.
+        ///
+        /// - Returns: the panel's view tree.
         panel_body: ?*const fn (*AppState) views.View = null,
         /// Where this frame's hover point lives (main window or panel).
         hover: ?*?renderer.Point = null,
@@ -278,6 +282,9 @@ fn WindowFrame(comptime AppState: type) type {
             views.ViewRenderer.renderScaled(&context, root, .{ .x = 0, .y = 0, .width = point_width, .height = point_height }, scale, &canvas) catch |err| log.debug("view tree not drawn [{t}]", .{err});
             // The pictures move with the frame that erased their holes.
             if (self.presents_video) mod.VideoBackend.present(self.window, video_regions.items);
+            // Frames the renderer draws under those holes (Windows), where the
+            // player cannot show its picture behind the window.
+            const underlays: []const mod.VideoUnderlay = if (self.presents_video) mod.VideoBackend.underlays() else &.{};
             // The platform views sit over the surface, so nothing ziggui draws
             // can cover them: an overlay (or the text menu) hides them instead.
             if (self.presents_native) mod.NativeBackend.present(self.window, native_regions.items, overlays.items.len > 0 or views.TextContextMenu.shared().isOpen());
@@ -290,7 +297,7 @@ fn WindowFrame(comptime AppState: type) type {
                 // downscale on the final blit (SSAA), mirroring the software
                 // texture path below.
                 const clear = if (self.transparent) renderer.Color.transparent else theme.colors.window_background;
-                if (!gpu.frame(arena, canvas.commands.items, clear, supersample)) return false;
+                if (!gpu.frame(arena, canvas.commands.items, clear, supersample, underlays, scale)) return false;
             } else {
                 // Software backend. Persistent framebuffer + RGBA buffer:
                 // reallocated only when the pixel size changes, so a
@@ -305,6 +312,7 @@ fn WindowFrame(comptime AppState: type) type {
                     self.rgba.* = self.allocator.alloc(u8, byte_count) catch return false;
                 }
                 self.framebuffer.toRgba8(self.rgba.*);
+                for (underlays) |underlay| underlay.composite(self.rgba.*, scaled_width, scaled_height, scale);
 
                 // Debug: ZIGGUI_PANEL_DUMP=<path> writes the transparent (panel)
                 // frame's RGBA buffer once per size: u32 w, u32 h, then w*h*4
@@ -457,9 +465,14 @@ const EventRouter = struct {
     /// - `timeout_ms`: how long to wait, in milliseconds.
     /// - Returns: true when an event came.
     fn wait(event: *sdl_c.SDL_Event, timeout_ms: c_int) bool {
-        mod.NativeBackend.beforeWait();
+        const limit = mod.NativeBackend.beforeWait();
         defer mod.NativeBackend.afterWait();
-        return sdl_c.SDL_WaitEventTimeout(event, timeout_ms);
+        // A negative timeout waits for ever; the toolkit's limit caps it.
+        const capped: c_int = if (limit) |cap| blk: {
+            const cap_ms: c_int = @intCast(@min(cap, std.math.maxInt(c_int)));
+            break :blk if (timeout_ms < 0) cap_ms else @min(timeout_ms, cap_ms);
+        } else timeout_ms;
+        return sdl_c.SDL_WaitEventTimeout(event, capped);
     }
 
     /// Reports whether `event` changes nothing ziggui draws: a key only a
@@ -760,6 +773,8 @@ pub fn EventLoop(comptime AppState: type) type {
         /// The window and rendering configuration.
         config: mod.AppConfig,
         /// Builds the main window's tree.
+        ///
+        /// - Returns: the view tree.
         body: *const fn (*AppState) views.View,
         /// The popover panel, or null for none.
         panel: ?mod.PanelSpecification(AppState),

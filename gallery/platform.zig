@@ -16,6 +16,8 @@ pub const Platform = struct {
     toggle_maximized_fn: ?*const fn () void = null,
 
     /// Whether the window is maximized.
+    ///
+    /// - Returns: true while the window is maximized.
     is_maximized_fn: ?*const fn () bool = null,
 
     /// Asks to close the window, as its own close button does (the quit handler may refuse).
@@ -25,6 +27,8 @@ pub const Platform = struct {
     quit_fn: ?*const fn () void = null,
 
     /// The running loop's animator, while there is one.
+    ///
+    /// - Returns: the window's animator, or null before the loop runs.
     animator_fn: ?*const fn () ?*ziggui.Animator = null,
 
     /// Minimizes the window, if there is one.

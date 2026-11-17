@@ -73,9 +73,10 @@ pub const AppConfig = struct {
     /// HiDPI display isn't oversampled past ~2× effective device pixels.
     supersample: f32 = 1,
 
-    /// macOS: hide the title and let the content run under a transparent,
-    /// toolbar-height titlebar (the traffic lights float over the app's own
-    /// top band, as in Finder / the Swift apps). The top `drag_band` points that
+    /// macOS: hide the title and let the content run under a transparent
+    /// titlebar as tall as `WindowChrome.top_bar_height` (a unified compact
+    /// toolbar's), the traffic lights centred in the app's own top band, as
+    /// in Finder / the Swift apps. The top `drag_band` points that
     /// hold no control then drag the window everywhere (on every OS), so an app
     /// that draws its own band behaves like a native titlebar.
     unified_titlebar: bool = false,

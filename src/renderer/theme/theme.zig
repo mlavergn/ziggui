@@ -132,9 +132,8 @@ test {
 }
 
 test "Theme: font() resolves named styles" {
-    const theme = mod.MacosTheme.light;
-    try std.testing.expectEqual(theme.typography.body, theme.font(.body));
-    try std.testing.expectEqual(theme.typography.large_title, theme.font(.largeTitle));
+    try std.testing.expectEqual(mod.MacosTheme.light.typography.body, mod.MacosTheme.light.font(.body));
+    try std.testing.expectEqual(mod.MacosTheme.light.typography.large_title, mod.MacosTheme.light.font(.largeTitle));
 }
 
 test "Theme: the default is macOS light" {

@@ -44,6 +44,8 @@ pub const CommandMenu = @import("../module.zig").CommandMenu;
 pub const WindowIcon = @import("../module.zig").WindowIcon;
 /// Frames for a moment after a resize (the video and native-view hosts), from the sdl module.
 pub const ResizeSettle = @import("../module.zig").ResizeSettle;
+/// The origin rule the web view's bridges apply, from the sdl module.
+pub const WebOrigin = @import("../module.zig").WebOrigin;
 /// The target OS, from the sdl module.
 pub const os_tag = @import("../module.zig").os_tag;
 

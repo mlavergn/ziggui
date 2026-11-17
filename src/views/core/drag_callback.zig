@@ -13,6 +13,9 @@ pub const DragCallback = struct {
     context: ?*anyopaque = null,
 
     /// The handler, given the movement across and down since the last event.
+    ///
+    /// - `delta_x`: the movement across, in points.
+    /// - `delta_y`: the movement down, in points.
     function: *const fn (?*anyopaque, delta_x: f32, delta_y: f32) void,
 
     /// Called with `context` once when this armed drag ends (mouse-up),
@@ -21,6 +24,8 @@ pub const DragCallback = struct {
 
     /// Called with `context` and `tag` when a press arms this drag, before any
     /// movement; null for none.
+    ///
+    /// - `tag`: the region's tag (`DragCallback.tag`).
     begin: ?*const fn (?*anyopaque, tag: usize) void = null,
 
     /// Tells apart the views that share one `context` (a list row's index),

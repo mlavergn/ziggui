@@ -37,6 +37,8 @@ pub fn MenuTable(comptime Context: type, comptime Action: type) type {
 
         /// One entry; a separator when `title` is empty.
         pub const Entry = struct {
+            const Self = @This();
+
             /// The menu it is in, as the titles name it.
             menu: []const u8,
             /// Its title, or empty for a separator.
@@ -66,8 +68,10 @@ pub fn MenuTable(comptime Context: type, comptime Action: type) type {
 
         /// What a built menu's entry calls: the table, the context and the entry, in the menus' allocator.
         const Choice = struct {
+            const Self = @This();
+
             /// The table.
-            table: *const Self,
+            table: *const MenuTable(Context, Action),
             /// What the entry acts on.
             context: *Context,
             /// The entry.
@@ -90,6 +94,9 @@ pub fn MenuTable(comptime Context: type, comptime Action: type) type {
         /// A drawn menu's width, in points.
         width: f32,
         /// Does an entry's action.
+        ///
+        /// - `context`: the app's context.
+        /// - `action`: the chosen entry's action.
         perform: *const fn (context: *Context, action: Action) void,
 
         /// The menus on this system, in order.
@@ -233,9 +240,17 @@ const TestMenus = struct {
     const Self = @This();
 
     /// What the test app's entries do.
-    const Action = enum { open, refresh, quit };
+    const Action = enum {
+        const Self = @This();
+
+        open,
+        refresh,
+        quit,
+    };
     /// The test app: what was done last.
     const App = struct {
+        const Self = @This();
+
         /// The last action performed.
         last: ?Action = null,
     };

@@ -14,24 +14,6 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_gpu_scene);
 const mod = @import("module.zig");
 
-/// Shader instance kinds; must match the `switch` in `prim.frag`/`prim.metal`.
-const InstanceKind = enum(u32) {
-    const Self = @This();
-
-    /// A filled rounded rect.
-    fill = 0,
-    /// A stroked rounded rect.
-    stroke = 1,
-    /// A linear gradient in a rounded rect.
-    gradient = 2,
-    /// A tinted atlas coverage mask.
-    glyph = 3,
-    /// An atlas image.
-    image = 4,
-    /// A line segment.
-    line = 5,
-};
-
 /// The clip state distilled to what one shader instance can evaluate: the
 /// axis-aligned intersection of every clip rect, plus the innermost clip that
 /// has a nonzero corner radius (evaluated as a rounded-box SDF). This matches
@@ -148,6 +130,7 @@ pub const GpuScene = struct {
                     // A picture of its own texture, uploaded every frame: its
                     // own step, so the backend can bind that texture.
                     if (frame.image.width == 0 or frame.image.height == 0) continue;
+                    if (!frame.image.isWhole()) continue;
                     const count: u32 = @intCast(instances.items.len);
                     if (count > run_start) {
                         try steps.append(arena, .{ .draw = .{ .first = run_start, .count = count - run_start } });
@@ -162,9 +145,9 @@ pub const GpuScene = struct {
                         .atlas_rect = .{ 0, 0, 1, 1 },
                         .clip = clip.rect,
                         .clip_rounded_rect = clip.rounded_rect,
-                        .parameters = .{ @floatFromInt(@backingInt(InstanceKind.image)), 0, 0, clip.radius },
+                        .parameters = .{ @floatFromInt(@backingInt(mod.InstanceKind.image)), 0, 0, clip.radius },
                     });
-                    try steps.append(arena, .{ .frame = .{ .first = count, .image = frame.image } });
+                    try steps.append(arena, .{ .frame = .{ .first = count, .image = frame.image, .key = frame.key, .generation = frame.generation } });
                     run_start = count + 1;
                 },
                 .eraseRect => |erase| {
@@ -184,7 +167,7 @@ pub const GpuScene = struct {
                         .atlas_rect = .{ 0, 0, 0, 0 },
                         .clip = clip.rect,
                         .clip_rounded_rect = clip.rounded_rect,
-                        .parameters = .{ @floatFromInt(@backingInt(InstanceKind.fill)), erase.radius, 0, clip.radius },
+                        .parameters = .{ @floatFromInt(@backingInt(mod.InstanceKind.fill)), erase.radius, 0, clip.radius },
                     });
                     try steps.append(arena, .{ .erase = .{ .first = count, .count = 1 } });
                     run_start = count + 1;
@@ -207,14 +190,14 @@ pub const GpuScene = struct {
                             instance.quad = Self.paddedQuad(fill.rect, 1);
                             instance.shape = Self.rectArray(fill.rect);
                             instance.color0 = Self.colorArray(fill.color);
-                            instance.parameters[0] = @floatFromInt(@backingInt(InstanceKind.fill));
+                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.fill));
                             instance.parameters[1] = fill.radius;
                         },
                         .strokeRoundedRect => |stroke| {
                             instance.quad = Self.paddedQuad(stroke.rect, stroke.width / 2 + 1);
                             instance.shape = Self.rectArray(stroke.rect);
                             instance.color0 = Self.colorArray(stroke.color);
-                            instance.parameters[0] = @floatFromInt(@backingInt(InstanceKind.stroke));
+                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.stroke));
                             instance.parameters[1] = stroke.radius;
                             instance.parameters[2] = stroke.width / 2;
                         },
@@ -224,7 +207,7 @@ pub const GpuScene = struct {
                             instance.color0 = Self.colorArray(gradient.start_color);
                             instance.color1 = Self.colorArray(gradient.end_color);
                             instance.points = .{ gradient.start.x, gradient.start.y, gradient.end.x, gradient.end.y };
-                            instance.parameters[0] = @floatFromInt(@backingInt(InstanceKind.gradient));
+                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.gradient));
                             instance.parameters[1] = gradient.radius;
                         },
                         .line => |segment| {
@@ -237,7 +220,7 @@ pub const GpuScene = struct {
                             instance.quad = Self.paddedQuad(bounding_box, segment.width / 2 + 1);
                             instance.color0 = Self.colorArray(segment.color);
                             instance.points = .{ segment.start.x, segment.start.y, segment.end.x, segment.end.y };
-                            instance.parameters[0] = @floatFromInt(@backingInt(InstanceKind.line));
+                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.line));
                             instance.parameters[2] = segment.width / 2;
                         },
                         .glyph => |glyph| {
@@ -248,7 +231,7 @@ pub const GpuScene = struct {
                             const pointer = @intFromPtr(glyph.coverage.data.ptr);
                             instance.atlas_rect = atlas.lookup(pointer, glyph.coverage.width, glyph.coverage.height) orelse
                                 try atlas.place(pointer, glyph.coverage.width, glyph.coverage.height, try Self.coverageToRgba(arena, glyph.coverage));
-                            instance.parameters[0] = @floatFromInt(@backingInt(InstanceKind.glyph));
+                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.glyph));
                             // parameters[1] (unused by glyphs — no corner radius) carries
                             // the coverage gamma the fragment shader applies, matching
                             // the software rasterizer's `drawGlyph`.
@@ -256,6 +239,9 @@ pub const GpuScene = struct {
                         },
                         .image => |image| {
                             if (image.image.width == 0 or image.image.height == 0) continue;
+                            // Fewer pixels than its size says: drawn as nothing,
+                            // as the rasterizer draws it, never read past.
+                            if (!image.image.isWhole()) continue;
                             instance.quad = Self.rectArray(image.rect);
                             instance.atlas_rect = try atlas.place(
                                 @intFromPtr(image.image.pixels.ptr),
@@ -263,7 +249,7 @@ pub const GpuScene = struct {
                                 image.image.height,
                                 image.image.pixels,
                             );
-                            instance.parameters[0] = @floatFromInt(@backingInt(InstanceKind.image));
+                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.image));
                         },
                         else => unreachable,
                     }
@@ -377,7 +363,7 @@ test "gpu_scene: fill becomes one padded instance and one draw step" {
     const instance = scene.instances[0];
     try std.testing.expectEqual([4]f32{ 9, 19, 32, 42 }, instance.quad); // padded by 1
     try std.testing.expectEqual([4]f32{ 10, 20, 30, 40 }, instance.shape);
-    try std.testing.expectEqual(@as(f32, @floatFromInt(@backingInt(InstanceKind.fill))), instance.parameters[0]);
+    try std.testing.expectEqual(@as(f32, @floatFromInt(@backingInt(mod.InstanceKind.fill))), instance.parameters[0]);
     try std.testing.expectEqual(@as(f32, 5), instance.parameters[1]);
     try std.testing.expectEqual(@as(usize, 1), scene.steps.len);
     try std.testing.expectEqual(@as(u32, 1), scene.steps[0].draw.count);
@@ -496,9 +482,47 @@ test "gpu_scene: an erase is a fill instance in a step of its own" {
     try std.testing.expectEqual(@as(u32, 2), scene.steps[2].draw.first);
     const erase = scene.instances[1];
     try std.testing.expectEqual([4]f32{ 10, 20, 30, 40 }, erase.shape);
-    try std.testing.expectEqual(@as(f32, @floatFromInt(@backingInt(InstanceKind.fill))), erase.parameters[0]);
+    try std.testing.expectEqual(@as(f32, @floatFromInt(@backingInt(mod.InstanceKind.fill))), erase.parameters[0]);
     try std.testing.expectEqual(@as(f32, 6), erase.parameters[1]);
     try std.testing.expectEqual(@as(f32, 1), erase.color0[3]);
+}
+
+test "gpu_scene: a video frame is an image instance in a step of its own" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    var atlas = mod.TextureAtlas.init(std.testing.allocator, 64);
+    defer atlas.deinit();
+
+    const rect = mod.Rect{ .x = 10, .y = 20, .width = 30, .height = 40 };
+    const pixels: [16]u8 = @splat(255);
+    const picture = mod.Image{ .width = 2, .height = 2, .pixels = &pixels };
+    const empty = mod.Image{ .width = 0, .height = 0, .pixels = &.{} };
+    // Says 2x2 but holds one pixel.
+    const short = mod.Image{ .width = 2, .height = 2, .pixels = pixels[0..4] };
+    const commands = [_]mod.DrawCommand{
+        .{ .fillRoundedRect = .{ .rect = rect, .color = mod.Color.red } },
+        .{ .videoFrame = .{ .rect = rect, .image = picture, .key = 1, .generation = 1 } },
+        .{ .videoFrame = .{ .rect = rect, .image = empty, .key = 2, .generation = 1 } },
+        .{ .videoFrame = .{ .rect = rect, .image = short, .key = 3, .generation = 1 } },
+        .{ .image = .{ .rect = rect, .image = short } },
+        .{ .fillRoundedRect = .{ .rect = rect, .color = mod.Color.blue } },
+    };
+    const scene = try TestScene.translate(arena_state.allocator(), &commands, &atlas);
+
+    // The empty and the short pictures add neither an instance nor a step.
+    try std.testing.expectEqual(@as(usize, 3), scene.instances.len);
+    try std.testing.expectEqual(@as(usize, 3), scene.steps.len);
+    try std.testing.expectEqual(@as(u32, 0), scene.steps[0].draw.first);
+    try std.testing.expectEqual(@as(u32, 1), scene.steps[0].draw.count);
+    try std.testing.expectEqual(@as(u32, 1), scene.steps[1].frame.first);
+    try std.testing.expectEqual(@as(u32, 2), scene.steps[1].frame.image.width);
+    try std.testing.expectEqual(@as(usize, 1), scene.steps[1].frame.key);
+    try std.testing.expectEqual(@as(u64, 1), scene.steps[1].frame.generation);
+    try std.testing.expectEqual(@as(u32, 2), scene.steps[2].draw.first);
+    try std.testing.expectEqual(@as(u32, 1), scene.steps[2].draw.count);
+    const frame = scene.instances[1];
+    try std.testing.expectEqual([4]f32{ 0, 0, 1, 1 }, frame.atlas_rect);
+    try std.testing.expectEqual(@as(f32, @floatFromInt(@backingInt(mod.InstanceKind.image))), frame.parameters[0]);
 }
 
 test "gpu_scene: atlas reports full and recovers by growing" {

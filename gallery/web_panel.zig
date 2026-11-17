@@ -47,9 +47,8 @@ const start_url_prefix: []const u8 = "data:text/html;charset=utf-8;base64,";
 /// every byte is legal in a URL.
 const start_url: []const u8 = blk: {
     @setEvalBranchQuota(100_000);
-    const encoder = std.base64.standard.Encoder;
-    var buffer: [encoder.calcSize(start_html.len)]u8 = undefined;
-    _ = encoder.encode(&buffer, start_html);
+    var buffer: [std.base64.standard.Encoder.calcSize(start_html.len)]u8 = undefined;
+    _ = std.base64.standard.Encoder.encode(&buffer, start_html);
     const encoded = buffer;
     break :blk start_url_prefix ++ &encoded;
 };
@@ -210,10 +209,7 @@ pub const WebPanel = struct {
     /// - `self`: the panel.
     /// - `message`: the message, borrowed for the call.
     fn received(self: *Self, message: ziggui.WebPageMessage) void {
-        var length = @min(message.body.len, max_message_bytes);
-        if (length < message.body.len) {
-            while (length > 0 and (message.body[length] & 0xC0) == 0x80) length -= 1;
-        }
+        const length = ziggui.DisplayText.fitLength(message.body, max_message_bytes);
         self.message.clearRetainingCapacity();
         self.message.appendSlice(self.allocator, message.body[0..length]) catch |err| log.warn("message not kept [{t}]", .{err});
     }
@@ -314,10 +310,9 @@ test "web panel: the start page decodes back to what was authored, and posts to 
     const allocator = std.testing.allocator;
     try std.testing.expect(std.mem.startsWith(u8, start_url, start_url_prefix));
     const encoded = start_url[start_url_prefix.len..];
-    const decoder = std.base64.standard.Decoder;
-    const decoded = try allocator.alloc(u8, try decoder.calcSizeForSlice(encoded));
+    const decoded = try allocator.alloc(u8, try std.base64.standard.Decoder.calcSizeForSlice(encoded));
     defer allocator.free(decoded);
-    try decoder.decode(decoded, encoded);
+    try std.base64.standard.Decoder.decode(decoded, encoded);
     try std.testing.expectEqualStrings(start_html, decoded);
     try std.testing.expect(std.mem.find(u8, start_html, "messageHandlers?." ++ bridge_name) != null);
 }

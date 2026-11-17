@@ -222,7 +222,7 @@ pub const BuildScope = struct {
     /// - Returns: the wrapped lines.
     pub fn wrapText(self: *const Self, arena: std.mem.Allocator, face: *const renderer.TtfFont, text: []const u8, pixel_size: f32, max_width: f32) []renderer.WrappedLine {
         const cache = self.wrap_cache orelse
-            return renderer.TextShaper.init(face).wrapText(arena, text, pixel_size, max_width) catch &.{};
+            return renderer.TextShaper.init(face).wrapText(arena, text, pixel_size, max_width) catch @panic("oom");
         return cache.wrap(arena, face, text, pixel_size, max_width);
     }
 
@@ -253,12 +253,11 @@ test {
 }
 
 test "view: buildTheme returns the theme setThemeTokens published" {
-    const dark = renderer.MacosTheme.dark;
     const scope = BuildScope.shared();
-    scope.setTheme(dark);
+    scope.setTheme(renderer.MacosTheme.dark);
     defer scope.setTheme(renderer.MacosTheme.light);
     try std.testing.expect(scope.theme().scheme == .dark);
-    try std.testing.expect(scope.theme().colors.label.r == dark.colors.label.r);
+    try std.testing.expect(scope.theme().colors.label.r == renderer.MacosTheme.dark.colors.label.r);
 }
 
 test "a token provider's tokens reach tokens(), and clearing it restores fromTheme" {

@@ -1,8 +1,9 @@
 //! The Linux platform code: the tray icon over D-Bus (StatusNotifierItem),
 //! the freedesktop entry, GTK and what is built on it (the native-view host
-//! and WebKitGTK web pages), and GStreamer video, all loaded at run time. Other targets reach it only through the compile-time
-//! selectors in the parent module (`VideoBackend`, `NativeBackend`,
-//! `WebBackend`) and the Linux branches of `App` and the event loop.
+//! and WebKitGTK web pages), and GStreamer video, all loaded at run time.
+//! Other targets reach it only through the compile-time selectors in the
+//! parent module (`VideoBackend`, `NativeBackend`, `WebBackend`) and the
+//! Linux branches of `App` and the event loop.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_linux_module);
@@ -43,20 +44,23 @@ pub const GdkEventKey = @import("gtk.zig").GdkEventKey;
 pub const GdkEventFocus = @import("gtk.zig").GdkEventFocus;
 /// Runs GLib's main context inside the SDL loop.
 pub const GlibPump = @import("glib_pump.zig").GlibPump;
+/// Loads a C library's entry points at run time (`Gtk`, `Gstreamer`).
+pub const DynamicApi = @import("dynamic_api.zig").DynamicApi;
 /// The Linux native-view host: app `GtkWidget`s in X11 child windows of SDL's.
 pub const GtkNativeHost = @import("gtk_native_host.zig").GtkNativeHost;
-/// The origin rule the web view's bridges apply.
-pub const WebOrigin = @import("web_origin.zig").WebOrigin;
 /// The Linux web view: a WebKitGTK `WebKitWebView` per `WebPage`.
 pub const WebKitGtkBackend = @import("web_kit_gtk_backend.zig").WebKitGtkBackend;
 
 // -----------------------------------------------------------------------------
 // From the sdl module
 
-/// The app and its window (`StatusNotifier` and `GtkNativeHost` reach the app), from the sdl module.
+/// The app and its window (`StatusNotifier` and `GtkNativeHost` reach the
+/// app), from the sdl module.
 pub const App = @import("../module.zig").App;
 /// The window's icon (`StatusNotifier` publishes it), from the sdl module.
 pub const WindowIcon = @import("../module.zig").WindowIcon;
+/// The origin rule the web view's bridges apply, from the sdl module.
+pub const WebOrigin = @import("../module.zig").WebOrigin;
 /// The target OS, from the sdl module.
 pub const os_tag = @import("../module.zig").os_tag;
 

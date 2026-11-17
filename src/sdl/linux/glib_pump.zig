@@ -28,6 +28,10 @@ pub const GlibPump = struct {
     /// How many ready sources one dispatch runs before it lets SDL in.
     const max_dispatches = 64;
 
+    /// How long the loop waits at most when the watcher did not start, in
+    /// milliseconds: GLib is then run around every wait, on this timer.
+    const unwatched_wait_ms = 10;
+
     /// `EFD_CLOEXEC`.
     const eventfd_cloexec: c_uint = 0o2000000;
 
@@ -87,30 +91,48 @@ pub const GlibPump = struct {
         log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
         const context = api.g_main_context_default() orelse return false;
         if (api.g_main_context_acquire(context) == 0) return false;
-        self.context = context;
         // Two, keeping the second: the first may be `SDL_EVENT_USER` itself,
         // which `App.wake` posts without registering it, and a wake taken for
         // the pump's would draw no frame.
         const first = sdl_c.SDL_RegisterEvents(2);
         if (first == 0) return false;
-        self.wake_type = first + 1;
         self.go = std.c.eventfd(0, eventfd_cloexec);
         self.done = std.c.eventfd(0, eventfd_cloexec);
         self.interrupt = std.c.eventfd(0, eventfd_cloexec | eventfd_nonblock);
-        if (self.go < 0 or self.done < 0 or self.interrupt < 0) return false;
-        const thread = std.Thread.spawn(.{}, Self.watch, .{self}) catch return false;
+        if (self.go < 0 or self.done < 0 or self.interrupt < 0) {
+            self.closeDescriptors();
+            return false;
+        }
+        self.wake_type = first + 1;
+        const thread = std.Thread.spawn(.{}, Self.watch, .{self}) catch |err| {
+            log.warn("GLib pump has no watcher: {s}", .{@errorName(err)});
+            self.wake_type = 0;
+            self.closeDescriptors();
+            return false;
+        };
         thread.detach();
+        // Set last: a pump that failed to start is tried again, never taken
+        // for one running.
+        self.context = context;
         log.debug("GLib pump watching, wake event 0x{x}", .{self.wake_type});
         return true;
     }
 
     /// Runs what GLib has ready, then lets the watcher poll GLib's
-    /// descriptors while SDL waits. The loop calls it before each wait.
+    /// descriptors while SDL waits. The loop calls it before each wait. When
+    /// the watcher did not start, GLib runs around every wait instead, and
+    /// the wait is kept short so its timers and sockets are still served.
     ///
     /// - `self`: the pump.
-    pub fn beforeWait(self: *Self) void {
-        const api = mod.Gtk.running() orelse return;
-        if (self.wake_type == 0 or self.watching) return;
+    /// - Returns: the longest the wait may last, in milliseconds, or null for
+    ///   no limit (the watcher wakes the loop for GLib).
+    pub fn beforeWait(self: *Self) ?u32 {
+        const api = mod.Gtk.running() orelse return null;
+        if (self.wake_type == 0) {
+            self.dispatch(api);
+            return unwatched_wait_ms;
+        }
+        if (self.watching) return null;
         self.dispatch(api);
         var priority: c_int = 0;
         _ = api.g_main_context_prepare(self.context, &priority);
@@ -122,14 +144,17 @@ pub const GlibPump = struct {
         self.descriptors[self.count] = .{ .fd = self.interrupt, .events = poll_in, .revents = 0 };
         self.watching = true;
         Self.signal(self.go);
+        return null;
     }
 
     /// Takes the descriptors back from the watcher, then runs what GLib has
-    /// ready. The loop calls it after each wait.
+    /// ready (only the latter when the watcher did not start). The loop calls
+    /// it after each wait.
     ///
     /// - `self`: the pump.
     pub fn afterWait(self: *Self) void {
         const api = mod.Gtk.running() orelse return;
+        if (self.wake_type == 0) return self.dispatch(api);
         if (!self.watching) return;
         Self.signal(self.interrupt);
         Self.take(self.done);
@@ -177,6 +202,16 @@ pub const GlibPump = struct {
         }
     }
 
+    /// Closes the eventfds a failed start made, leaving none open.
+    ///
+    /// - `self`: the pump.
+    fn closeDescriptors(self: *Self) void {
+        for ([_]*c_int{ &self.go, &self.done, &self.interrupt }) |descriptor| {
+            if (descriptor.* >= 0) _ = std.c.close(descriptor.*);
+            descriptor.* = -1;
+        }
+    }
+
     /// Adds one to an eventfd's count, waking a reader.
     ///
     /// - `descriptor`: the eventfd.
@@ -206,7 +241,7 @@ test "the pump does nothing before GTK runs" {
     // Its eventfds and poll are Linux's.
     if (comptime mod.os_tag != .linux) return error.SkipZigTest;
     const pump = GlibPump.shared();
-    pump.beforeWait();
+    try std.testing.expectEqual(@as(?u32, null), pump.beforeWait());
     pump.afterWait();
     try std.testing.expect(!pump.watching);
     try std.testing.expect(!pump.isWake(sdl_c.SDL_EVENT_USER));

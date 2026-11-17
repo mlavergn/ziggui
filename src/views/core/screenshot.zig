@@ -101,17 +101,16 @@ test "a screenshot builds each frame and draws the last as RGBA8" {
     const allocator = std.testing.allocator;
     const previous = mod.BuildScope.shared().viewport();
     defer mod.BuildScope.shared().setViewport(previous.width, previous.height);
-    const theme = renderer.MacosTheme.light;
 
     var probe: Probe = .{};
-    const rgba = try Screenshot.render(allocator, &probe, Probe.body, .{ .width = 6, .height = 4, .theme = theme, .frames = 3 });
+    const rgba = try Screenshot.render(allocator, &probe, Probe.body, .{ .width = 6, .height = 4, .theme = renderer.MacosTheme.light, .frames = 3 });
     defer allocator.free(rgba);
 
     try std.testing.expectEqual(@as(u32, 3), probe.builds);
     try std.testing.expectEqual(@as(usize, 6 * 4 * 4), rgba.len);
     // The red bar on the top rows, the window's background below it.
     try std.testing.expectEqualSlices(u8, &.{ 255, 0, 0, 255 }, rgba[(1 * 6 + 2) * 4 ..][0..4]);
-    const background = theme.colors.window_background.toRgba8();
+    const background = renderer.MacosTheme.light.colors.window_background.toRgba8();
     try std.testing.expectEqualSlices(u8, &.{ background.r, background.g, background.b }, rgba[(3 * 6 + 2) * 4 ..][0..3]);
     // The size is published as the window's.
     try std.testing.expectEqual(@as(f32, 6), mod.BuildScope.shared().viewport().width);

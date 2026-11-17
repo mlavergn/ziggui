@@ -263,6 +263,10 @@ pub const GeometryData = struct {
     context: *const anyopaque,
 
     /// Builds the content for the size the reader is laid out at.
+    ///
+    /// - `context`: the builder's context.
+    /// - `size`: the size the reader is laid out at.
+    /// - Returns: the content.
     build: *const fn (context: *const anyopaque, size: renderer.Size) mod.View,
 };
 
@@ -285,6 +289,11 @@ pub const DrawingData = struct {
     context: *const anyopaque,
 
     /// Paints the view into its frame.
+    ///
+    /// - `context`: the drawing's context.
+    /// - `pen`: what it draws with.
+    /// - `rect`: the view's frame.
+    /// - Returns: nothing; propagates allocation failure.
     draw: *const fn (context: *const anyopaque, pen: *mod.Pen, rect: renderer.Rect) std.mem.Allocator.Error!void,
 };
 

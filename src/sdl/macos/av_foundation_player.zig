@@ -215,7 +215,8 @@ pub const AvFoundationPlayer = struct {
         mod.ObjectiveC.send(void, container, "setWantsLayer:", .{@as(u8, 1)});
         mod.ObjectiveC.send(void, container, "setHidden:", .{@as(u8, 1)});
 
-        const native = std.heap.c_allocator.create(NativePlayer) catch {
+        const native = std.heap.c_allocator.create(NativePlayer) catch |err| {
+            log.warn("player not made: {s}", .{@errorName(err)});
             mod.ObjectiveC.release(container);
             mod.ObjectiveC.release(host_layer);
             mod.ObjectiveC.release(player_layer);

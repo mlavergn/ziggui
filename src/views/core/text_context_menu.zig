@@ -404,6 +404,8 @@ test "view: text context menu — fieldAt, render, actions, clipboard hook" {
 
 test "text context menu: a secure field's Cut and Copy do nothing" {
     const Recorder = struct {
+        const Self = @This();
+
         var copied: bool = false;
         /// Notes a copy.
         fn copy(_: *mod.TextFieldState) void {

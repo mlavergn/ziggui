@@ -24,10 +24,9 @@ const Settings = struct {
     /// - `self`: the state.
     /// - Returns: the screen.
     fn body(self: *Self) mod.View {
-        const theme = renderer.MacosTheme.light;
         const card = mod.VStack(.{
             mod.HStack(.{
-                mod.Label("Wi‑Fi", theme.colors.accent),
+                mod.Label("Wi‑Fi", renderer.MacosTheme.light.colors.accent),
                 mod.Spacer(),
                 mod.Toggle("", self.wifi.binding()),
             }).frameMaxWidth(),
@@ -39,7 +38,7 @@ const Settings = struct {
             }).frameMaxWidth(),
         }).spacing(10)
             .padding(14)
-            .background(theme.colors.control_background)
+            .background(renderer.MacosTheme.light.colors.control_background)
             .cornerRadius(10)
             .frameMaxWidth();
 

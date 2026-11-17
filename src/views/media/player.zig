@@ -7,7 +7,6 @@
 const std = @import("std");
 const log = std.log.scoped(.ziggui_player);
 const mod = @import("module.zig");
-const renderer = @import("renderer");
 
 /// A media player the app owns, like a `ScrollState`: its address must stay
 /// put while views show it. Call it from the UI thread.
@@ -68,6 +67,14 @@ pub const Player = struct {
 
     /// The `FrameClock` time `sample` was taken at.
     sample_time_ms: u64 = 0,
+
+    /// The last picture `currentFrame` took, reused by every call in the
+    /// frame it was taken in, so two views of one player never take two
+    /// (the second would move the pixels the first one's draw still reads).
+    picture: ?mod.PlayerFrame = null,
+
+    /// The `FrameClock` time `picture` was taken at; 0 before the first.
+    picture_time_ms: u64 = 0,
 
     /// The backend new players use, installed by the SDL runtime as its loop
     /// starts; null headless and in tests, unless a test installs one.
@@ -249,13 +256,22 @@ pub const Player = struct {
     /// platform player on first need, as placing its picture does where the
     /// platform draws its own.
     ///
+    /// Taken once a frame: a second call in the same `FrameClock` frame
+    /// returns the first one's picture.
+    ///
     /// - `self`: the player.
-    /// - Returns: the picture, valid until the next call, or null where the
-    ///   platform draws its own, before the first frame, or with no backend.
-    pub fn currentFrame(self: *Self) ?renderer.Image {
+    /// - Returns: the picture and its generation, valid until the next frame
+    ///   takes one, or null where the platform draws its own, before the
+    ///   first frame, or with no backend.
+    pub fn currentFrame(self: *Self) ?mod.PlayerFrame {
         const handle = self.nativeHandle() orelse return null;
         const frame = self.backend.?.frame orelse return null;
-        return frame(handle);
+        // Time 0 is no clock (headless, tests): every call takes a picture.
+        const now = mod.FrameClock.shared().time();
+        if (now != 0 and now == self.picture_time_ms) return self.picture;
+        self.picture = frame(handle);
+        self.picture_time_ms = now;
+        return self.picture;
     }
 
     /// The platform player, made on first need from the installed backend
@@ -359,6 +375,10 @@ const FakeBackend = struct {
     var muted: bool = false;
     /// The last track selected, or null for none.
     var selected: ?usize = 99;
+    /// How many pictures were taken.
+    var frames: usize = 0;
+    /// The picture `frame` hands out.
+    const pixels: [4]u8 = @splat(255);
 
     /// The backend over these functions.
     const backend: mod.PlayerBackend = .{
@@ -372,6 +392,7 @@ const FakeBackend = struct {
         .observe = Self.observe,
         .tracks = Self.tracks,
         .select_track = Self.selectTrack,
+        .frame = Self.frame,
     };
 
     /// A backend that cannot play.
@@ -403,6 +424,7 @@ const FakeBackend = struct {
         volume = -1;
         muted = false;
         selected = 99;
+        frames = 0;
     }
 
     /// The last URL loaded.
@@ -461,6 +483,14 @@ const FakeBackend = struct {
     /// - `value`: true for no sound.
     fn setMuted(_: *anyopaque, value: bool) void {
         muted = value;
+    }
+
+    /// Takes a picture: one white pixel, its generation the count taken.
+    ///
+    /// - Returns: the picture.
+    fn frame(_: *anyopaque) ?mod.PlayerFrame {
+        frames += 1;
+        return .{ .image = .{ .width = 1, .height = 1, .pixels = &pixels }, .generation = frames };
     }
 
     /// Samples the fake player: ready, playing at the rate set, at `playhead`.
@@ -670,6 +700,28 @@ test "player: one sample a frame, retaken after a call that changes the player" 
     clock.setTime(1250);
     _ = player.observe();
     try std.testing.expectEqual(@as(usize, 3), FakeBackend.observes);
+}
+
+test "player: one picture a frame, however many views take it" {
+    FakeBackend.reset();
+    Player.setBackend(&FakeBackend.backend);
+    defer Player.setBackend(null);
+    const clock = mod.FrameClock.shared();
+    const saved = clock.time();
+    defer clock.setTime(saved);
+    var player = Player.init(std.testing.allocator);
+    defer player.deinit();
+    try player.replaceCurrentItem("file:///movie.mp4");
+
+    clock.setTime(1000);
+    const first = player.currentFrame().?;
+    const second = player.currentFrame().?;
+    try std.testing.expectEqual(@as(usize, 1), FakeBackend.frames);
+    try std.testing.expectEqual(first.generation, second.generation);
+    try std.testing.expectEqual(first.image.pixels.ptr, second.image.pixels.ptr);
+    clock.setTime(1016);
+    try std.testing.expectEqual(@as(u64, 2), player.currentFrame().?.generation);
+    try std.testing.expectEqual(@as(usize, 2), FakeBackend.frames);
 }
 
 test "player: tracks and selections pass through to the backend" {

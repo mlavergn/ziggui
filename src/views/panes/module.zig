@@ -24,6 +24,10 @@ pub const VirtualList = @import("panes.zig").VirtualList;
 pub const VirtualListBoth = @import("panes.zig").VirtualListBoth;
 /// A unified diff over a `VirtualList`.
 pub const DiffView = @import("panes.zig").DiffView;
+/// A `DiffView` whose lines can be selected and copied (`DiffSelection`).
+pub const SelectableDiffView = @import("panes.zig").SelectableDiffView;
+/// The lines selected in a `SelectableDiffView`, kept by the app.
+pub const DiffSelection = @import("diff_selection.zig").DiffSelection;
 /// A table's header row.
 pub const TableHeader = @import("panes.zig").TableHeader;
 /// One table row.
@@ -46,6 +50,10 @@ pub const DataColumn = @import("../module.zig").DataColumn;
 pub const Empty = @import("../module.zig").Empty;
 /// Children side by side (from the views module).
 pub const HStack = @import("../module.zig").HStack;
+/// A drag handler a view hands the pointer (`onDrag`), from the views module.
+pub const DragCallback = @import("../module.zig").DragCallback;
+/// The live selection ⌘C copies (`TextSelection.shared()`), from the views module.
+pub const TextSelection = @import("../module.zig").TextSelection;
 /// Routes pointer events to a frame's regions (`PointerInput.shared()`), from the views module.
 pub const PointerInput = @import("../module.zig").PointerInput;
 /// A filled rectangle (from the views module).
@@ -78,5 +86,6 @@ test {
     _ = @import("row_range.zig");
     _ = @import("diff_line.zig");
     _ = @import("diff_layout.zig");
+    _ = @import("diff_selection.zig");
     _ = @import("panes.zig");
 }

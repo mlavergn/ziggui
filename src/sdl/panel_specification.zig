@@ -17,6 +17,8 @@ pub fn PanelSpecification(comptime AppState: type) type {
         const Self = @This();
 
         /// Builds the panel's view tree, once per frame while it is visible.
+        ///
+        /// - Returns: the panel's view tree.
         body: *const fn (*AppState) views.View,
 
         /// Logical (point) width. HiDPI backing is handled like the main window.

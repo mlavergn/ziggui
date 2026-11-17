@@ -13,10 +13,24 @@ pub const ExternalFace = struct {
     /// The engine's own face, passed back to every callback.
     context: *const anyopaque,
     /// Map a codepoint to a glyph index (0 = missing).
+    ///
+    /// - `context`: the engine's face.
+    /// - `codepoint`: the character.
+    /// - Returns: the glyph index, 0 when the face lacks it.
     glyph_index: *const fn (context: *const anyopaque, codepoint: u21) u16,
     /// Advance in font units.
+    ///
+    /// - `context`: the engine's face.
+    /// - `glyph`: the glyph index.
+    /// - Returns: the advance, in font units.
     advance_width: *const fn (context: *const anyopaque, glyph: u16) u16,
     /// Rasterize a glyph at `scale` (font units to pixels).
+    ///
+    /// - `context`: the engine's face.
+    /// - `allocator`: owns the glyph's coverage.
+    /// - `glyph`: the glyph index.
+    /// - `scale`: pixels per font unit.
+    /// - Returns: the coverage bitmap and its offsets; propagates allocation failure.
     rasterize: *const fn (context: *const anyopaque, allocator: std.mem.Allocator, glyph: u16, scale: f32) std.mem.Allocator.Error!mod.RasterGlyph,
 };
 

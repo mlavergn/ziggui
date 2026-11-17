@@ -9,6 +9,9 @@ const view_options = [_][]const u8{ "Request", "Response", "Headers" };
 /// The Badges & Keys panel's stretched segmented control's options.
 const appearance_options = [_][]const u8{ "Light", "Dark", "System" };
 
+/// The Badges & Keys panel's icon segmented control's segments.
+const mode_segments = [_]ziggui.IconSegment{ .{ .icon = .gitBranch, .title = "Git" }, .{ .icon = .code, .title = "Files" } };
+
 /// The Badges & Keys panel's key-hint bar: seven hints, of which six show.
 const bar_hints = [_]ziggui.KeyHint{
     .{ .key = "↑↓", .action = "move" },
@@ -62,6 +65,8 @@ pub const Kit = struct {
 
     /// The stretched segmented control's selection.
     appearance_segment: ziggui.State(i64),
+    /// The icon segmented control's selection.
+    mode_segment: ziggui.State(i64),
 
     /// The Forms panel's first setting.
     skip_initialize: ziggui.State(bool),
@@ -110,6 +115,7 @@ pub const Kit = struct {
             .allocator = allocator,
             .view_segment = ziggui.State(i64).init(allocator, 1),
             .appearance_segment = ziggui.State(i64).init(allocator, 2),
+            .mode_segment = ziggui.State(i64).init(allocator, 0),
             .skip_initialize = ziggui.State(bool).init(allocator, false),
             .strip_auth = ziggui.State(bool).init(allocator, true),
             .headers = ziggui.KeyValueState.init(allocator),
@@ -142,6 +148,7 @@ pub const Kit = struct {
         self.headers.deinit();
         self.strip_auth.deinit();
         self.skip_initialize.deinit();
+        self.mode_segment.deinit();
         self.appearance_segment.deinit();
         self.view_segment.deinit();
     }
@@ -191,6 +198,11 @@ pub const Kit = struct {
                 }),
                 ziggui.SegmentedControl(self.appearance_segment.binding(), &appearance_options).frameMaxWidth(),
             }).spacing(12)),
+            Self.card(theme, "IconSegmentedControl", "ziggui.IconSegmentedControl", ziggui.HStack(.{
+                ziggui.Text("Mode"),
+                ziggui.Spacer(),
+                ziggui.IconSegmentedControl(self.mode_segment.binding(), &mode_segments),
+            })),
             Self.card(theme, "KeyHintBar (seven hints, six shown)", "ziggui.KeyHintBar", ziggui.KeyHintBar(&bar_hints).border(theme.colors.separator, 1)),
         }).spacing(16);
     }

@@ -42,6 +42,8 @@ pub const Framebuffer = @import("framebuffer.zig").Framebuffer;
 pub const Rasterizer = @import("rasterizer.zig").Rasterizer;
 /// One instanced quad of the GPU scene.
 pub const Instance = @import("instance.zig").Instance;
+/// What a GPU instance draws (`Instance.parameters[0]`), as the shaders read it.
+pub const InstanceKind = @import("instance.zig").InstanceKind;
 /// A run of the GPU scene's instances, or a blur break.
 pub const Step = @import("step.zig").Step;
 /// A `Step.draw` payload.

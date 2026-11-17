@@ -247,7 +247,7 @@ pub const TextFieldState = struct {
             return false;
         };
         const count = range.end - range.start;
-        std.mem.copyForwards(u8, self.buffer.items[range.start..], self.buffer.items[range.end..]);
+        @memmove(self.buffer.items[range.start..][0 .. self.buffer.items.len - range.end], self.buffer.items[range.end..]);
         self.buffer.shrinkRetainingCapacity(self.buffer.items.len - count);
         self.caret = range.start;
         self.selection_anchor = null;
@@ -281,7 +281,7 @@ pub const TextFieldState = struct {
         if (self.caret == 0) return;
         const start = mod.TextLines.init(self.buffer.items).previousCodepointStart(self.caret);
         const count = self.caret - start;
-        std.mem.copyForwards(u8, self.buffer.items[start..], self.buffer.items[self.caret..]);
+        @memmove(self.buffer.items[start..][0 .. self.buffer.items.len - self.caret], self.buffer.items[self.caret..]);
         self.buffer.shrinkRetainingCapacity(self.buffer.items.len - count);
         self.caret = start;
         self.preferred_column = null;
@@ -297,7 +297,7 @@ pub const TextFieldState = struct {
         const items = self.buffer.items;
         if (self.caret >= items.len) return;
         const stop = mod.TextLines.init(items).nextCodepointEnd(self.caret);
-        std.mem.copyForwards(u8, self.buffer.items[self.caret..], self.buffer.items[stop..]);
+        @memmove(self.buffer.items[self.caret..][0 .. self.buffer.items.len - stop], self.buffer.items[stop..]);
         self.buffer.shrinkRetainingCapacity(items.len - (stop - self.caret));
         self.preferred_column = null;
         self.revision +%= 1;

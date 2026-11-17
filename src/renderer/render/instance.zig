@@ -3,6 +3,24 @@
 const std = @import("std");
 const log = std.log.scoped(.ziggui_instance);
 
+/// Shader instance kinds; must match the `switch` in `prim.frag`/`prim.metal`.
+pub const InstanceKind = enum(u32) {
+    const Self = @This();
+
+    /// A filled rounded rect.
+    fill = 0,
+    /// A stroked rounded rect.
+    stroke = 1,
+    /// A linear gradient in a rounded rect.
+    gradient = 2,
+    /// A tinted atlas coverage mask.
+    glyph = 3,
+    /// An atlas image.
+    image = 4,
+    /// A line segment.
+    line = 5,
+};
+
 /// One instanced quad. Layout must match the vertex attributes declared by the
 /// GPU backend's pipeline (nine float4 slots, instance step rate).
 pub const Instance = extern struct {

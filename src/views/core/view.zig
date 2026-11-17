@@ -396,17 +396,33 @@ pub const View = struct {
         return view;
     }
 
+    /// Gives this view an identity (SwiftUI's `.id`), stable for the same
+    /// thing across frames: its tap region carries it, so two presses make a
+    /// double click (`PointerInput.isDoubleClick`) only on the same thing, never
+    /// on a row that moved under the pointer between them (a list that changed
+    /// after the first press). A list whose rows can move under a resting
+    /// pointer gives each row one (a hash of what it shows).
+    ///
+    /// - `self`: the view.
+    /// - `identity`: the identity.
+    /// - Returns: the view.
+    pub fn id(self: *const Self, identity: u64) Self {
+        var view = self.*;
+        view.modifiers.id = identity;
+        return view;
+    }
+
     /// Gives this selectable view an explicit selection identity, in place of
     /// its text and build order: for a row of a list that builds only the rows
     /// it shows (a `VirtualList`), where identical rows scrolling in and out
     /// would shift that order. Keep `id` the same for the same row across frames.
     ///
     /// - `self`: the view.
-    /// - `id`: the identity, distinct among the frame's selectable views.
+    /// - `identity`: the identity, distinct among the frame's selectable views.
     /// - Returns: the view.
-    pub fn selectionId(self: *const Self, id: u64) Self {
+    pub fn selectionId(self: *const Self, identity: u64) Self {
         var view = self.*;
-        view.modifiers.selection_id = id;
+        view.modifiers.selection_id = identity;
         return view;
     }
 
@@ -628,6 +644,19 @@ pub const View = struct {
     pub fn accessibilityLabel(self: *const Self, label: []const u8) Self {
         var view = self.*;
         view.modifiers.a11y_label = label;
+        return view;
+    }
+
+    /// Adds accessibility traits to this view (SwiftUI's
+    /// `accessibilityAddTraits`): a button trait gives its node the button
+    /// role; a selected one marks it the chosen one of its group.
+    ///
+    /// - `self`: the view.
+    /// - `traits`: the traits to add.
+    /// - Returns: the view.
+    pub fn accessibilityAddTraits(self: *const Self, traits: mod.AccessibilityTraits) Self {
+        var view = self.*;
+        view.modifiers.a11y_traits = view.modifiers.a11y_traits.with(traits);
         return view;
     }
 

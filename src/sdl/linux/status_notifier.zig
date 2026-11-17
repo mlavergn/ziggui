@@ -74,30 +74,55 @@ const VTable = extern struct {
 const DbusApi = struct {
     const Self = @This();
 
+    /// `dbus_error_init`, resolved from libdbus.
     error_init: *const fn (*DbusError) callconv(.c) void,
+    /// `dbus_error_free`, resolved from libdbus.
     error_free: *const fn (*DbusError) callconv(.c) void,
+    /// `dbus_bus_get_private`, resolved from libdbus.
     bus_get_private: *const fn (c_int, *DbusError) callconv(.c) ?*DbusConnection,
+    /// `dbus_connection_set_exit_on_disconnect`, resolved from libdbus.
     set_exit_on_disconnect: *const fn (*DbusConnection, DbusBool) callconv(.c) void,
+    /// `dbus_bus_request_name`, resolved from libdbus.
     request_name: *const fn (*DbusConnection, [*:0]const u8, c_uint, *DbusError) callconv(.c) c_int,
+    /// `dbus_bus_add_match`, resolved from libdbus.
     add_match: *const fn (*DbusConnection, [*:0]const u8, ?*DbusError) callconv(.c) void,
+    /// `dbus_connection_add_filter`, resolved from libdbus.
     add_filter: *const fn (*DbusConnection, MessageFn, ?*anyopaque, ?*const anyopaque) callconv(.c) DbusBool,
+    /// `dbus_connection_try_register_object_path`, resolved from libdbus.
     register_object_path: *const fn (*DbusConnection, [*:0]const u8, *const VTable, ?*anyopaque, *DbusError) callconv(.c) DbusBool,
+    /// `dbus_connection_read_write_dispatch`, resolved from libdbus.
     read_write_dispatch: *const fn (*DbusConnection, c_int) callconv(.c) DbusBool,
+    /// `dbus_connection_send`, resolved from libdbus.
     send: *const fn (*DbusConnection, *DbusMessage, ?*u32) callconv(.c) DbusBool,
+    /// `dbus_connection_send_with_reply_and_block`, resolved from libdbus.
     send_with_reply_and_block: *const fn (*DbusConnection, *DbusMessage, c_int, *DbusError) callconv(.c) ?*DbusMessage,
+    /// `dbus_message_new_method_call`, resolved from libdbus.
     new_method_call: *const fn ([*:0]const u8, [*:0]const u8, [*:0]const u8, [*:0]const u8) callconv(.c) ?*DbusMessage,
+    /// `dbus_message_new_method_return`, resolved from libdbus.
     new_method_return: *const fn (*DbusMessage) callconv(.c) ?*DbusMessage,
+    /// `dbus_message_unref`, resolved from libdbus.
     unref: *const fn (*DbusMessage) callconv(.c) void,
+    /// `dbus_message_is_method_call`, resolved from libdbus.
     is_method_call: *const fn (*DbusMessage, [*:0]const u8, [*:0]const u8) callconv(.c) DbusBool,
+    /// `dbus_message_is_signal`, resolved from libdbus.
     is_signal: *const fn (*DbusMessage, [*:0]const u8, [*:0]const u8) callconv(.c) DbusBool,
+    /// `dbus_message_iter_init`, resolved from libdbus.
     iter_init: *const fn (*DbusMessage, *MessageIter) callconv(.c) DbusBool,
+    /// `dbus_message_iter_init_append`, resolved from libdbus.
     iter_init_append: *const fn (*DbusMessage, *MessageIter) callconv(.c) void,
+    /// `dbus_message_iter_get_arg_type`, resolved from libdbus.
     iter_get_arg_type: *const fn (*MessageIter) callconv(.c) c_int,
+    /// `dbus_message_iter_get_basic`, resolved from libdbus.
     iter_get_basic: *const fn (*MessageIter, *anyopaque) callconv(.c) void,
+    /// `dbus_message_iter_next`, resolved from libdbus.
     iter_next: *const fn (*MessageIter) callconv(.c) DbusBool,
+    /// `dbus_message_iter_append_basic`, resolved from libdbus.
     iter_append_basic: *const fn (*MessageIter, c_int, *const anyopaque) callconv(.c) DbusBool,
+    /// `dbus_message_iter_append_fixed_array`, resolved from libdbus.
     iter_append_fixed_array: *const fn (*MessageIter, c_int, *const anyopaque, c_int) callconv(.c) DbusBool,
+    /// `dbus_message_iter_open_container`, resolved from libdbus.
     iter_open_container: *const fn (*MessageIter, c_int, ?[*:0]const u8, *MessageIter) callconv(.c) DbusBool,
+    /// `dbus_message_iter_close_container`, resolved from libdbus.
     iter_close_container: *const fn (*MessageIter, *MessageIter) callconv(.c) DbusBool,
 };
 
@@ -151,7 +176,7 @@ pub const StatusNotifier = struct {
     };
 
     const item_path = "/StatusNotifierItem";
-    const item_iface = "org.kde.StatusNotifierItem";
+    const item_interface = "org.kde.StatusNotifierItem";
     const properties_interface = "org.freedesktop.DBus.Properties";
     const watcher = "org.kde.StatusNotifierWatcher";
 
@@ -327,9 +352,9 @@ pub const StatusNotifier = struct {
     /// - Returns: whether the call was handled.
     fn handle(connection: *DbusConnection, message: *DbusMessage, _: ?*anyopaque) callconv(.c) HandlerResult {
         const self = Self.shared();
-        if (self.api.is_method_call(message, Self.item_iface, "Activate") != 0 or
-            self.api.is_method_call(message, Self.item_iface, "SecondaryActivate") != 0 or
-            self.api.is_method_call(message, Self.item_iface, "ContextMenu") != 0)
+        if (self.api.is_method_call(message, Self.item_interface, "Activate") != 0 or
+            self.api.is_method_call(message, Self.item_interface, "SecondaryActivate") != 0 or
+            self.api.is_method_call(message, Self.item_interface, "ContextMenu") != 0)
         {
             var iterator: MessageIter = .{};
             var x: i32 = 0;
@@ -344,8 +369,8 @@ pub const StatusNotifier = struct {
             mod.App.shared().wake();
             return self.replyEmpty(connection, message);
         }
-        if (self.api.is_method_call(message, Self.item_iface, "Scroll") != 0 or
-            self.api.is_method_call(message, Self.item_iface, "ProvideXdgActivationToken") != 0)
+        if (self.api.is_method_call(message, Self.item_interface, "Scroll") != 0 or
+            self.api.is_method_call(message, Self.item_interface, "ProvideXdgActivationToken") != 0)
             return self.replyEmpty(connection, message);
         if (self.api.is_method_call(message, Self.properties_interface, "GetAll") != 0) {
             const reply = self.api.new_method_return(message) orelse return .needMemory;

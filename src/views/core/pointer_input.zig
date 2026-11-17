@@ -46,8 +46,16 @@ pub const PointerInput = struct {
     /// ⌘ (Ctrl off macOS) was held at the current tap's press.
     click_command: bool = false,
 
-    /// The click count of the tap being dispatched (2 = a double-click).
+    /// The click count of the tap being dispatched: the presses in a row on the
+    /// same target (`tapCount`).
     tap_clicks: u8 = 1,
+
+    /// The target the last press landed on (`targetOf`), or null when it
+    /// landed on none: the next press continues its count only on the same one.
+    last_target: ?u64 = null,
+
+    /// The count the last press reached on `last_target`.
+    last_count: u8 = 0,
 
     /// The current thread's pointer state.
     threadlocal var shared_input: Self = .{};
@@ -165,18 +173,25 @@ pub const PointerInput = struct {
     /// - Returns: true if a region took it.
     pub fn tap(self: *Self, regions: []const mod.HitRegion, point: renderer.Point) bool {
         self.press_point = point;
-        mod.TextSelection.shared().current = null; // a press elsewhere clears it; a press on selectable text starts anew
+        const selection = mod.TextSelection.shared();
+        // A press elsewhere clears it; a press on selectable text starts anew; a shift-press may extend it (`ended_by_press`).
+        selection.ended_by_press = if (selection.current) |span| span.key else null;
+        selection.current = null;
         var index = regions.len;
         while (index > 0) {
             index -= 1;
             const region = regions[index];
             if (region.action == .secondary) continue;
             if (!region.disabled and region.rect.contains(point)) {
+                self.countPress(region);
                 self.perform(region.action, point);
                 if (self.passesDrag(region.action)) self.armBeneath(regions[0..index], point, region.rect);
                 return true;
             }
         }
+        // A press on nothing ends any run of clicks.
+        self.last_target = null;
+        self.last_count = 0;
         return false;
     }
 
@@ -240,13 +255,28 @@ pub const PointerInput = struct {
         self.tap_clicks = @max(1, count);
     }
 
-    /// The click count of the tap being dispatched (2 = a double-click), so a tap
-    /// callback can tell a double-click on a row from a single one.
+    /// The click count of the tap being dispatched: how many presses in a row,
+    /// each within the platform's double-click time and distance, landed on the
+    /// same target (its `View.id`, else its place and handler). It keeps
+    /// counting past 2 (3 is a triple click) and starts again at 1 when a press
+    /// lands on another target, such as a row that moved under the pointer
+    /// after the first press. A row's action reads `isDoubleClick` instead.
     ///
     /// - `self`: the pointer input.
     /// - Returns: the click count.
     pub fn tapCount(self: *const Self) u8 {
         return self.tap_clicks;
+    }
+
+    /// Whether the tap being dispatched completes a double click: the second
+    /// press of a pair on the same target (the 2nd, 4th, … of `tapCount`), so
+    /// rapid clicks act once per pair, never on a third click, and never on a
+    /// row that moved under the pointer between the two presses.
+    ///
+    /// - `self`: the pointer input.
+    /// - Returns: true for the pair's second press.
+    pub fn isDoubleClick(self: *const Self) bool {
+        return self.tap_clicks >= 2 and self.tap_clicks % 2 == 0;
     }
 
     /// Handles a double-click at `point`: if the top-most region under it is an
@@ -497,6 +527,45 @@ pub const PointerInput = struct {
             .secondary => {},
         }
     }
+
+    /// Counts a press on `region`: the platform's count (`setTapCount`)
+    /// continues the run only when the press lands on the target the last one
+    /// did; on another target it starts again at 1.
+    ///
+    /// - `self`: the pointer input.
+    /// - `region`: the region pressed.
+    fn countPress(self: *Self, region: mod.HitRegion) void {
+        const target = Self.targetOf(region);
+        const continues = self.tap_clicks > 1 and self.last_target == target;
+        self.tap_clicks = if (continues) self.last_count +| 1 else 1;
+        self.last_target = target;
+        self.last_count = self.tap_clicks;
+    }
+
+    /// What a region is, for counting clicks: its `View.id`, else its frame,
+    /// the kind of its action and, for a callback, its handler (a tagged
+    /// callback's context is rebuilt each frame, so its place tells rows apart).
+    ///
+    /// - `region`: the region.
+    /// - Returns: the target's key.
+    fn targetOf(region: mod.HitRegion) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        if (region.id) |identity| {
+            hasher.update("id");
+            hasher.update(std.mem.asBytes(&identity));
+            return hasher.final();
+        }
+        hasher.update(std.mem.asBytes(&region.rect));
+        hasher.update(@tagName(region.action));
+        switch (region.action) {
+            .callback => |callback| {
+                const handler = @intFromPtr(callback.function);
+                hasher.update(std.mem.asBytes(&handler));
+            },
+            else => {},
+        }
+        return hasher.final();
+    }
 };
 
 // -----------------------------------------------------------------------------
@@ -694,4 +763,72 @@ test "a toggle inside a draggable view flips on the press but never arms the dra
     try std.testing.expect(input.tap(&regions, .{ .x = 70, .y = 20 }));
     try std.testing.expect(on.get());
     try std.testing.expect(input.area_drag == null);
+}
+
+/// Records what a tap's handler heard, for the click-counting tests.
+const ClickProbe = struct {
+    const Self = @This();
+
+    /// The count the last tap heard.
+    var count: u8 = 0;
+    /// Whether the last tap completed a double click.
+    var double: bool = false;
+
+    /// A row's tap handler: notes the count and the double click.
+    fn heard() void {
+        count = PointerInput.shared().tapCount();
+        double = PointerInput.shared().isDoubleClick();
+    }
+
+    /// A press as the event loop makes one: the platform's raw click count,
+    /// the tap, then the count put back.
+    ///
+    /// - `regions`: the frame's hit regions.
+    /// - `point`: the press.
+    /// - `raw`: the platform's click count.
+    fn press(regions: []const mod.HitRegion, point: renderer.Point, raw: u8) void {
+        const input = PointerInput.shared();
+        input.setTapCount(raw);
+        defer input.setTapCount(1);
+        _ = input.tap(regions, point);
+    }
+};
+
+test "a double click is a pair of presses on one target, not a third or a fourth click's" {
+    const tapped = mod.Callback.action(ClickProbe.heard);
+    const regions = [_]mod.HitRegion{
+        .{ .rect = .{ .x = 0, .y = 0, .width = 100, .height = 20 }, .action = .{ .callback = tapped }, .disabled = false },
+        .{ .rect = .{ .x = 0, .y = 20, .width = 100, .height = 20 }, .action = .{ .callback = tapped }, .disabled = false },
+    };
+    const first_row = renderer.Point{ .x = 10, .y = 10 };
+    ClickProbe.press(&regions, first_row, 1);
+    try std.testing.expect(!ClickProbe.double);
+    ClickProbe.press(&regions, first_row, 2);
+    try std.testing.expect(ClickProbe.double);
+    // A third rapid click is not another double click; the fourth completes a second pair.
+    ClickProbe.press(&regions, first_row, 3);
+    try std.testing.expectEqual(@as(u8, 3), ClickProbe.count);
+    try std.testing.expect(!ClickProbe.double);
+    ClickProbe.press(&regions, first_row, 4);
+    try std.testing.expect(ClickProbe.double);
+    // The platform still counting, a press on another row starts again at 1.
+    ClickProbe.press(&regions, .{ .x = 10, .y = 30 }, 5);
+    try std.testing.expectEqual(@as(u8, 1), ClickProbe.count);
+    try std.testing.expect(!ClickProbe.double);
+}
+
+test "a row that moved under the pointer between two presses is no double click" {
+    const tapped = mod.Callback.action(ClickProbe.heard);
+    const rect = renderer.Rect{ .x = 0, .y = 0, .width = 100, .height = 20 };
+    const point = renderer.Point{ .x = 10, .y = 10 };
+    // The first press lands on file A; the list then changes, and B is where A was.
+    const before = [_]mod.HitRegion{.{ .rect = rect, .action = .{ .callback = tapped }, .disabled = false, .id = 0xA }};
+    const after = [_]mod.HitRegion{.{ .rect = rect, .action = .{ .callback = tapped }, .disabled = false, .id = 0xB }};
+    ClickProbe.press(&before, point, 1);
+    ClickProbe.press(&after, point, 2);
+    try std.testing.expectEqual(@as(u8, 1), ClickProbe.count);
+    try std.testing.expect(!ClickProbe.double);
+    // B clicked again stays B: that pair is a double click.
+    ClickProbe.press(&after, point, 3);
+    try std.testing.expect(ClickProbe.double);
 }

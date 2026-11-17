@@ -1,9 +1,6 @@
-//! The Windows native-view host: not implemented yet. No region is
-//! collected, so every `NativeView` draws its placeholder.
-//!
-//! The intended host is a child `HWND` parented to SDL's window and
-//! positioned each frame from the `NativeRegion`s, as AppKit's and GTK's
-//! are. A web view there is WebView2's controller window.
+//! The native-view host for an OS with none (macOS, Linux and Windows each
+//! have their own): it places nothing, so no region is collected and every
+//! `NativeView` draws its placeholder.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_native_host_stub);
@@ -63,7 +60,11 @@ pub const NativeHostStub = struct {
     pub fn detachAll() void {}
 
     /// No toolkit loop runs inside SDL's: nothing to do.
-    pub fn beforeWait() void {}
+    ///
+    /// - Returns: null: the wait is not limited.
+    pub fn beforeWait() ?u32 {
+        return null;
+    }
 
     /// No toolkit loop runs inside SDL's: nothing to do.
     pub fn afterWait() void {}

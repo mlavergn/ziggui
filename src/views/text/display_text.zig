@@ -29,6 +29,19 @@ pub const DisplayText = struct {
         return Self.copy(allocator, text) catch @panic("oom");
     }
 
+    /// How much of `text` fits in `capacity` bytes, cut on a character,
+    /// never inside one (a fixed buffer's failure, a message cut to a line).
+    ///
+    /// - `text`: UTF-8 text.
+    /// - `capacity`: the room, in bytes.
+    /// - Returns: the length to keep: all of `text` when it fits.
+    pub fn fitLength(text: []const u8, capacity: usize) usize {
+        if (text.len <= capacity) return text.len;
+        var length = capacity;
+        while (length > 0 and (text[length] & 0xC0) == 0x80) length -= 1;
+        return length;
+    }
+
     /// Copies `text`, each byte that does not start a valid sequence replaced.
     ///
     /// - `allocator`: owns the copy.
@@ -76,4 +89,12 @@ test "display text keeps valid text and replaces each bad byte" {
     try std.testing.expectEqual(fine.ptr, DisplayText.clean(allocator, fine).ptr);
     try std.testing.expectEqualStrings("a\u{FFFD}b\u{FFFD}", DisplayText.clean(allocator, "a\xffb\xc3"));
     try std.testing.expectEqualStrings("\x1b[0m", DisplayText.clean(allocator, "\x1b[0m"));
+}
+
+test "display text fits a fixed buffer on a character" {
+    // "é" is two bytes: room for one byte more than "ab" keeps "ab", not half of it.
+    try std.testing.expectEqual(@as(usize, 2), DisplayText.fitLength("abé", 3));
+    try std.testing.expectEqual(@as(usize, 4), DisplayText.fitLength("abé", 4));
+    try std.testing.expectEqual(@as(usize, 4), DisplayText.fitLength("abé", 10));
+    try std.testing.expectEqual(@as(usize, 0), DisplayText.fitLength("é", 1));
 }

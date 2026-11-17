@@ -22,6 +22,9 @@ pub const A11yNode = struct {
 
     /// Its value ("on", a slider's number, a field's text).
     value: []const u8 = "",
+
+    /// It is the selected one of a group (a segment, a tab).
+    selected: bool = false,
 };
 
 // -----------------------------------------------------------------------------

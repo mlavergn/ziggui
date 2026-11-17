@@ -15,6 +15,8 @@ pub fn Binding(comptime T: type) type {
         /// Where the value lives, passed to `get_fn` and `set_fn`.
         context: *anyopaque,
         /// Reads the value.
+        ///
+        /// - Returns: the value.
         get_fn: *const fn (*anyopaque) T,
         /// Writes the value.
         set_fn: *const fn (*anyopaque, T) void,

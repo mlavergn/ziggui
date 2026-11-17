@@ -23,7 +23,6 @@
 const std = @import("std");
 const log = std.log.scoped(.ziggui_gstreamer_player);
 const mod = @import("module.zig");
-const renderer = @import("renderer");
 const views = @import("views");
 const sdl_c = @import("sdl_c");
 
@@ -64,13 +63,18 @@ const NativePlayer = struct {
     frame_width: u32 = 0,
     /// The latest frame's height, in pixels.
     frame_height: u32 = 0,
+    /// The latest frame's generation (`PlayerFrame.generation`).
+    generation: u64 = 0,
+    /// A preroll sample (the first frame paused, or after a seek) came that
+    /// `frame` has not taken: set on GStreamer's streaming thread.
+    preroll_ready: std.atomic.Value(bool) = .init(false),
 
     /// Keeps `text` as the failure, cut on a character to fit.
     ///
     /// - `self`: the player.
     /// - `text`: why it failed.
     fn fail(self: *Self, text: []const u8) void {
-        const length = GstreamerPlayer.cutLength(text, self.failure.len);
+        const length = views.DisplayText.fitLength(text, self.failure.len);
         @memcpy(self.failure[0..length], text[0..length]);
         self.failure_length = length;
     }
@@ -104,7 +108,11 @@ pub const GstreamerPlayer = struct {
     const sink_caps = "video/x-raw,format=RGBA,pixel-aspect-ratio=1/1";
 
     /// The callbacks every app sink wakes the window with.
-    const callbacks: mod.GstAppSinkCallbacks = .{ .new_preroll = Self.onFrame, .new_sample = Self.onFrame };
+    const callbacks: mod.GstAppSinkCallbacks = .{ .new_preroll = Self.onPreroll, .new_sample = Self.onFrame };
+
+    /// The generation the last frame taken by any player got, so each new
+    /// frame's is unique in the process (UI thread only).
+    var last_generation: u64 = 0;
 
     /// Places nothing: the frames are drawn in the surface.
     ///
@@ -147,13 +155,14 @@ pub const GstreamerPlayer = struct {
             api.gst_object_unref(playbin);
             return null;
         };
-        const native = std.heap.c_allocator.create(NativePlayer) catch {
+        const native = std.heap.c_allocator.create(NativePlayer) catch |err| {
+            log.warn("player not made: {s}", .{@errorName(err)});
             api.gst_object_unref(bus);
             api.gst_object_unref(playbin);
             return null;
         };
         native.* = .{ .playbin = playbin, .sink = sink, .bus = bus };
-        api.gst_app_sink_set_callbacks(sink, &callbacks, null, null);
+        api.gst_app_sink_set_callbacks(sink, &callbacks, native, null);
         return native;
     }
 
@@ -353,22 +362,26 @@ pub const GstreamerPlayer = struct {
         }
     }
 
-    /// The newest frame the sink holds, copied out; else the one before.
+    /// The newest frame the sink holds, copied out; else the one before,
+    /// with its generation, so it is not uploaded again.
     ///
     /// - `handle`: the player.
     /// - Returns: the picture, valid until the next call, or null before the
     ///   first frame.
-    fn frame(handle: *anyopaque) ?renderer.Image {
+    fn frame(handle: *anyopaque) ?views.PlayerFrame {
         const native = Self.nativeOf(handle);
         const api = mod.Gstreamer.running() orelse return null;
-        // Paused, the frame shown is the preroll sample; playing, the samples.
-        const sample = api.gst_app_sink_try_pull_sample(native.sink, 0) orelse api.gst_app_sink_try_pull_preroll(native.sink, 0);
+        // Playing, the samples; paused, the preroll sample, taken once each
+        // time one comes (the sink keeps handing back the same one).
+        const sample = api.gst_app_sink_try_pull_sample(native.sink, 0) orelse
+            if (native.preroll_ready.swap(false, .acquire)) api.gst_app_sink_try_pull_preroll(native.sink, 0) else null;
         if (sample) |held| {
             defer api.gst_mini_object_unref(held);
             Self.copyFrame(api, native, held);
         }
         if (native.frame_width == 0) return null;
-        return .{ .width = native.frame_width, .height = native.frame_height, .pixels = native.pixels[0 .. native.frame_width * native.frame_height * 4] };
+        const size = @as(usize, native.frame_width) * native.frame_height * 4;
+        return .{ .image = .{ .width = native.frame_width, .height = native.frame_height, .pixels = native.pixels[0..size] }, .generation = native.generation };
     }
 
     /// Copies a sample's RGBA pixels into the player's frame.
@@ -390,16 +403,24 @@ pub const GstreamerPlayer = struct {
         const pixel_width: u32 = @intCast(width);
         const pixel_height: u32 = @intCast(height);
         // RGBA rows are whole words, so GStreamer pads none.
-        const size = pixel_width * pixel_height * 4;
+        const size = std.math.mul(usize, @as(usize, pixel_width) * pixel_height, 4) catch {
+            log.warn("video frame of {d}x{d} dropped: too large", .{ pixel_width, pixel_height });
+            return;
+        };
         const data = map.data orelse return;
         if (map.size < size) return;
         if (native.pixels.len < size) {
-            const grown = std.heap.c_allocator.realloc(native.pixels, size) catch return;
+            const grown = std.heap.c_allocator.realloc(native.pixels, size) catch |err| {
+                log.warn("video frame of {d}x{d} dropped: {s}", .{ pixel_width, pixel_height, @errorName(err) });
+                return;
+            };
             native.pixels = grown;
         }
         @memcpy(native.pixels[0..size], data[0..size]);
         native.frame_width = pixel_width;
         native.frame_height = pixel_height;
+        last_generation += 1;
+        native.generation = last_generation;
     }
 
     /// Takes every message the pipeline posted, keeping its state, buffering,
@@ -422,7 +443,7 @@ pub const GstreamerPlayer = struct {
                 // missing: this names it ("H.264 (High Profile) decoder").
                 if (api.gst_missing_plugin_message_get_description(message)) |description| {
                     defer api.g_free(description);
-                    var text: [256]u8 = undefined;
+                    var text: [native.failure.len]u8 = undefined;
                     const line = std.mem.print(&text, "Missing a GStreamer plug-in: {s}.", .{std.mem.span(description)}) catch std.mem.span(description);
                     if (native.failure_length == 0) native.fail(line);
                 }
@@ -463,15 +484,11 @@ pub const GstreamerPlayer = struct {
         if (result == mod.Gstreamer.state_change_failure) {
             Self.drain(api, native);
             if (native.failure_length == 0) native.fail("The item could not be played.");
-        } else if (result == state_change_no_preroll) {
+        } else if (result == mod.Gstreamer.state_change_no_preroll) {
             native.live = true;
             native.ready = true;
         }
     }
-
-    /// `GST_STATE_CHANGE_NO_PREROLL`: a live source, which has no frame to
-    /// show before it plays.
-    const state_change_no_preroll: c_int = 3;
 
     /// Seeks to `seconds` at the playback rate, flushing, to the exact frame.
     ///
@@ -525,8 +542,23 @@ pub const GstreamerPlayer = struct {
         return allocator.dupe(u8, std.mem.span(text));
     }
 
-    /// The app sink's `new_preroll` and `new_sample`: a frame is ready, so
-    /// the window draws again. Runs on GStreamer's streaming thread.
+    /// The app sink's `new_preroll`: notes that a preroll sample came, for
+    /// `frame` to take once, and wakes the window. Runs on GStreamer's
+    /// streaming thread.
+    ///
+    /// - `sink`: the app sink; unused.
+    /// - `data`: the player.
+    /// - Returns: `GST_FLOW_OK`.
+    fn onPreroll(sink: *anyopaque, data: ?*anyopaque) callconv(.c) c_int {
+        if (data) |player| {
+            const native: *NativePlayer = @ptrCast(@alignCast(player));
+            native.preroll_ready.store(true, .release);
+        }
+        return Self.onFrame(sink, data);
+    }
+
+    /// The app sink's `new_sample`: a frame is ready, so the window draws
+    /// again. Runs on GStreamer's streaming thread.
     ///
     /// - `sink`: the app sink; unused.
     /// - `data`: unused.
@@ -536,19 +568,6 @@ pub const GstreamerPlayer = struct {
         _ = data;
         views.FrameClock.shared().wake();
         return 0;
-    }
-
-    /// How much of `text` fits in `capacity` bytes, cut on a character, never
-    /// inside one.
-    ///
-    /// - `text`: UTF-8 text.
-    /// - `capacity`: the room.
-    /// - Returns: the length to keep.
-    fn cutLength(text: []const u8, capacity: usize) usize {
-        if (text.len <= capacity) return text.len;
-        var length = capacity;
-        while (length > 0 and (text[length] & 0xC0) == 0x80) length -= 1;
-        return length;
     }
 
     /// The player behind a handle.
@@ -573,9 +592,4 @@ test "the Linux player draws its frames in the surface" {
     try std.testing.expect(!GstreamerPlayer.presents);
     try std.testing.expect(GstreamerPlayer.backend.unsupported == null);
     try std.testing.expect(GstreamerPlayer.backend.frame != null);
-}
-
-test "the Linux player cuts a long failure on a character" {
-    try std.testing.expectEqual(@as(usize, 2), GstreamerPlayer.cutLength("abé", 3));
-    try std.testing.expectEqual(@as(usize, 4), GstreamerPlayer.cutLength("abé", 4));
 }

@@ -149,6 +149,9 @@ const DiffModel = struct {
     /// The tap handler.
     on_hunk: ?mod.IndexCallback,
 
+    /// The selected lines, for a `SelectableDiffView`; null for a plain `DiffView`.
+    selection: ?*mod.DiffSelection = null,
+
     /// The colors, read once per frame.
     tokens: mod.BuildTokens,
 
@@ -222,7 +225,10 @@ const DiffModel = struct {
         if (self.on_hunk) |callback| if (hunk) |hunk_index| {
             row_view = row_view.onTap(callback.bind(hunk_index));
         };
-        return row_view;
+        const selection = self.selection orelse return row_view;
+        if (selection.contains(index)) row_view = row_view.background(tokens.selection.withAlpha(0.28));
+        // Beneath the row's own tap, so a press both picks the hunk and starts the selection.
+        return mod.HStack(.{row_view}).spacing(0).frameMaxWidth().onDrag(selection.dragCallback(index));
     }
 
     /// A gutter cell: a line number, right-aligned, or blank.
@@ -439,8 +445,38 @@ pub fn VirtualListBoth(
 /// - `on_hunk`: when set, called with the hunk a tapped row belongs to.
 /// - Returns: the diff.
 pub fn DiffView(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback) mod.View {
+    return diffList(lines, selected, scroll, on_hunk, null);
+}
+
+/// A `DiffView` whose lines can be selected and copied: a press selects a
+/// line (and still picks its hunk), a drag or a shift-press extends the run
+/// row by row, and ⌘C (Ctrl+C) copies the lines' text, without the gutter or
+/// the `+`/`-` marks (`DiffSelection`). Selected rows are tinted in the
+/// theme's selection color. A selection ends with a press elsewhere, as a
+/// text selection does, and when the view draws other rows.
+///
+/// - `lines`: the diff.
+/// - `selected`: the hunk to mark, if any.
+/// - `scroll`: the diff's scroll position, both ways.
+/// - `on_hunk`: when set, called with the hunk a tapped row belongs to.
+/// - `selection`: the selected lines, kept by the app beside `scroll`.
+/// - Returns: the diff.
+pub fn SelectableDiffView(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback, selection: *mod.DiffSelection) mod.View {
+    selection.track(lines);
+    return diffList(lines, selected, scroll, on_hunk, selection);
+}
+
+/// The diff's rows over a `VirtualListBoth`, selectable when `selection` is set.
+///
+/// - `lines`: the diff.
+/// - `selected`: the hunk to mark, if any.
+/// - `scroll`: the diff's scroll position, both ways.
+/// - `on_hunk`: the hunk tap handler, if any.
+/// - `selection`: the selected lines, or null for none.
+/// - Returns: the diff.
+fn diffList(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback, selection: ?*mod.DiffSelection) mod.View {
     const model = mod.BuildScope.shared().allocator().create(DiffModel) catch @panic("oom");
-    model.* = .{ .lines = lines, .selected = selected, .on_hunk = on_hunk, .tokens = mod.BuildScope.shared().tokens() };
+    model.* = .{ .lines = lines, .selected = selected, .on_hunk = on_hunk, .selection = selection, .tokens = mod.BuildScope.shared().tokens() };
     model.indexHunks(mod.RowRange.visible(lines.len, mod.diff_row_height, scroll));
     return VirtualListBoth(DiffModel, model, lines.len, mod.diff_row_height, scroll, DiffModel.row, if (lines.len > 0) model.widest else null);
 }
@@ -526,6 +562,63 @@ test "a DiffView builds only the rows in view, and taps name the hunk" {
     // Row 60 is at the top, in hunk 1 (rows 50..99).
     try std.testing.expect(canvas.tap(.{ .x = 150, .y = 5 }));
     try std.testing.expectEqual(@as(?usize, 1), probe.hunk);
+}
+
+test "a SelectableDiffView's press picks the hunk and selects the line; a drag and a shift-press extend it" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    const lines = [_]mod.DiffLine{
+        .{ .kind = .hunkHeader, .text = "@@ -1,3 +1,3 @@" },
+        .{ .kind = .removed, .text = "one", .old = 1 },
+        .{ .kind = .added, .text = "two", .new = 1 },
+        .{ .kind = .context, .text = "three", .old = 2, .new = 2 },
+    };
+    const Probe = struct {
+        const Self = @This();
+        hunk: ?usize = null,
+        /// Notes the hunk.
+        ///
+        /// - `self`: the probe.
+        /// - `index`: the hunk's index.
+        fn onHunk(self: *Self, index: usize) void {
+            self.hunk = index;
+        }
+    };
+    var probe: Probe = .{};
+    var selection: mod.DiffSelection = .{};
+    defer selection.clear();
+    var scroll: mod.ScrollState = .{ .viewport_height = 4 * mod.diff_row_height };
+    canvas.begin(renderer.MacosTheme.light);
+    const view = SelectableDiffView(&lines, 0, &scroll, mod.IndexCallback.init(Probe, &probe, Probe.onHunk), &selection);
+    canvas.end();
+    var frame = try canvas.render(view, 300, @intFromFloat(4 * mod.diff_row_height));
+    defer frame.deinit();
+    const pointer = mod.PointerInput.shared();
+    // A press on row 1: its hunk, and the line.
+    try std.testing.expect(canvas.tap(.{ .x = 150, .y = 1.5 * mod.diff_row_height }));
+    try std.testing.expectEqual(@as(?usize, 0), probe.hunk);
+    try std.testing.expect(selection.contains(1) and !selection.contains(2));
+    // Dragged a row down, then let go: two lines, copied whole.
+    pointer.drag(canvas.hits.items, .{ .x = 150, .y = 2.5 * mod.diff_row_height });
+    pointer.endDrag();
+    try std.testing.expect(selection.contains(2));
+    try std.testing.expectEqualStrings("one\ntwo\n", mod.TextSelection.shared().selectedText().?);
+    // A shift-press on row 3 extends from row 1.
+    pointer.setClickModifiers(true, false);
+    defer pointer.setClickModifiers(false, false);
+    try std.testing.expect(canvas.tap(.{ .x = 150, .y = 3.5 * mod.diff_row_height }));
+    pointer.endDrag();
+    try std.testing.expectEqualStrings("one\ntwo\nthree\n", mod.TextSelection.shared().selectedText().?);
+    // A plain DiffView selects nothing.
+    selection.clear();
+    canvas.begin(renderer.MacosTheme.light);
+    const plain = DiffView(&lines, 0, &scroll, null);
+    canvas.end();
+    var plain_frame = try canvas.render(plain, 300, @intFromFloat(4 * mod.diff_row_height));
+    defer plain_frame.deinit();
+    _ = canvas.tap(.{ .x = 150, .y = 1.5 * mod.diff_row_height });
+    pointer.endDrag();
+    try std.testing.expect(mod.TextSelection.shared().selectedText() == null);
 }
 
 test "the widest row, built again to set the width, presents no popover of its own" {

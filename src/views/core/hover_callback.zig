@@ -12,6 +12,8 @@ pub const HoverCallback = struct {
     context: ?*anyopaque = null,
 
     /// The handler.
+    ///
+    /// - `inside`: true as the pointer enters, false as it leaves.
     function: *const fn (?*anyopaque, inside: bool) void,
 
     /// Calls the handler.

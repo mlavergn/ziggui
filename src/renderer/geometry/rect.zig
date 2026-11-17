@@ -201,6 +201,29 @@ pub const Rect = struct {
     pub fn offsetBy(self: *const Self, delta_x: f32, delta_y: f32) Self {
         return .{ .x = self.x + delta_x, .y = self.y + delta_y, .width = self.width, .height = self.height };
     }
+
+    /// The largest centered rect inside this one with a picture's aspect
+    /// ratio (SwiftUI's `.scaledToFit()`, CSS's `object-fit: contain`).
+    ///
+    /// - `self`: the frame.
+    /// - `width`: the picture's width, in pixels.
+    /// - `height`: its height.
+    /// - Returns: where the picture goes; the frame itself while the size is
+    ///   unknown (0) or the frame is empty.
+    pub fn aspectFit(self: *const Self, width: u32, height: u32) Self {
+        const picture_width: f32 = @floatFromInt(width);
+        const picture_height: f32 = @floatFromInt(height);
+        if (picture_width <= 0 or picture_height <= 0 or self.width <= 0 or self.height <= 0) return self.*;
+        const scale = @min(self.width / picture_width, self.height / picture_height);
+        const fitted_width = picture_width * scale;
+        const fitted_height = picture_height * scale;
+        return .{
+            .x = self.x + (self.width - fitted_width) / 2,
+            .y = self.y + (self.height - fitted_height) / 2,
+            .width = fitted_width,
+            .height = fitted_height,
+        };
+    }
 };
 
 // -----------------------------------------------------------------------------
@@ -278,4 +301,14 @@ test "Rect: offsetBy translates" {
         mod.Rect{ .x = 8, .y = 1, .width = 10, .height = 10 },
         rect.offsetBy(3, -4),
     );
+}
+
+test "Rect: aspectFit centers the picture, the frame while the size is unknown" {
+    const frame = Rect{ .x = 0, .y = 0, .width = 200, .height = 100 };
+    const fitted = frame.aspectFit(100, 100);
+    try std.testing.expectEqual(@as(f32, 50), fitted.x);
+    try std.testing.expectEqual(@as(f32, 0), fitted.y);
+    try std.testing.expectEqual(@as(f32, 100), fitted.width);
+    try std.testing.expectEqual(@as(f32, 100), fitted.height);
+    try std.testing.expectEqual(frame, frame.aspectFit(0, 100));
 }

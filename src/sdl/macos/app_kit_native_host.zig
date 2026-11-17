@@ -255,7 +255,11 @@ pub const AppKitNativeHost = struct {
     }
 
     /// SDL pumps AppKit itself: nothing to do.
-    pub fn beforeWait() void {}
+    ///
+    /// - Returns: null: the wait is not limited.
+    pub fn beforeWait() ?u32 {
+        return null;
+    }
 
     /// SDL pumps AppKit itself: nothing to do.
     pub fn afterWait() void {}

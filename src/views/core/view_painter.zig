@@ -88,7 +88,7 @@ pub const ViewPainter = struct {
             try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .secondary = callback }, .disabled = child_context.disabled });
         }
         if (view.modifiers.on_tap) |callback| {
-            try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .callback = callback }, .disabled = child_context.disabled });
+            try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .callback = callback }, .disabled = child_context.disabled, .id = view.modifiers.id });
         }
         if (view.modifiers.on_drag) |drag_callback| {
             try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .drag = drag_callback }, .disabled = child_context.disabled });
@@ -192,7 +192,7 @@ pub const ViewPainter = struct {
             .stepper => |stepper| try mod.ControlPainter.paintStepper(context, stepper, rect, canvas),
             .progress => |progress| try mod.ControlPainter.paintProgress(context, progress, rect, canvas),
             .image => |image| {
-                const target = if (view.modifiers.scaled_to_fit) Self.aspectFitRect(rect, image.image.width, image.image.height) else rect;
+                const target = if (view.modifiers.scaled_to_fit) rect.aspectFit(image.image.width, image.image.height) else rect;
                 try canvas.drawImage(target, image.image);
                 try context.emitAccessibility(view, rect, .image, "", "");
             },
@@ -431,7 +431,7 @@ pub const ViewPainter = struct {
             // so what is stacked over the player still draws on top.
             try canvas.fillRoundedRect(rect, radius, renderer.Color.black.multiplyAlpha(context.opacity));
             try canvas.pushClip(rect, radius);
-            try canvas.drawVideoFrame(Self.aspectFitRect(rect, picture.width, picture.height), picture);
+            try canvas.drawVideoFrame(rect.aspectFit(picture.image.width, picture.image.height), picture.image, @intFromPtr(video.player), picture.generation);
             try canvas.popClip();
         } else {
             try canvas.fillRoundedRect(rect, radius, renderer.Color.black.multiplyAlpha(context.opacity));
@@ -473,28 +473,6 @@ pub const ViewPainter = struct {
         const side = @min(32, @min(rect.width, rect.height));
         const glyph = renderer.Rect{ .x = rect.midX() - side / 2, .y = rect.midY() - side / 2, .width = side, .height = side };
         try mod.ControlPainter.paintIcon(context, .{ .icon = native.placeholder, .size = side, .color = colors.tertiary_label }, glyph, canvas);
-    }
-
-    /// The largest centered sub-rect of `rect` with the image's aspect ratio
-    /// (SwiftUI `.scaledToFit()` / `object-fit: contain`).
-    ///
-    /// - `rect`: the frame.
-    /// - `image_width`: the image's width, in pixels.
-    /// - `image_height`: its height.
-    /// - Returns: where the image is drawn.
-    fn aspectFitRect(rect: renderer.Rect, image_width: u32, image_height: u32) renderer.Rect {
-        const width_float: f32 = @floatFromInt(image_width);
-        const height_float: f32 = @floatFromInt(image_height);
-        if (width_float <= 0 or height_float <= 0 or rect.width <= 0 or rect.height <= 0) return rect;
-        const scale = @min(rect.width / width_float, rect.height / height_float);
-        const width = width_float * scale;
-        const height = height_float * scale;
-        return .{
-            .x = rect.x + (rect.width - width) / 2,
-            .y = rect.y + (rect.height - height) / 2,
-            .width = width,
-            .height = height,
-        };
     }
 };
 

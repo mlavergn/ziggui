@@ -17,10 +17,12 @@ const sdl_c = @import("sdl_c");
 pub const NativeBackend = struct {
     const Self = @This();
 
-    /// The platform host: AppKit on macOS, GTK on Linux; a stub elsewhere for now.
+    /// The platform host: AppKit on macOS, GTK on Linux, child windows on
+    /// Windows; a stub on any other OS.
     const Platform = switch (mod.os_tag) {
         .macos => mod.AppKitNativeHost,
         .linux => mod.GtkNativeHost,
+        .windows => mod.Win32NativeHost,
         else => mod.NativeHostStub,
     };
 
@@ -81,8 +83,11 @@ pub const NativeBackend = struct {
 
     /// Runs the toolkit's ready work and has its sources watched while SDL
     /// waits; the loop calls it before each wait.
-    pub fn beforeWait() void {
-        Platform.beforeWait();
+    ///
+    /// - Returns: the longest the wait may last, in milliseconds, or null for
+    ///   no limit (a toolkit whose sources no one watches is run on a timer).
+    pub fn beforeWait() ?u32 {
+        return Platform.beforeWait();
     }
 
     /// Stops watching the toolkit's sources and runs its ready work; the loop

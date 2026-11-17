@@ -438,9 +438,8 @@ pub const Editor = struct {
     /// - `args`: the format's arguments.
     fn setStatus(self: *Self, comptime format: []const u8, args: anytype) void {
         var writer: std.Io.Writer = .fixed(&self.status_buffer);
-        writer.print(format, args) catch {
-            // A full buffer keeps the message's start.
-        };
+        // A full buffer keeps the message's start.
+        writer.print(format, args) catch |err| log.debug("status cut short [{t}]", .{err});
         self.status_length = writer.end;
     }
 

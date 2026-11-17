@@ -91,6 +91,9 @@ pub const Modifiers = struct {
     selection_ordinal: u32 = 0,
     /// An explicit selection identity (`.selectionId`), in place of the text.
     selection_id: ?u64 = null,
+    /// What this view is (`.id`), carried by its tap region, so a double
+    /// click counts only two presses on the same thing.
+    id: ?u64 = null,
     /// Painted only while the cursor is inside the nearest `hover_scope`.
     reveal_on_hover: bool = false,
     /// A `TextEditor` that draws no field surface of its own (its container
@@ -110,6 +113,8 @@ pub const Modifiers = struct {
     a11y_label: ?[]const u8 = null,
     /// Hides this view (and its subtree) from the accessibility tree.
     a11y_hidden: bool = false,
+    /// Accessibility traits added to this view (`accessibilityAddTraits`).
+    a11y_traits: mod.AccessibilityTraits = .{},
     /// Draw the theme's freestanding Liquid Glass surface behind this view
     /// (SwiftUI's `.glassEffect()`): a capsule by default, or the view's
     /// `corner_radius` when one is set. See `Painter.glass_surface`.

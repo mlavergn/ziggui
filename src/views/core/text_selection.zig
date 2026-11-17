@@ -35,6 +35,10 @@ pub const TextSelection = struct {
 
     /// The selected text, as last painted.
     selected_text: std.ArrayList(u8) = .empty,
+    /// The key of the selection the last press ended (`PointerInput.tap`),
+    /// so a view whose shift-press extends its selection (`DiffSelection`)
+    /// knows it was live until that press.
+    ended_by_press: ?u64 = null,
 
     /// The process's selection.
     var shared_selection: Self = .{};
@@ -86,6 +90,29 @@ pub const TextSelection = struct {
         const span = self.current orelse return null;
         if (span.anchor == span.head or self.selected_text.items.len == 0) return null;
         return self.selected_text.items;
+    }
+
+    /// Makes `text` the selection ⌘C copies, for a view that selects by
+    /// its own means (a diff's lines) rather than painting spans.
+    ///
+    /// - `self`: the selection.
+    /// - `key`: the view's identity, which `release` and its own checks use.
+    /// - `text`: the text; copied.
+    pub fn hold(self: *Self, key: u64, text: []const u8) void {
+        self.current = .{ .key = key, .anchor = 0, .head = text.len, .dragging = false };
+        self.selected_text.clearRetainingCapacity();
+        self.selected_text.appendSlice(std.heap.page_allocator, text) catch |err| log.warn("selection text not kept [{t}]", .{err});
+    }
+
+    /// Ends the selection when it is `key`'s; another view's stays.
+    ///
+    /// - `self`: the selection.
+    /// - `key`: the view's identity, as `hold` was given it.
+    pub fn release(self: *Self, key: u64) void {
+        const span = self.current orelse return;
+        if (span.key != key) return;
+        self.current = null;
+        self.selected_text.clearRetainingCapacity();
     }
 
     /// Paints `span`'s highlight over the view `hit` describes and refreshes

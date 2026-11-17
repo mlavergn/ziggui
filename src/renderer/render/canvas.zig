@@ -161,15 +161,17 @@ pub const Canvas = struct {
         try self.push(.{ .image = .{ .rect = rect, .image = image } });
     }
 
-    /// Draw a picture that changes every frame (a video's) stretched over a
-    /// rect; the GPU backend never caches it.
+    /// Draw a picture that changes from frame to frame (a video's) stretched
+    /// over a rect; the GPU backend uploads it only when `generation` changes.
     ///
     /// - `self`: the canvas.
     /// - `rect`: where the picture is drawn.
     /// - `image`: the pixels, valid until the frame is drawn.
+    /// - `key`: what the pictures come from (a player), stable while it lives.
+    /// - `generation`: changes with each new picture from `key`.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn drawVideoFrame(self: *Self, rect: mod.Rect, image: mod.Image) !void {
-        try self.push(.{ .videoFrame = .{ .rect = rect, .image = image } });
+    pub fn drawVideoFrame(self: *Self, rect: mod.Rect, image: mod.Image, key: usize, generation: u64) !void {
+        try self.push(.{ .videoFrame = .{ .rect = rect, .image = image, .key = key, .generation = generation } });
     }
 
     /// Frost what is already drawn beneath a rect.

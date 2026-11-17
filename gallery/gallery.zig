@@ -91,7 +91,12 @@ pub const Section = enum {
     /// A web page under a browser's toolbar, posting to a bridge.
     webView,
 
-    /// Every section, as sidebar rows.
+    /// Controls in macOS's top band: the title between the traffic lights'
+    /// inset, and a segmented control after the lights.
+    topBar,
+
+    /// Every section, as sidebar rows, in the enum's order: a section's index
+    /// (`--section`, the screenshots) is its place here.
     pub const items = blk: {
         const values = @typeInfo(Self).@"enum".field_values;
         var rows: [values.len]ziggui.SidebarItem = undefined;
@@ -99,6 +104,32 @@ pub const Section = enum {
             const section: Self = @fromBackingInt(value);
             rows[index] = .{ .label = section.label(), .icon = section.icon() };
         }
+        break :blk rows;
+    };
+
+    /// Every section in the order the sidebar lists them: by label,
+    /// alphabetically, case aside.
+    pub const sorted = blk: {
+        const values = @typeInfo(Self).@"enum".field_values;
+        var order: [values.len]Self = undefined;
+        for (values, 0..) |value, index| order[index] = @fromBackingInt(value);
+        // Insertion sort: a few dozen labels, at compile time.
+        @setEvalBranchQuota(100_000);
+        for (1..order.len) |index| {
+            var place = index;
+            while (place > 0 and std.ascii.lessThanIgnoreCase(order[place].label(), order[place - 1].label())) : (place -= 1) {
+                const held = order[place];
+                order[place] = order[place - 1];
+                order[place - 1] = held;
+            }
+        }
+        break :blk order;
+    };
+
+    /// The sidebar's rows: every section, in `sorted` order.
+    pub const sidebar_items = blk: {
+        var rows: [sorted.len]ziggui.SidebarItem = undefined;
+        for (sorted, 0..) |section, index| rows[index] = .{ .label = section.label(), .icon = section.icon() };
         break :blk rows;
     };
 
@@ -135,6 +166,7 @@ pub const Section = enum {
             .native => "Native View",
             .settings => "Settings",
             .webView => "Web View",
+            .topBar => "Top Bar (macOS)",
         };
     }
 
@@ -171,6 +203,7 @@ pub const Section = enum {
             .native => .pictureInPicture2,
             .settings => .settings,
             .webView => .globe,
+            .topBar => .appWindowMac,
         };
     }
 
@@ -187,14 +220,42 @@ pub const Section = enum {
         };
     }
 
-    /// The section at sidebar row `index`, clamped to the rows there are.
+    /// The section at index `index` (its place in the enum, as `--section`
+    /// names it), clamped to the sections there are.
     ///
-    /// - `index`: a sidebar selection.
+    /// - `index`: a section's index.
     /// - Returns: the section.
     pub fn at(index: i64) Self {
         const last: i64 = Self.items.len - 1;
         return @fromBackingInt(@intCast(std.math.clamp(index, 0, last)));
     }
+
+    /// The sidebar row listing this section (its place in `sorted`).
+    ///
+    /// - `self`: the section.
+    /// - Returns: the row.
+    pub fn row(self: *const Self) i64 {
+        for (sorted, 0..) |section, index| {
+            if (section == self.*) return @intCast(index);
+        }
+        unreachable;
+    }
+
+    /// The section sidebar row `index` lists, clamped to the rows there are.
+    ///
+    /// - `index`: a sidebar row.
+    /// - Returns: the section.
+    pub fn atRow(index: i64) Self {
+        const last: i64 = sorted.len - 1;
+        return sorted[@intCast(std.math.clamp(index, 0, last))];
+    }
+};
+
+/// The Top Bar panel's segmented control's segments, as ziggit's switch has them.
+const top_bar_segments = [_]ziggui.IconSegment{
+    .{ .icon = .gitBranch, .title = "Git" },
+    .{ .icon = .code, .title = "Files" },
+    .{ .icon = .package, .title = "Deps" },
 };
 
 /// The theme families' display names, for the switcher's radio list, in
@@ -326,8 +387,12 @@ pub const Gallery = struct {
     /// Allocates the state the panels bind to.
     allocator: std.mem.Allocator,
 
-    /// The sidebar row shown, an index into `Section.items`.
+    /// The section shown, its index (an index into `Section.items`, not its
+    /// sidebar row: `sidebarSelection` maps the two).
     section: ziggui.State(i64),
+
+    /// The Top Bar panel's segmented control's selection.
+    top_bar_mode: ziggui.State(i64),
 
     /// Whether the window draws in its dark appearance.
     dark: ziggui.State(bool),
@@ -377,6 +442,8 @@ pub const Gallery = struct {
 
     /// The Panes panel's diff position.
     diff_scroll: ziggui.ScrollState = .{},
+    /// The Panes diff's selected lines.
+    diff_selection: ziggui.DiffSelection = .{},
 
     /// The Panes panel's selected hunk.
     hunk_selected: usize = 0,
@@ -432,6 +499,7 @@ pub const Gallery = struct {
             .dark = ziggui.State(bool).init(allocator, false),
             .theme_family = ziggui.State(i64).init(allocator, 0),
             .accent = ziggui.State(i64).init(allocator, 0),
+            .top_bar_mode = ziggui.State(i64).init(allocator, 0),
             .showcase = showcase,
             .editor = editor,
             .kit = kit,
@@ -452,6 +520,7 @@ pub const Gallery = struct {
         self.kit.deinit();
         self.editor.deinit();
         self.showcase.deinit();
+        self.top_bar_mode.deinit();
         self.accent.deinit();
         self.theme_family.deinit();
         self.dark.deinit();
@@ -620,7 +689,7 @@ pub const Gallery = struct {
                 ziggui.Spacer(),
             }).spacing(8).paddingInsets(.{ .top = 8, .leading = 10, .bottom = 4, .trailing = 8 }),
             // Scrolls when the window is too short for every row.
-            ziggui.ScrollViewState(&self.sidebar_scroll, ziggui.Sidebar(&Section.items, self.section.binding()))
+            ziggui.ScrollViewState(&self.sidebar_scroll, ziggui.Sidebar(&Section.sidebar_items, self.sidebarSelection()))
                 .frameMaxWidth()
                 .frameMaxHeight(),
             ziggui.Divider(),
@@ -696,6 +765,7 @@ pub const Gallery = struct {
             .split => self.splitPanel(active_theme),
             .menuBar => self.menuBarPanel(active_theme),
             .titleBar => self.titleBarPanel(active_theme),
+            .topBar => self.topBarPanel(active_theme),
             .statusLine => Self.statusLinePanel(active_theme),
             .hover => self.hoverPanel(active_theme),
             .controls => self.showcase.controlsPanel(active_theme),
@@ -784,8 +854,8 @@ pub const Gallery = struct {
                 ziggui.TableHeader(&file_columns),
                 ziggui.VirtualList(Self, self, file_count, file_row_height, &self.files_scroll, Self.fileRow).frameHeight(150),
             }).spacing(0)),
-            Self.card(active_theme, "DiffView (tap a row to select its hunk; scroll sideways for long lines)", "ziggui.DiffView", ziggui.VStack(.{
-                ziggui.DiffView(&sample_diff, self.hunk_selected, &self.diff_scroll, on_hunk),
+            Self.card(active_theme, "SelectableDiffView (tap a row for its hunk and line, drag or shift-tap for more, ⌘C copies)", "ziggui.SelectableDiffView · ziggui.DiffSelection", ziggui.VStack(.{
+                ziggui.SelectableDiffView(&sample_diff, self.hunk_selected, &self.diff_scroll, on_hunk, &self.diff_selection),
             }).spacing(0).frameHeight(diff_rows_shown * ziggui.diff_row_height)),
         }).spacing(16);
     }
@@ -882,6 +952,89 @@ pub const Gallery = struct {
             ).frameWidth(360).border(active_theme.colors.separator, 1))),
             ziggui.Text(self.window_said).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
+    }
+
+    /// The sidebar's selection: the shown section's row in the sidebar's
+    /// alphabetical order, setting the section a row lists.
+    ///
+    /// - `self`: the gallery.
+    /// - Returns: the binding.
+    fn sidebarSelection(self: *Self) ziggui.Binding(i64) {
+        return .{ .context = self, .get_fn = Self.selectedRow, .set_fn = Self.selectRow };
+    }
+
+    /// The sidebar row of the section shown (`sidebarSelection`'s reader).
+    ///
+    /// - `context`: the gallery.
+    /// - Returns: the row.
+    fn selectedRow(context: *anyopaque) i64 {
+        const self: *Self = @ptrCast(@alignCast(context));
+        return Section.at(self.section.get()).row();
+    }
+
+    /// Shows the section sidebar row `index` lists (`sidebarSelection`'s writer).
+    ///
+    /// - `context`: the gallery.
+    /// - `index`: the row chosen.
+    fn selectRow(context: *anyopaque, index: i64) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.section.set(@backingInt(Section.atRow(index)));
+    }
+
+    /// The Top Bar panel: macOS's top band as a window draws it, its traffic
+    /// lights drawn in, first with the title alone, then with an icon
+    /// segmented control after the lights, wide and narrow.
+    ///
+    /// - `self`: the gallery.
+    /// - `active_theme`: the theme this frame draws with.
+    /// - Returns: the panel's view.
+    fn topBarPanel(self: *Self, active_theme: ziggui.Theme) ziggui.View {
+        const width = ziggui.IconSegment.controlWidth(top_bar_segments.len);
+        return ziggui.VStack(.{
+            Self.card(active_theme, "The top band: the title centered, clear of the traffic lights", "ziggui.WindowChrome.topBar", Self.macWindowBand(active_theme, ziggui.WindowChrome.topBar(Self.topBarTitle(active_theme), true))),
+            Self.card(active_theme, "A segmented control after the lights; the title still centered in the window", "ziggui.WindowChrome.topBarLeading · ziggui.IconSegmentedControl", Self.macWindowBand(active_theme, ziggui.WindowChrome.topBarLeading(
+                ziggui.IconSegmentedControl(self.top_bar_mode.binding(), &top_bar_segments),
+                width,
+                Self.topBarTitle(active_theme),
+                true,
+            ))),
+            Self.card(active_theme, "Narrow: the title truncates before it reaches the control", "ziggui.WindowChrome.topBarLeading", Self.leading(Self.macWindowBand(active_theme, ziggui.WindowChrome.topBarLeading(
+                ziggui.IconSegmentedControl(self.top_bar_mode.binding(), &top_bar_segments),
+                width,
+                Self.topBarTitle(active_theme),
+                true,
+            )).frameWidth(560))),
+            ziggui.Text(ziggui.BuildScope.shared().print("Mode: {s}", .{top_bar_segments[@intCast(std.math.clamp(self.top_bar_mode.get(), 0, top_bar_segments.len - 1))].title})).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+        }).spacing(16);
+    }
+
+    /// The Top Bar panel's title: a path, as ziggit shows its repository's.
+    ///
+    /// - `active_theme`: the theme this frame draws with.
+    /// - Returns: the title.
+    fn topBarTitle(active_theme: ziggui.Theme) ziggui.View {
+        return ziggui.Text("~/src/mlavergn/ziggui/gallery").font(.footnote).mono().foreground(active_theme.colors.secondary_label).truncated();
+    }
+
+    /// A macOS window's top band, its traffic lights drawn over it where
+    /// macOS puts them in a unified compact titlebar (12pt in, 14pt across,
+    /// 9pt apart, centred in the band), on the window's ground.
+    ///
+    /// - `active_theme`: the theme this frame draws with.
+    /// - `band`: the band (`WindowChrome.topBar` or `topBarLeading`).
+    /// - Returns: the band with its lights.
+    fn macWindowBand(active_theme: ziggui.Theme, band: ziggui.View) ziggui.View {
+        const lights = ziggui.HStack(.{
+            ziggui.Circle(ziggui.Color.fromRgb8(255, 95, 87)).frame(14, 14),
+            ziggui.Circle(ziggui.Color.fromRgb8(254, 188, 46)).frame(14, 14),
+            ziggui.Circle(ziggui.Color.fromRgb8(40, 200, 64)).frame(14, 14),
+            ziggui.Spacer(),
+        }).spacing(9).paddingInsets(.{ .leading = 12 }).frameHeight(ziggui.WindowChrome.top_bar_height).frameMaxWidth();
+        return ziggui.ZStack(.{ band, lights })
+            .frameHeight(ziggui.WindowChrome.top_bar_height)
+            .frameMaxWidth()
+            .background(active_theme.colors.window_background)
+            .border(active_theme.colors.separator, 1);
     }
 
     /// The Status Line panel: the keys a composer takes, then a list's, each
@@ -1046,6 +1199,21 @@ test "every section has a sidebar row" {
 test "a selection past the last row shows the last section" {
     try std.testing.expectEqual(Section.chat, Section.at(-1));
     try std.testing.expectEqual(@as(Section, @fromBackingInt(@intCast(Section.items.len - 1))), Section.at(99));
+}
+
+test "the sidebar lists the sections by label; each keeps its index" {
+    for (1..Section.sidebar_items.len) |row| {
+        try std.testing.expect(!std.ascii.lessThanIgnoreCase(Section.sidebar_items[row].label, Section.sidebar_items[row - 1].label));
+    }
+    for (Section.sorted, 0..) |section, row| {
+        try std.testing.expectEqual(section, Section.atRow(@intCast(row)));
+        try std.testing.expectEqual(@as(i64, @intCast(row)), section.row());
+    }
+    // Indices are the enum's: the first section stays the first, the newest
+    // is appended, whatever their rows.
+    try std.testing.expectEqual(Section.chat, Section.at(0));
+    try std.testing.expectEqual(Section.topBar, Section.at(@intCast(Section.items.len - 1)));
+    try std.testing.expectEqualStrings("Badges & Keys", Section.sidebar_items[0].label);
 }
 
 test "the gallery draws every section, light and dark" {

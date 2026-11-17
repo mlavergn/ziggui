@@ -51,6 +51,10 @@ pub const DisplayText = @import("../module.zig").DisplayText;
 pub const GeometryReader = @import("../module.zig").GeometryReader;
 /// Children side by side (from the views module).
 pub const HStack = @import("../module.zig").HStack;
+/// A segmented control of icons (from the views module).
+pub const IconSegmentedControl = @import("../module.zig").IconSegmentedControl;
+/// One segment of an `IconSegmentedControl` (from the views module).
+pub const IconSegment = @import("../module.zig").IconSegment;
 /// A menu bar drawn in the window (from the views module).
 pub const MenuBar = @import("../module.zig").MenuBar;
 /// One menu of a `MenuBar` (from the views module).

@@ -119,7 +119,10 @@ pub const WkWebViewBackend = struct {
             .{ .selector = "webView:didFailProvisionalNavigation:withError:", .implementation = @ptrCast(&Self.onFail), .types = "v@:@@@" },
             .{ .selector = "webView:didCommitNavigation:", .implementation = @ptrCast(&Self.onCommit), .types = "v@:@@" },
         });
-        const native = std.heap.c_allocator.create(NativePage) catch null;
+        const native = std.heap.c_allocator.create(NativePage) catch |err| blk: {
+            log.warn("page not made: {s}", .{@errorName(err)});
+            break :blk null;
+        };
         if (controller == null or web_view == null or handler == null or observer == null or navigation == null or native == null) {
             for ([_]mod.Id{ controller, web_view, handler, observer, navigation }) |object| mod.ObjectiveC.release(object);
             if (native) |unused| std.heap.c_allocator.destroy(unused);
@@ -342,7 +345,7 @@ pub const WkWebViewBackend = struct {
         // No pool of its own: see `NativePage.report`.
         const description = mod.ObjectiveC.utf8(mod.ObjectiveC.send(mod.Id, error_object, "localizedDescription", .{}));
         const text = if (description.len > 0) description else "The page could not be loaded.";
-        const length = Self.cutLength(text, native.failure.len);
+        const length = views.DisplayText.fitLength(text, native.failure.len);
         native.failure_length = length;
         @memcpy(native.failure[0..length], text[0..length]);
         native.report();
@@ -365,54 +368,17 @@ pub const WkWebViewBackend = struct {
         native.report();
     }
 
-    /// Whether two `NSURL`s share an origin: a scheme, host and port; for a
-    /// URL with no host (`data:`, `about:`) the whole URL, its origin its own
-    /// alone; `file:` URLs one origin, the user's files.
+    /// Whether two `NSURL`s share an origin, by the rule every platform's
+    /// web view applies (`WebOrigin.same`) to their absolute addresses.
     ///
     /// - `first_url`: one URL; nil never matches.
     /// - `second_url`: the other; nil never matches.
     /// - Returns: true when both are present and their origins agree.
     fn sameOrigin(first_url: mod.Id, second_url: mod.Id) bool {
         if (first_url == null or second_url == null) return false;
-        if (!Self.sameObject(Self.lowered(mod.ObjectiveC.send(mod.Id, first_url, "scheme", .{})), Self.lowered(mod.ObjectiveC.send(mod.Id, second_url, "scheme", .{})))) return false;
-        const first_host = Self.lowered(mod.ObjectiveC.send(mod.Id, first_url, "host", .{}));
-        // Without this any `data:` page would pass for the inline one, and a
-        // site could navigate to a `data:` page of its own to reach a bridge.
-        if (first_host == null and mod.ObjectiveC.send(u8, first_url, "isFileURL", .{}) == 0) return mod.ObjectiveC.send(u8, first_url, "isEqual:", .{second_url}) != 0;
-        return Self.sameObject(first_host, Self.lowered(mod.ObjectiveC.send(mod.Id, second_url, "host", .{}))) and
-            Self.sameObject(mod.ObjectiveC.send(mod.Id, first_url, "port", .{}), mod.ObjectiveC.send(mod.Id, second_url, "port", .{}));
-    }
-
-    /// Whether two objects are equal, two nils counting as equal (a `data:`
-    /// URL has no host).
-    ///
-    /// - `first_object`: one object, or nil.
-    /// - `second_object`: the other, or nil.
-    /// - Returns: true when both are nil or the first answers `isEqual:` to the second.
-    fn sameObject(first_object: mod.Id, second_object: mod.Id) bool {
-        if (first_object == null or second_object == null) return first_object == second_object;
-        return mod.ObjectiveC.send(u8, first_object, "isEqual:", .{second_object}) != 0;
-    }
-
-    /// How much of `text` fits in `capacity` bytes, cut on a character, never
-    /// inside one.
-    ///
-    /// - `text`: UTF-8 text.
-    /// - `capacity`: the room.
-    /// - Returns: the length to keep.
-    fn cutLength(text: []const u8, capacity: usize) usize {
-        if (text.len <= capacity) return text.len;
-        var length = capacity;
-        while (length > 0 and (text[length] & 0xC0) == 0x80) length -= 1;
-        return length;
-    }
-
-    /// A string in lowercase.
-    ///
-    /// - `text`: the `NSString`, or nil.
-    /// - Returns: its lowercase form, or nil.
-    fn lowered(text: mod.Id) mod.Id {
-        return mod.ObjectiveC.send(mod.Id, text, "lowercaseString", .{});
+        const first_address = mod.ObjectiveC.utf8(mod.ObjectiveC.send(mod.Id, first_url, "absoluteString", .{}));
+        const second_address = mod.ObjectiveC.utf8(mod.ObjectiveC.send(mod.Id, second_url, "absoluteString", .{}));
+        return mod.WebOrigin.same(first_address, second_address);
     }
 
     /// A new instance (+1) of an `NSObject` subclass answering `methods`,
@@ -509,11 +475,4 @@ test "wk web view backend answers the navigation and edit actions it sends" {
     for ([_][*:0]const u8{ "goBack", "goForward", "reload", "canGoBack", "canGoForward", "stopLoading", "loadHTMLString:baseURL:", "copy:", "cut:", "paste:", "selectAll:" }) |action| {
         try std.testing.expect(mod.ObjectiveC.send(u8, class, "instancesRespondToSelector:", .{mod.ObjectiveC.selectorNamed(action)}) != 0);
     }
-}
-
-test "wk web view backend cuts a long failure on a character" {
-    // "é" is two bytes: room for one byte more than "ab" keeps "ab", not half of it.
-    try std.testing.expectEqual(@as(usize, 2), WkWebViewBackend.cutLength("abé", 3));
-    try std.testing.expectEqual(@as(usize, 4), WkWebViewBackend.cutLength("abé", 4));
-    try std.testing.expectEqual(@as(usize, 4), WkWebViewBackend.cutLength("abé", 10));
 }

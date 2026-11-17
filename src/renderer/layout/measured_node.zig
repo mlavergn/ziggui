@@ -15,6 +15,8 @@ pub const MeasuredNode = struct {
     /// The caller-owned measurement state `measure_fn` receives.
     context: *const anyopaque,
     /// The leaf's size for a proposal.
+    ///
+    /// - Returns: the size.
     measure_fn: *const fn (*const anyopaque, mod.Proposal) mod.Size,
 };
 

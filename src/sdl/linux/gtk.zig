@@ -168,8 +168,6 @@ pub const GtkApi = struct {
     gtk_widget_realize: *const fn (*anyopaque) callconv(.c) void,
     /// `gtk_widget_show`, resolved from its library.
     gtk_widget_show: *const fn (*anyopaque) callconv(.c) void,
-    /// `gtk_widget_show_all`, resolved from its library.
-    gtk_widget_show_all: *const fn (*anyopaque) callconv(.c) void,
     /// `gtk_widget_hide`, resolved from its library.
     gtk_widget_hide: *const fn (*anyopaque) callconv(.c) void,
     /// `gtk_widget_destroy`, resolved from its library.
@@ -239,21 +237,21 @@ pub const GtkApi = struct {
     XGetInputFocus: *const fn (*anyopaque, *c_ulong, *c_int) callconv(.c) c_int,
 };
 
+/// Where GTK stands in this process.
+const GtkStatus = enum {
+    const Self = @This();
+
+    /// Not tried yet.
+    untried,
+    /// Running: `api` is filled.
+    running,
+    /// Tried and failed; never tried again.
+    failed,
+};
+
 /// GTK in this process: whether it started, and the entry points once it did.
 pub const Gtk = struct {
     const Self = @This();
-
-    /// Where GTK stands in this process.
-    const Status = enum {
-        const Self = @This();
-
-        /// Not tried yet.
-        untried,
-        /// Running: `api` is filled.
-        running,
-        /// Tried and failed; never tried again.
-        failed,
-    };
 
     /// `GTK_WINDOW_POPUP`: a window the window manager never sees.
     pub const window_popup: c_int = 1;
@@ -277,6 +275,24 @@ pub const Gtk = struct {
     pub const signal_match_data: c_int = 1 << 4;
     /// Xlib's `RevertToParent`.
     pub const revert_to_parent: c_int = 2;
+    /// `GDK_KEY_Return`.
+    pub const key_return: c_uint = 0xff0d;
+    /// `GDK_KEY_Escape`.
+    pub const key_escape: c_uint = 0xff1b;
+    /// `GDK_KEY_Tab`.
+    pub const key_tab: c_uint = 0xff09;
+    /// `GDK_KEY_BackSpace`.
+    pub const key_backspace: c_uint = 0xff08;
+    /// `GDK_KEY_Delete`.
+    pub const key_delete: c_uint = 0xffff;
+    /// `GDK_KEY_Left`.
+    pub const key_left: c_uint = 0xff51;
+    /// `GDK_KEY_Up`.
+    pub const key_up: c_uint = 0xff52;
+    /// `GDK_KEY_Right`.
+    pub const key_right: c_uint = 0xff53;
+    /// `GDK_KEY_Down`.
+    pub const key_down: c_uint = 0xff54;
 
     /// Each library, the soname it is opened by.
     const libraries = [_][:0]const u8{
@@ -290,7 +306,7 @@ pub const Gtk = struct {
     };
 
     /// Where GTK stands.
-    var status: Status = .untried;
+    var status: GtkStatus = .untried;
 
     /// The entry points, once running.
     var api: GtkApi = undefined;
@@ -323,7 +339,7 @@ pub const Gtk = struct {
         // shared-memory path draws everywhere. Set before the first web
         // process starts; a value the user set wins.
         _ = sdl_c.SDL_setenv_unsafe("WEBKIT_DISABLE_DMABUF_RENDERER", "1", 0);
-        if (!Self.load()) return null;
+        if (!mod.DynamicApi.load(GtkApi, &api, &libraries, Self.libraryOf, "web views")) return null;
         api.gdk_set_allowed_backends("x11");
         if (api.gtk_init_check(null, null) == 0) {
             log.warn("GTK would not start: web views are unavailable", .{});
@@ -369,27 +385,6 @@ pub const Gtk = struct {
     pub fn untrapErrors() void {
         if (status != .running) return;
         if (api.gdk_display_get_default()) |default| api.gdk_x11_display_error_trap_pop_ignored(default);
-    }
-
-    /// Opens every library and resolves every field of `GtkApi`.
-    ///
-    /// - Returns: false, with a warning, when one is missing.
-    fn load() bool {
-        var handles: [libraries.len]*anyopaque = undefined;
-        for (libraries, &handles) |name, *handle| {
-            handle.* = std.c.dlopen(name, .{ .LAZY = true }) orelse {
-                log.warn("web views are unavailable: {s} is missing", .{name});
-                return false;
-            };
-        }
-        inline for (@typeInfo(GtkApi).@"struct".field_names) |name| {
-            const pointer = std.c.dlsym(handles[comptime Self.libraryOf(name)], name) orelse {
-                log.warn("web views are unavailable: {s} has no {s}", .{ libraries[comptime Self.libraryOf(name)], name });
-                return false;
-            };
-            @field(api, name) = @ptrCast(@alignCast(pointer));
-        }
-        return true;
     }
 
     /// Which of `libraries` defines a `GtkApi` field, by its prefix.
