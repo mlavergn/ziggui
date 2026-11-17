@@ -13,8 +13,8 @@ const sdl_c = @import("sdl_c");
 pub const VideoBackend = struct {
     const Self = @This();
 
-    /// The platform player: AVFoundation on macOS; Media Foundation on
-    /// Windows and GStreamer on Linux, both stubs for now.
+    /// The platform player: AVFoundation on macOS, Media Foundation on
+    /// Windows; GStreamer on Linux, a stub for now.
     const Platform = switch (mod.os_tag) {
         .macos => mod.AvFoundationPlayer,
         .windows => mod.MediaFoundationPlayer,
@@ -46,6 +46,16 @@ pub const VideoBackend = struct {
     /// - `regions`: the frame's `VideoPlayer` regions, in points.
     pub fn present(window: *sdl_c.SDL_Window, regions: []const views.VideoRegion) void {
         Platform.present(window, regions);
+    }
+
+    /// The frames the renderer draws under the surface this frame: Windows'
+    /// player hands them over (`VideoUnderlay`); a player that shows its
+    /// picture behind the window (macOS) has none.
+    ///
+    /// - Returns: the underlays, valid until the next `present`.
+    pub fn underlays() []const mod.VideoUnderlay {
+        if (comptime @hasDecl(Platform, "underlays")) return Platform.underlays();
+        return &.{};
     }
 };
 

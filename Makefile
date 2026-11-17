@@ -17,8 +17,12 @@
 # Configuration
 # ---------------------------------------------
 
-# The released version, read from build.zig.zon (the source of truth).
-VERSION := $(shell sed -n -E 's/^[[:space:]]*\.version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' build.zig.zon)
+# The released version, read from build.zig.zon (the source of truth). Only
+# `tag` reads it, so `=` defers the sed until then (Windows has no sed).
+VERSION = $(shell sed -n -E 's/^[[:space:]]*\.version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' build.zig.zon)
+
+# The Zig compiler: `make demo ZIG=C:/zig-0.17.1/zig.exe` picks one.
+ZIG ?= zig
 
 # The Zig source roots `format` and `lint` walk (see ../styleguide/Makefile.in).
 ZIG_DIRS := src gallery build
@@ -37,18 +41,18 @@ all: build format test
 
 # Build the library.
 build:
-	zig build
+	$(ZIG) build
 
 # Build optimized for release.
 dist:
-	zig build --release=fast
+	$(ZIG) build --release=fast
 
 # Build and launch the gallery (every ziggui component, with theme and
 # light/dark switchers) in a window. SDL3 is fetched and built by Zig on first
 # use. ReleaseFast because the software fallback is ~10x slower in Debug.
 # Pass arguments with `make demo ARGS="--dark"`.
 demo:
-	zig build run-gallery -Doptimize=ReleaseFast -- $(ARGS)
+	$(ZIG) build run-gallery -Doptimize=ReleaseFast -- $(ARGS)
 
 # ---------------------------------------------
 # Cross-compilation
@@ -56,15 +60,15 @@ demo:
 
 # Compile for Linux.
 linux:
-	zig build -Dtarget=x86_64-linux
+	$(ZIG) build -Dtarget=x86_64-linux
 
 # Compile for Windows.
 windows:
-	zig build -Dtarget=x86_64-windows
+	$(ZIG) build -Dtarget=x86_64-windows
 
 # List every target Zig can build for.
 targets:
-	zig targets
+	$(ZIG) targets
 
 # ---------------------------------------------
 # Test
@@ -72,7 +76,7 @@ targets:
 
 # Run the unit test suite.
 test:
-	zig build test --summary all
+	$(ZIG) build test --summary all
 
 # ---------------------------------------------
 # Documentation
@@ -80,7 +84,7 @@ test:
 
 # Build the API docs and serve them locally.
 docs:
-	zig build docs
+	$(ZIG) build docs
 	open "http://127.0.0.1:8080" &
 	python3 -m http.server -b 127.0.0.1 8080 -d zig-out/docs
 

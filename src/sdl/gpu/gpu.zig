@@ -380,6 +380,25 @@ const GpuEncoder = struct {
     }
 };
 
+/// A video underlay's texture, kept while its key (its player) keeps
+/// drawing, and uploaded again only for a new frame.
+const VideoTexture = struct {
+    const Self = @This();
+
+    /// The underlay's key; 0 for a free slot.
+    key: usize = 0,
+    /// The texture, sized to the frames.
+    texture: ?*sdl_c.SDL_GPUTexture = null,
+    /// Its width, in pixels.
+    width: u32 = 0,
+    /// Its height, in pixels.
+    height: u32 = 0,
+    /// The frame it holds (`VideoUnderlay.generation`).
+    generation: u64 = 0,
+    /// The frame number it was last drawn in, to free a slot no longer used.
+    drawn_in_frame: u64 = 0,
+};
+
 /// The SDL_GPU device, its pipelines, and the textures and buffers a frame
 /// reuses.
 pub const Gpu = struct {
@@ -413,6 +432,24 @@ pub const Gpu = struct {
         .enable_blend = true,
         .enable_color_write_mask = false,
     };
+
+    /// Destination-under: the source fills only what the scene left
+    /// transparent (a hole a `VideoPlayer` erased), so a video frame drawn after
+    /// the scene shows under its controls (`VideoUnderlay`).
+    const under_blend = sdl_c.SDL_GPUColorTargetBlendState{
+        .src_color_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE_MINUS_DST_ALPHA,
+        .dst_color_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE,
+        .color_blend_op = sdl_c.SDL_GPU_BLENDOP_ADD,
+        .src_alpha_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE_MINUS_DST_ALPHA,
+        .dst_alpha_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE,
+        .alpha_blend_op = sdl_c.SDL_GPU_BLENDOP_ADD,
+        .color_write_mask = 0,
+        .enable_blend = true,
+        .enable_color_write_mask = false,
+    };
+
+    /// How many video frames one frame draws under the scene.
+    const max_underlays = 8;
 
     /// Owns the atlas and read-back buffers.
     allocator: std.mem.Allocator,
@@ -475,6 +512,28 @@ pub const Gpu = struct {
     /// The upload buffer's size, in bytes.
     transfer_capacity: u32 = 0,
 
+    /// The instanced pipeline with the under blend, for video frames; null
+    /// when it could not be made (the holes then stay black).
+    under_pipeline: ?*sdl_c.SDL_GPUGraphicsPipeline = null,
+
+    /// The bilinear sampler video frames are scaled with.
+    video_sampler: ?*sdl_c.SDL_GPUSampler = null,
+
+    /// One texture per video underlay, by its key.
+    video_textures: [max_underlays]VideoTexture = @splat(.{}),
+
+    /// The underlays' instances.
+    underlay_buffer: ?*sdl_c.SDL_GPUBuffer = null,
+
+    /// The underlays' upload buffer.
+    underlay_transfer: ?*sdl_c.SDL_GPUTransferBuffer = null,
+
+    /// The underlays' upload buffer's size, in bytes.
+    underlay_transfer_capacity: u32 = 0,
+
+    /// Counts frames that drew underlays, for `VideoTexture.drawn_in_frame`.
+    underlay_frame: u64 = 0,
+
     /// Creates the device and pipelines, claiming `window`'s swapchain when
     /// given.
     ///
@@ -505,6 +564,11 @@ pub const Gpu = struct {
         if (self.atlas_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
         if (self.scene_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
         if (self.scratch_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
+        for (self.video_textures) |slot| if (slot.texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
+        if (self.underlay_buffer) |buffer| sdl_c.SDL_ReleaseGPUBuffer(device, buffer);
+        if (self.underlay_transfer) |transfer| sdl_c.SDL_ReleaseGPUTransferBuffer(device, transfer);
+        if (self.video_sampler) |video_sampler| sdl_c.SDL_ReleaseGPUSampler(device, video_sampler);
+        if (self.under_pipeline) |pipeline| sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
         sdl_c.SDL_ReleaseGPUSampler(device, self.sampler);
         sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.primitive_pipeline);
         sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.erase_pipeline);
@@ -531,6 +595,8 @@ pub const Gpu = struct {
     /// - `commands`: the frame's draw commands, already scaled.
     /// - `clear`: the background color.
     /// - `oversample`: the supersampling factor (1 = off).
+    /// - `underlays`: video frames to draw under the scene's holes.
+    /// - `scale`: device pixels per point, for the underlays' rects.
     /// - Returns: false when nothing was presented (minimized swapchain, lost
     ///   device, OOM); the caller just skips the frame.
     pub fn frame(
@@ -539,6 +605,8 @@ pub const Gpu = struct {
         commands: []const renderer.DrawCommand,
         clear: renderer.Color,
         oversample: f32,
+        underlays: []const mod.VideoUnderlay,
+        scale: f32,
     ) bool {
         const window = self.window orelse return false;
         const command_buffer = sdl_c.SDL_AcquireGPUCommandBuffer(self.device) orelse return false;
@@ -574,6 +642,7 @@ pub const Gpu = struct {
         }
 
         self.encode(command_buffer, scene, clear, scene_width, scene_height);
+        if (underlays.len > 0) self.drawUnderlays(command_buffer, underlays, scale, scene_width, scene_height);
 
         sdl_c.SDL_BlitGPUTexture(command_buffer, &.{
             .source = .{ .texture = self.scene_texture, .w = scene_width, .h = scene_height },
@@ -843,6 +912,12 @@ pub const Gpu = struct {
             sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, self.primitive_pipeline);
             return false;
         };
+        // Video frames draw under the scene with the same shaders (an image
+        // instance sampling the frame's texture); without it the holes stay black.
+        var under_target = color_target;
+        under_target.blend_state = Self.under_blend;
+        create_info.target_info.color_target_descriptions = &under_target;
+        self.under_pipeline = sdl_c.SDL_CreateGPUGraphicsPipeline(device, &create_info);
 
         // Blur pipelines share the bare quad vertex shader and have no vertex
         // buffer. The horizontal pass overwrites scratch (no blending); the
@@ -1065,6 +1140,207 @@ pub const Gpu = struct {
         sdl_c.SDL_EndGPUCopyPass(copy);
         self.atlas.clearPending();
         return true;
+    }
+
+    /// Draws video frames under what the scene left transparent: each frame's
+    /// picture, then black over the rest of its view's frame, with the under
+    /// blend, so the controls painted over a `VideoPlayer` stay on top. A
+    /// frame's texture is uploaded only when its generation changed.
+    ///
+    /// - `self`: the device.
+    /// - `command_buffer`: the frame's command buffer, after the scene's passes.
+    /// - `underlays`: the frames and where they go, in points.
+    /// - `scale`: device pixels per point.
+    /// - `width`: the scene's width, in pixels.
+    /// - `height`: the scene's height, in pixels.
+    fn drawUnderlays(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, underlays: []const mod.VideoUnderlay, scale: f32, width: u32, height: u32) void {
+        const pipeline = self.under_pipeline orelse return;
+        if (self.video_sampler == null) self.video_sampler = sdl_c.SDL_CreateGPUSampler(self.device, &.{
+            .min_filter = sdl_c.SDL_GPU_FILTER_LINEAR,
+            .mag_filter = sdl_c.SDL_GPU_FILTER_LINEAR,
+            .mipmap_mode = sdl_c.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+            .address_mode_u = sdl_c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_v = sdl_c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_w = sdl_c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        });
+        const video_sampler = self.video_sampler orelse return;
+        const count: usize = @min(underlays.len, max_underlays);
+        self.underlay_frame += 1;
+
+        // Two instances per frame (its picture, then black), and the slots
+        // whose texture takes a new frame.
+        var instances: [max_underlays * 2]renderer.Instance = undefined;
+        var slots: [max_underlays]?*VideoTexture = @splat(null);
+        var uploads: [max_underlays]bool = @splat(false);
+        const viewport = [4]f32{ 0, 0, @floatFromInt(width), @floatFromInt(height) };
+        var upload_bytes: u32 = 0;
+        for (underlays[0..count], 0..) |underlay, index| {
+            const has_frame = underlay.width > 0 and underlay.height > 0 and underlay.pixels.len >= @as(usize, underlay.width) * underlay.height * 4;
+            if (has_frame) slots[index] = self.videoTexture(underlay.key, underlay.width, underlay.height);
+            if (slots[index]) |slot| {
+                slot.drawn_in_frame = self.underlay_frame;
+                if (slot.generation != underlay.generation) {
+                    uploads[index] = true;
+                    upload_bytes += underlay.width * underlay.height * 4;
+                }
+            }
+            instances[index * 2] = Self.underlayInstance(4, Self.scaledRect(underlay.picture, scale), .{ 1, 1, 1, 1 }, viewport);
+            instances[index * 2 + 1] = Self.underlayInstance(0, Self.scaledRect(underlay.frame, scale), .{ 0, 0, 0, 1 }, viewport);
+        }
+        self.freeIdleVideoTextures();
+
+        const instance_bytes: u32 = @intCast(count * 2 * @sizeOf(renderer.Instance));
+        const total = instance_bytes + upload_bytes;
+        if (self.underlay_buffer == null) {
+            self.underlay_buffer = sdl_c.SDL_CreateGPUBuffer(self.device, &.{
+                .usage = sdl_c.SDL_GPU_BUFFERUSAGE_VERTEX,
+                .size = max_underlays * 2 * @sizeOf(renderer.Instance),
+            });
+        }
+        if (self.underlay_transfer == null or self.underlay_transfer_capacity < total) {
+            if (self.underlay_transfer) |transfer| sdl_c.SDL_ReleaseGPUTransferBuffer(self.device, transfer);
+            self.underlay_transfer_capacity = @max(total, self.underlay_transfer_capacity * 2);
+            self.underlay_transfer = sdl_c.SDL_CreateGPUTransferBuffer(self.device, &.{
+                .usage = sdl_c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                .size = self.underlay_transfer_capacity,
+            });
+        }
+        const buffer = self.underlay_buffer orelse return;
+        const transfer = self.underlay_transfer orelse {
+            self.underlay_transfer_capacity = 0;
+            return;
+        };
+        const mapped: [*]u8 = @ptrCast(sdl_c.SDL_MapGPUTransferBuffer(self.device, transfer, true) orelse return);
+        @memcpy(mapped[0..instance_bytes], std.mem.sliceAsBytes(instances[0 .. count * 2]));
+        var offset: u32 = instance_bytes;
+        for (underlays[0..count], 0..) |underlay, index| {
+            if (!uploads[index]) continue;
+            const size = underlay.width * underlay.height * 4;
+            @memcpy(mapped[offset..][0..size], underlay.pixels[0..size]);
+            offset += size;
+        }
+        sdl_c.SDL_UnmapGPUTransferBuffer(self.device, transfer);
+
+        const copy = sdl_c.SDL_BeginGPUCopyPass(command_buffer) orelse return;
+        sdl_c.SDL_UploadToGPUBuffer(copy, &.{ .transfer_buffer = transfer, .offset = 0 }, &.{ .buffer = buffer, .offset = 0, .size = instance_bytes }, true);
+        offset = instance_bytes;
+        for (underlays[0..count], 0..) |underlay, index| {
+            if (!uploads[index]) continue;
+            const slot = slots[index].?;
+            sdl_c.SDL_UploadToGPUTexture(
+                copy,
+                &.{ .transfer_buffer = transfer, .offset = offset, .pixels_per_row = underlay.width, .rows_per_layer = underlay.height },
+                &.{ .texture = slot.texture, .w = underlay.width, .h = underlay.height, .d = 1 },
+                true,
+            );
+            slot.generation = underlay.generation;
+            offset += underlay.width * underlay.height * 4;
+        }
+        sdl_c.SDL_EndGPUCopyPass(copy);
+
+        const target = sdl_c.SDL_GPUColorTargetInfo{
+            .texture = self.scene_texture,
+            .load_op = sdl_c.SDL_GPU_LOADOP_LOAD,
+            .store_op = sdl_c.SDL_GPU_STOREOP_STORE,
+        };
+        const pass = sdl_c.SDL_BeginGPURenderPass(command_buffer, &target, 1, null) orelse return;
+        defer sdl_c.SDL_EndGPURenderPass(pass);
+        sdl_c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
+        sdl_c.SDL_BindGPUVertexBuffers(pass, 0, &.{ .buffer = buffer, .offset = 0 }, 1);
+        const size = [4]f32{ @floatFromInt(width), @floatFromInt(height), 0, 0 };
+        sdl_c.SDL_PushGPUVertexUniformData(command_buffer, 0, &size, @sizeOf(@TypeOf(size)));
+        for (0..count) |index| {
+            const first: u32 = @intCast(index * 2);
+            if (slots[index]) |slot| {
+                sdl_c.SDL_BindGPUFragmentSamplers(pass, 0, &.{ .texture = slot.texture, .sampler = video_sampler }, 1);
+                sdl_c.SDL_DrawGPUPrimitives(pass, 4, 1, 0, first);
+            }
+            // The black fill samples nothing, but a texture must be bound.
+            sdl_c.SDL_BindGPUFragmentSamplers(pass, 0, &.{ .texture = self.atlas_texture, .sampler = self.sampler }, 1);
+            sdl_c.SDL_DrawGPUPrimitives(pass, 4, 1, 0, first + 1);
+        }
+    }
+
+    /// The texture slot for a video underlay's key at a frame size: its own,
+    /// remade when the size changed, or a free one.
+    ///
+    /// - `self`: the device.
+    /// - `key`: the underlay's key.
+    /// - `width`: the frame's width, in pixels.
+    /// - `height`: the frame's height.
+    /// - Returns: the slot, or null when every slot is taken or SDL refused.
+    fn videoTexture(self: *Self, key: usize, width: u32, height: u32) ?*VideoTexture {
+        var found: ?*VideoTexture = null;
+        for (&self.video_textures) |*slot| {
+            if (slot.key == key) found = slot;
+        }
+        if (found == null) for (&self.video_textures) |*slot| {
+            if (slot.key == 0) {
+                found = slot;
+                break;
+            }
+        };
+        const slot = found orelse return null;
+        if (slot.texture != null and slot.key == key and slot.width == width and slot.height == height) return slot;
+        if (slot.texture) |texture| sdl_c.SDL_ReleaseGPUTexture(self.device, texture);
+        slot.* = .{ .key = key, .width = width, .height = height };
+        slot.texture = sdl_c.SDL_CreateGPUTexture(self.device, &.{
+            .type = sdl_c.SDL_GPU_TEXTURETYPE_2D,
+            .format = sdl_c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+            .usage = sdl_c.SDL_GPU_TEXTUREUSAGE_SAMPLER,
+            .width = width,
+            .height = height,
+            .layer_count_or_depth = 1,
+            .num_levels = 1,
+        });
+        if (slot.texture == null) {
+            slot.* = .{};
+            return null;
+        }
+        return slot;
+    }
+
+    /// Frees the textures of underlays no longer drawn, a couple of seconds on.
+    ///
+    /// - `self`: the device.
+    fn freeIdleVideoTextures(self: *Self) void {
+        for (&self.video_textures) |*slot| {
+            if (slot.key == 0 or slot.drawn_in_frame + 120 > self.underlay_frame) continue;
+            if (slot.texture) |texture| sdl_c.SDL_ReleaseGPUTexture(self.device, texture);
+            slot.* = .{};
+        }
+    }
+
+    /// An instance the primitive shaders draw unclipped: an image (kind 4,
+    /// the whole bound texture) or a plain fill (kind 0).
+    ///
+    /// - `kind`: the shader's instance kind.
+    /// - `rect`: where, in pixels.
+    /// - `color`: the fill's color (an image ignores it).
+    /// - `viewport`: the whole scene, as the clip.
+    /// - Returns: the instance.
+    fn underlayInstance(kind: f32, rect: renderer.Rect, color: [4]f32, viewport: [4]f32) renderer.Instance {
+        const box = [4]f32{ rect.x, rect.y, rect.width, rect.height };
+        return .{
+            .quad = box,
+            .shape = box,
+            .color0 = color,
+            .color1 = color,
+            .points = @splat(0),
+            .atlas_rect = .{ 0, 0, 1, 1 },
+            .clip = viewport,
+            .clip_rounded_rect = @splat(0),
+            .parameters = .{ kind, 0, 0, 0 },
+        };
+    }
+
+    /// A rect in points, in device pixels.
+    ///
+    /// - `rect`: the rect, in points.
+    /// - `scale`: device pixels per point.
+    /// - Returns: the rect, in pixels.
+    fn scaledRect(rect: renderer.Rect, scale: f32) renderer.Rect {
+        return .{ .x = rect.x * scale, .y = rect.y * scale, .width = rect.width * scale, .height = rect.height * scale };
     }
 
     /// Encode a translated scene into `command_buffer`, rendering into the

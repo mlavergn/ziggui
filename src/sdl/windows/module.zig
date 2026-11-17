@@ -1,17 +1,22 @@
-//! The Windows platform code: the Win32 calls SDL does not make, and the
-//! stubs for Windows video (Media Foundation) and web pages (WebView2).
-//! Other targets reach it only through the compile-time selectors in the
-//! parent module (`VideoBackend`, `WebBackend`) and the Windows branches of
-//! `App` and the event loop.
+//! The Windows platform code: the Win32 calls SDL does not make, the
+//! native-view host that places child windows over SDL's, the WebView2 web
+//! view and the Media Foundation player. Other targets reach it only through
+//! the compile-time selectors in the parent module (`VideoBackend`,
+//! `WebBackend`, `NativeBackend`) and the Windows branches of `App` and the
+//! event loop.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_windows_module);
 
 /// The Win32 calls SDL does not make: the notification-area icon and the icon resource.
 pub const Win32 = @import("win32.zig").Win32;
-/// The Windows media player (Media Foundation): a stub for now.
+/// The bits of COM the web view and the player share.
+pub const Com = @import("com.zig").Com;
+/// The Windows native-view host: child windows placed over SDL's.
+pub const Win32NativeHost = @import("win32_native_host.zig").Win32NativeHost;
+/// The Windows media player (Media Foundation), its frames drawn under ziggui's surface.
 pub const MediaFoundationPlayer = @import("media_foundation_player.zig").MediaFoundationPlayer;
-/// The Windows web view (WebView2): a stub for now.
+/// The Windows web view (WebView2), placed by `Win32NativeHost`.
 pub const WebView2Backend = @import("web_view2_backend.zig").WebView2Backend;
 
 // -----------------------------------------------------------------------------
@@ -23,8 +28,12 @@ pub const App = @import("../module.zig").App;
 pub const Panel = @import("../module.zig").Panel;
 /// The window's icon (`Win32` sets the tray's), from the sdl module.
 pub const WindowIcon = @import("../module.zig").WindowIcon;
+/// A video frame drawn under ziggui's surface (`MediaFoundationPlayer` makes them), from the sdl module.
+pub const VideoUnderlay = @import("../module.zig").VideoUnderlay;
 /// The target OS, from the sdl module.
 pub const os_tag = @import("../module.zig").os_tag;
+/// The target CPU (`WebView2Backend` picks the runtime's library by it), from the sdl module.
+pub const cpu_arch = @import("../module.zig").cpu_arch;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
