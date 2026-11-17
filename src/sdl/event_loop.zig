@@ -472,8 +472,9 @@ const EventRouter = struct {
     /// (see `NativeView`) rather than to ziggui. A press on one is its own; a
     /// press elsewhere takes the keyboard back for ziggui. While one holds the
     /// keyboard, a key with ⌘ (or Ctrl) is offered to the app's key handler,
-    /// since AppKit gives the view no Edit menu to act on it, and every other
-    /// key and typed text is the view's alone.
+    /// and ⌘C/⌘X/⌘V/⌘A it leaves go to the view (`NativeBackend.performEdit`),
+    /// since AppKit gives the view no Edit menu; every other key and typed
+    /// text is the view's alone.
     ///
     /// - `event`: the event.
     /// - Returns: true when ziggui must not handle it.
@@ -488,7 +489,10 @@ const EventRouter = struct {
             sdl_c.SDL_EVENT_KEY_DOWN => {
                 if (!mod.NativeBackend.hasFocus()) return false;
                 if ((event.key.mod & (sdl_c.SDL_KMOD_GUI | sdl_c.SDL_KMOD_CTRL)) != 0) {
-                    if (app.key_handler) |handler| _ = handler(event.key.key, @intCast(event.key.mod));
+                    // The app's handler first; an editing key it leaves goes
+                    // to the view, which has no Edit menu to take it from.
+                    const consumed = if (app.key_handler) |handler| handler(event.key.key, @intCast(event.key.mod)) else false;
+                    if (!consumed) _ = mod.NativeBackend.performEdit(event.key.key, @intCast(event.key.mod));
                 }
                 return true;
             },
@@ -933,6 +937,8 @@ pub fn EventLoop(comptime AppState: type) type {
             views.FrameClock.shared().setWakeHandler(Self.wakeApp);
             // `Player`s are made with this OS's media player from here on.
             mod.VideoBackend.install();
+            // And `WebPage`s with its web view.
+            mod.WebBackend.install();
             app.hide_on_close = config.hide_on_close;
 
             self.frame = .{
@@ -1001,6 +1007,7 @@ pub fn EventLoop(comptime AppState: type) type {
             sdl_c.SDL_RemoveEventWatch(WindowFrame(AppState).resizeWatch, &self.frame);
             // Before the window goes: the pictures leave it, players live on.
             mod.VideoBackend.uninstall();
+            mod.WebBackend.uninstall();
             // And the app's platform views leave it; the app still owns them.
             mod.NativeBackend.detachAll();
             app.window = null;

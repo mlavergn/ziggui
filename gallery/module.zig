@@ -31,6 +31,12 @@ pub const Kit = @import("kit.zig").Kit;
 pub const Media = @import("media.zig").Media;
 /// The Settings panel: an app's settings (`ziggui.Settings`), and their state.
 pub const SettingsPanel = @import("settings_panel.zig").SettingsPanel;
+/// The Web View panel: a `WebPage` under a browser's toolbar, and its bookmarks.
+pub const WebPanel = @import("web_panel.zig").WebPanel;
+/// A saved site of the Web View panel.
+pub const Bookmark = @import("bookmarks.zig").Bookmark;
+/// The Web View panel's saved sites, in memory (`readZon`/`writeZon` for a file).
+pub const Bookmarks = @import("bookmarks.zig").Bookmarks;
 
 // -----------------------------------------------------------------------------
 // Test Fixtures

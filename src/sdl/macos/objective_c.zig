@@ -1,13 +1,28 @@
 //! A small typed bridge to the Objective-C runtime for frameworks SDL does
-//! not wrap (AVFoundation, Core Animation): messages, classes, strings and
-//! autorelease pools, plus the C geometry and time structs they pass by
-//! value. macOS only; nothing here is analyzed on other targets.
+//! not wrap (AppKit, AVFoundation, Core Animation, WebKit): messages,
+//! classes (looked up and defined), strings and autorelease pools, plus the
+//! C geometry and time structs they pass by value. macOS only; nothing here
+//! is analyzed on other targets.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_objective_c);
+const mod = @import("module.zig");
 
 /// An Objective-C object pointer (`id`), or nil.
 pub const Id = ?*anyopaque;
+
+/// One method a class `ObjectiveC.defineClass` registers answers.
+pub const ObjectiveCMethod = struct {
+    const Self = @This();
+
+    /// The selector's name (`hitTest:`).
+    selector: [*:0]const u8,
+    /// The C function answering it: receiver, selector, then the method's
+    /// arguments, `callconv(.c)`.
+    implementation: *const anyopaque,
+    /// Its Objective-C type encoding (`v@:@`).
+    types: [*:0]const u8,
+};
 
 /// Core Graphics' `CGPoint` (AppKit's `NSPoint`).
 pub const CGPoint = extern struct {
@@ -82,6 +97,9 @@ pub const ObjectiveC = struct {
     extern "objc" fn objc_msgSend() void;
     extern "objc" fn objc_autoreleasePoolPush() ?*anyopaque;
     extern "objc" fn objc_autoreleasePoolPop(pool: ?*anyopaque) void;
+    extern "objc" fn objc_allocateClassPair(superclass: Id, name: [*:0]const u8, extra: usize) Id;
+    extern "objc" fn objc_registerClassPair(class: Id) void;
+    extern "objc" fn class_addMethod(class: Id, name: Id, implementation: *const anyopaque, types: [*:0]const u8) u8;
 
     /// The class named `name`, or nil when no loaded framework defines it.
     ///
@@ -148,6 +166,33 @@ pub const ObjectiveC = struct {
         return object;
     }
 
+    /// The class `name`, a subclass of `superclass_name` answering `methods`,
+    /// registered on first use. A class already registered under `name` is
+    /// returned as it stands (the runtime refuses a second pair of a name).
+    ///
+    /// - `name`: the class's name, `Ziggui`-prefixed.
+    /// - `superclass_name`: the superclass's name (`NSObject`, `NSView`).
+    /// - `methods`: the methods it answers; ignored when it exists already.
+    /// - Returns: the class, or nil when the runtime will not register it.
+    pub fn defineClass(name: [*:0]const u8, superclass_name: [*:0]const u8, methods: []const ObjectiveCMethod) Id {
+        const existing = Self.class(name);
+        if (existing != null) return existing;
+        const created = objc_allocateClassPair(Self.class(superclass_name), name, 0);
+        if (created == null) return null;
+        for (methods) |method| _ = class_addMethod(created, Self.selectorNamed(method.selector), method.implementation, method.types);
+        objc_registerClassPair(created);
+        return created;
+    }
+
+    /// Hands an owned object to the innermost autorelease pool, which frees
+    /// it as it drains: after the notification being delivered returns, for
+    /// an object released from inside one; nil is ignored.
+    ///
+    /// - `object`: the object.
+    pub fn autorelease(object: Id) void {
+        if (object != null) _ = Self.send(Id, object, "autorelease", .{});
+    }
+
     /// Releases an owned object; nil is ignored.
     ///
     /// - `object`: the object.
@@ -204,4 +249,28 @@ test "objective-c: the C structs keep their C sizes" {
     try std.testing.expectEqual(@as(usize, 24), @sizeOf(CMTime));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(CMTimeRange));
     try std.testing.expectEqual(@as(usize, 32), @sizeOf(CGRect));
+}
+
+test "defineClass registers a class once, and its instances answer its methods" {
+    if (comptime mod.os_tag != .macos) return error.SkipZigTest;
+    const Probe = struct {
+        const Self = @This();
+
+        /// Answers 1, for the test's selector.
+        ///
+        /// - Returns: 1.
+        fn answer(_: Id, _: Id) callconv(.c) u8 {
+            return 1;
+        }
+    };
+    const methods = [_]ObjectiveCMethod{.{ .selector = "zigguiTestAnswer", .implementation = @ptrCast(&Probe.answer), .types = "c@:" }};
+    const first = ObjectiveC.defineClass("ZigguiTestDefined", "NSObject", &methods);
+    // A second definition finds the first, whatever methods it names.
+    const second = ObjectiveC.defineClass("ZigguiTestDefined", "NSObject", &.{});
+    try std.testing.expect(first != null and first == second);
+    const pool = ObjectiveC.pushPool();
+    defer ObjectiveC.popPool(pool);
+    const object = ObjectiveC.new("ZigguiTestDefined");
+    defer ObjectiveC.release(object);
+    try std.testing.expectEqual(@as(u8, 1), ObjectiveC.send(u8, object, "zigguiTestAnswer", .{}));
 }

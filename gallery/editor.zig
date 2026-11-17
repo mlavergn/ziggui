@@ -515,8 +515,8 @@ pub const Editor = struct {
     fn dialogView(self: *Self, theme: ziggui.Theme) ziggui.View {
         const confirm = ziggui.Callback.init(Self, self, Self.confirmDialog);
         return ziggui.VStack(.{
-            Self.leading(ziggui.Text(if (self.dialog_save) "Save As" else "Open").font(.title3)),
-            Self.leading(ziggui.Text("File path:").font(.subheadline).foreground(theme.colors.secondary_label)),
+            ziggui.Text(if (self.dialog_save) "Save As" else "Open").font(.title3).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("File path:").font(.subheadline).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             ziggui.TextField("/path/to/file.txt", &self.path_field)
                 .frameMaxWidth()
                 .onSubmit(confirm),
@@ -543,14 +543,6 @@ pub const Editor = struct {
             6 => content.font(.title2),
             else => content.font(.body),
         };
-    }
-
-    /// Pins `content` to the leading edge of a full-width row.
-    ///
-    /// - `content`: the view to pin.
-    /// - Returns: the row.
-    fn leading(content: ziggui.View) ziggui.View {
-        return ziggui.HStack(.{ content, ziggui.Spacer() }).frameMaxWidth();
     }
 };
 

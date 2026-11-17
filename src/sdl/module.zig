@@ -62,15 +62,15 @@ pub const MenuBarExtraEntry = @import("menu_bar_extra.zig").MenuBarExtraEntry;
 /// A plain status icon whose click runs a callback (no menu).
 pub const StatusItem = @import("status_item.zig").StatusItem;
 /// The Linux status item over D-Bus.
-pub const StatusNotifier = @import("status_notifier.zig").StatusNotifier;
+pub const StatusNotifier = @import("linux/module.zig").StatusNotifier;
 /// The Linux freedesktop entry for the running executable.
-pub const DesktopInstall = @import("desktop_install.zig").DesktopInstall;
+pub const DesktopInstall = @import("linux/module.zig").DesktopInstall;
 /// Where the running executable's freedesktop entry stands.
 pub const DesktopEntryState = views.DesktopEntryState;
 /// The bits of AppKit SDL does not expose, through the Objective-C runtime.
-pub const Cocoa = @import("cocoa.zig").Cocoa;
+pub const Cocoa = @import("macos/module.zig").Cocoa;
 /// The Win32 calls SDL does not make: the notification-area icon and the icon resource.
-pub const Win32 = @import("win32.zig").Win32;
+pub const Win32 = @import("windows/module.zig").Win32;
 /// The window manager's hit test: the drag band and the resize edges.
 pub const WindowHitTest = @import("window_hit_test.zig").WindowHitTest;
 /// The SDL_GPU backend.
@@ -78,33 +78,43 @@ pub const Gpu = @import("gpu/gpu.zig").Gpu;
 /// This OS's media player for `Player`, and the placement of its pictures.
 pub const VideoBackend = @import("video_backend.zig").VideoBackend;
 /// The macOS media player: AVFoundation, its pictures behind the Metal view.
-pub const AvFoundationPlayer = @import("av_foundation_player.zig").AvFoundationPlayer;
+pub const AvFoundationPlayer = @import("macos/module.zig").AvFoundationPlayer;
 /// The Windows media player (Media Foundation): a stub for now.
-pub const MediaFoundationPlayer = @import("media_foundation_player.zig").MediaFoundationPlayer;
+pub const MediaFoundationPlayer = @import("windows/module.zig").MediaFoundationPlayer;
 /// The Linux media player (GStreamer): a stub for now.
-pub const GstreamerPlayer = @import("gstreamer_player.zig").GstreamerPlayer;
+pub const GstreamerPlayer = @import("linux/module.zig").GstreamerPlayer;
 /// This OS's host for `NativeView`: placement, overlay hiding and keyboard focus.
 pub const NativeBackend = @import("native_backend.zig").NativeBackend;
 /// Asks for frames for a moment after the window's content resizes, so placed views land.
 pub const ResizeSettle = @import("resize_settle.zig").ResizeSettle;
+/// This OS's web view for `WebPage`, installed as the loop starts.
+pub const WebBackend = @import("web_backend.zig").WebBackend;
+/// The macOS web view: a `WKWebView` per `WebPage`, placed by the native-view host.
+pub const WkWebViewBackend = @import("macos/module.zig").WkWebViewBackend;
+/// The Linux web view (WebKitGTK): a stub for now.
+pub const WebKitGtkBackend = @import("linux/module.zig").WebKitGtkBackend;
+/// The Windows web view (WebView2): a stub for now.
+pub const WebView2Backend = @import("windows/module.zig").WebView2Backend;
 /// The macOS native-view host: app `NSView`s above the Metal view.
-pub const AppKitNativeHost = @import("app_kit_native_host.zig").AppKitNativeHost;
+pub const AppKitNativeHost = @import("macos/module.zig").AppKitNativeHost;
 /// The Linux and Windows native-view host: a stub for now.
 pub const NativeHostStub = @import("native_host_stub.zig").NativeHostStub;
 /// The Objective-C runtime bridge the AVFoundation player uses.
-pub const ObjectiveC = @import("objective_c.zig").ObjectiveC;
+pub const ObjectiveC = @import("macos/module.zig").ObjectiveC;
 /// An Objective-C object pointer (`id`).
-pub const Id = @import("objective_c.zig").Id;
+pub const Id = @import("macos/module.zig").Id;
+/// One method a class `ObjectiveC.defineClass` registers answers.
+pub const ObjectiveCMethod = @import("macos/module.zig").ObjectiveCMethod;
 /// Core Graphics' `CGPoint`.
-pub const CGPoint = @import("objective_c.zig").CGPoint;
+pub const CGPoint = @import("macos/module.zig").CGPoint;
 /// Core Graphics' `CGSize`.
-pub const CGSize = @import("objective_c.zig").CGSize;
+pub const CGSize = @import("macos/module.zig").CGSize;
 /// Core Graphics' `CGRect`.
-pub const CGRect = @import("objective_c.zig").CGRect;
+pub const CGRect = @import("macos/module.zig").CGRect;
 /// Core Media's `CMTime`.
-pub const CMTime = @import("objective_c.zig").CMTime;
+pub const CMTime = @import("macos/module.zig").CMTime;
 /// Core Media's `CMTimeRange`.
-pub const CMTimeRange = @import("objective_c.zig").CMTimeRange;
+pub const CMTimeRange = @import("macos/module.zig").CMTimeRange;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -124,8 +134,8 @@ test {
 
         /// Reports whether the test references a barrel declaration's own
         /// declarations: every struct's, except `sdl_c` (all of SDL's C API)
-        /// and the structs built for one OS (`Cocoa`, `AvFoundationPlayer`
-        /// and `ObjectiveC` on macOS, `Win32` on Windows, `StatusNotifier`
+        /// and the structs built for one OS (`Cocoa`, `AvFoundationPlayer`,
+        /// `AppKitNativeHost`, `WkWebViewBackend` and `ObjectiveC` on macOS, `Win32` on Windows, `StatusNotifier`
         /// on Linux) on any other, so a cross-compiled `zig build test-sdl`
         /// analyzes what that platform builds.
         ///
@@ -133,7 +143,7 @@ test {
         /// - Returns: true when the test references its declarations.
         fn descends(comptime name: []const u8) bool {
             if (std.mem.eql(u8, name, "sdl_c")) return false;
-            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
+            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
             if (std.mem.eql(u8, name, "Win32")) return os_tag == .windows;
             if (std.mem.eql(u8, name, "StatusNotifier")) return os_tag == .linux;
             return true;

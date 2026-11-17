@@ -862,6 +862,18 @@ pub const VideoPlayer = views.VideoPlayer;
 pub const VideoPlayerControls = views.VideoPlayerControls;
 /// What a `VideoPlayerControls` keeps across frames; app-owned.
 pub const VideoPlayerControlsState = views.VideoPlayerControlsState;
+/// What a platform web view reports about its page (`WebPage.update`).
+pub const WebPageState = views.WebPageState;
+/// A message a page posted to a bridge, borrowed for the call.
+pub const WebPageMessage = views.WebPageMessage;
+/// What `WebPage.onMessage` calls with each message.
+pub const WebPageMessageCallback = views.WebPageMessageCallback;
+/// A web page modeled on SwiftUI's `WebPage` (`load`, navigation, bridges, `onChange`).
+pub const WebPage = views.WebPage;
+/// A platform web view's operations, installed by the SDL runtime.
+pub const WebPageBackend = views.WebPageBackend;
+/// A web page's view in the view tree.
+pub const WebView = views.WebView;
 /// A platform view the app owns, placed where layout puts it.
 pub const NativeView = views.NativeView;
 

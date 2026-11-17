@@ -181,7 +181,7 @@ pub const Kit = struct {
                     ziggui.ButtonKeyed("Find", "⌘F", .plain, ziggui.Callback.init(Self, self, Self.found)),
                     ziggui.Spacer(),
                 }).spacing(8),
-                Self.leading(ziggui.Text(self.pressed).font(.footnote).foreground(theme.colors.secondary_label)),
+                ziggui.Text(self.pressed).font(.footnote).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             }).spacing(10)),
             Self.card(theme, "SegmentedControl, compact and stretched", "ziggui.SegmentedControl", ziggui.VStack(.{
                 ziggui.HStack(.{
@@ -262,7 +262,7 @@ pub const Kit = struct {
             "Picks nothing: the selection is hidden.";
         return ziggui.VStack(.{
             Self.card(theme, "FileBrowser: a tap selects, a double-click opens a folder", "ziggui.FileBrowser", ziggui.FileBrowser(&self.files, true).frameHeight(280)),
-            Self.leading(ziggui.Text(said).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated()),
+            ziggui.Text(said).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
     }
 
@@ -332,7 +332,7 @@ pub const Kit = struct {
     /// - Returns: the group's view.
     fn card(theme: ziggui.Theme, title: []const u8, names: []const u8, content: ziggui.View) ziggui.View {
         return ziggui.VStack(.{
-            Self.leading(ziggui.Text(title).font(.headline)),
+            ziggui.Text(title).font(.headline).frameMaxWidth().frameAlign(.leading),
             ziggui.VStack(.{
                 // Wrapped, so the card's padding does not replace the content's own.
                 ziggui.StackBuilder.make(.vertical, 0, .leading, .{content})
@@ -341,17 +341,9 @@ pub const Kit = struct {
                     .background(theme.colors.secondary_background)
                     .cornerRadius(theme.metrics.corner_radius)
                     .frameMaxWidth(),
-                Self.leading(ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label)),
+                ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             }).spacing(4).frameMaxWidth(),
         }).spacing(8).frameMaxWidth();
-    }
-
-    /// Pins `view` to the leading edge of a full-width row.
-    ///
-    /// - `view`: the view to pin.
-    /// - Returns: the row.
-    fn leading(view: ziggui.View) ziggui.View {
-        return ziggui.HStack(.{ view, ziggui.Spacer() }).frameMaxWidth();
     }
 };
 

@@ -77,7 +77,7 @@ pub const Media = struct {
                 ziggui.Button("Clear", ziggui.Callback.init(Self, self, Self.clear)),
                 ziggui.Spacer(),
             }).spacing(8).frameMaxWidth(),
-            Self.leading(ziggui.Text(Self.describe(observation)).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated()),
+            ziggui.Text(Self.describe(observation)).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
     }
 
@@ -131,8 +131,8 @@ pub const Media = struct {
         const secondary = ziggui.BuildScope.shared().tokens().secondary_label;
         return ziggui.VStack(.{
             Self.card(theme, "NativeView: the app's platform view, placed and clipped where layout puts it", "ziggui.NativeView", ziggui.NativeView(self.native_sample).cornerRadius(8).frameHeight(220)),
-            Self.leading(ziggui.Text("It sits over the window's surface, so it hides while a sheet, alert, popover or menu is open.").foreground(secondary).truncated()),
-            Self.leading(ziggui.Text("A view that takes the keyboard (a web view) gets it on a click; a click elsewhere gives it back.").foreground(secondary).truncated()),
+            ziggui.Text("It sits over the window's surface, so it hides while a sheet, alert, popover or menu is open.").foreground(secondary).truncated().frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("A view that takes the keyboard (a web view) gets it on a click; a click elsewhere gives it back.").foreground(secondary).truncated().frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
     }
 
@@ -197,7 +197,7 @@ pub const Media = struct {
     /// - Returns: the group's view.
     fn card(theme: ziggui.Theme, title: []const u8, names: []const u8, content: ziggui.View) ziggui.View {
         return ziggui.VStack(.{
-            Self.leading(ziggui.Text(title).font(.headline)),
+            ziggui.Text(title).font(.headline).frameMaxWidth().frameAlign(.leading),
             ziggui.VStack(.{
                 ziggui.StackBuilder.make(.vertical, 0, .leading, .{content})
                     .frameMaxWidth()
@@ -205,17 +205,9 @@ pub const Media = struct {
                     .background(theme.colors.secondary_background)
                     .cornerRadius(theme.metrics.corner_radius)
                     .frameMaxWidth(),
-                Self.leading(ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label)),
+                ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             }).spacing(4).frameMaxWidth(),
         }).spacing(8).frameMaxWidth();
-    }
-
-    /// Pins `view` to the leading edge of a full-width row.
-    ///
-    /// - `view`: the view.
-    /// - Returns: the row.
-    fn leading(view: ziggui.View) ziggui.View {
-        return ziggui.HStack(.{ view, ziggui.Spacer() }).frameMaxWidth();
     }
 };
 

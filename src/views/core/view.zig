@@ -198,8 +198,8 @@ pub const View = struct {
         return view;
     }
 
-    /// Word-wraps a `TextEditor` to its width (prose/prompt input). No effect on
-    /// other views or on an editor with line numbers.
+    /// Word-wraps a `TextEditor` to its width; with line numbers, each line's
+    /// number marks its first row. No effect on other views.
     ///
     /// - `self`: the view.
     /// - Returns: the wrapping view.

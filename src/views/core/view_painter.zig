@@ -463,7 +463,7 @@ pub const ViewPainter = struct {
         try canvas.strokeRoundedRect(rect, radius, 1, colors.control_border.multiplyAlpha(context.opacity));
         const side = @min(32, @min(rect.width, rect.height));
         const glyph = renderer.Rect{ .x = rect.midX() - side / 2, .y = rect.midY() - side / 2, .width = side, .height = side };
-        try mod.ControlPainter.paintIcon(context, .{ .icon = .appWindow, .size = side, .color = colors.tertiary_label }, glyph, canvas);
+        try mod.ControlPainter.paintIcon(context, .{ .icon = native.placeholder, .size = side, .color = colors.tertiary_label }, glyph, canvas);
     }
 
     /// The largest centered sub-rect of `rect` with the image's aspect ratio

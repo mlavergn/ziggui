@@ -264,7 +264,9 @@ const ListBody = struct {
 
     /// The rows in view, a spacer for those above and one for those below,
     /// and, when `sizer` names a row, that row again at zero height (clipped,
-    /// so it draws nothing) to set the stack's width.
+    /// so it draws nothing, and with no overlays at any depth, so a popover
+    /// or menu open on that row, or on a view in it, is presented once) to
+    /// set the stack's width.
     ///
     /// - `T`: the row builder's context type.
     /// - `context`: the row builder's context.
@@ -287,13 +289,53 @@ const ListBody = struct {
         const shown = range.end - range.start;
         const extra: usize = if (sizer != null) 1 else 0;
         const children = mod.BuildScope.shared().allocator().alloc(mod.View, shown + 2 + extra) catch @panic("oom");
-        if (sizer) |at| children[0] = rowFn(context, at).frameHeight(0).clipped();
+        if (sizer) |at| {
+            // A measure, not a row: an overlay on it, or on a view inside it,
+            // would be presented a second time.
+            children[0] = Self.withoutOverlays(rowFn(context, at)).frameHeight(0).clipped();
+        }
         children[extra] = mod.Empty().frameHeight(@as(f32, @floatFromInt(range.start)) * row_height);
         for (0..shown) |offset| {
             children[extra + offset + 1] = rowFn(context, range.start + offset).frameHeight(row_height).frameMaxWidth();
         }
         children[extra + shown + 1] = mod.Empty().frameHeight(@as(f32, @floatFromInt(count - range.end)) * row_height);
         return mod.StackBuilder.fromSlice(.vertical, 0, .leading, children).frameMaxWidth();
+    }
+
+    /// A copy of `view` with no overlays (`.sheet`, `.alert`, `.popover`) on
+    /// it or on any view inside it (stacks, groups, scroll views); the rest
+    /// as it was. Copied, never changed in place: a child may be shared.
+    ///
+    /// - `view`: the view.
+    /// - Returns: the copy, its new children in the build arena.
+    fn withoutOverlays(view: mod.View) mod.View {
+        const arena = mod.BuildScope.shared().allocator();
+        var bare = view;
+        bare.modifiers.overlay = &.{};
+        switch (bare.kind) {
+            .stack => |stack| {
+                const children = arena.alloc(mod.View, stack.children.len) catch @panic("oom");
+                for (stack.children, children) |child, *copy| copy.* = Self.withoutOverlays(child);
+                bare.kind.stack.children = children;
+            },
+            .group => |members| {
+                const copies = arena.alloc(mod.View, members.len) catch @panic("oom");
+                for (members, copies) |member, *copy| copy.* = Self.withoutOverlays(member);
+                bare.kind.group = copies;
+            },
+            .scroll => |scroll| {
+                const content = arena.create(mod.View) catch @panic("oom");
+                content.* = Self.withoutOverlays(scroll.content.*);
+                bare.kind.scroll.content = content;
+            },
+            .scrollState => |scroll| {
+                const content = arena.create(mod.View) catch @panic("oom");
+                content.* = Self.withoutOverlays(scroll.content.*);
+                bare.kind.scrollState.content = content;
+            },
+            else => {},
+        }
+        return bare;
     }
 };
 
@@ -484,6 +526,70 @@ test "a DiffView builds only the rows in view, and taps name the hunk" {
     // Row 60 is at the top, in hunk 1 (rows 50..99).
     try std.testing.expect(canvas.tap(.{ .x = 150, .y = 5 }));
     try std.testing.expectEqual(@as(?usize, 1), probe.hunk);
+}
+
+test "the widest row, built again to set the width, presents no popover of its own" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    mod.BuildScope.shared().begin(arena.allocator());
+    defer mod.BuildScope.shared().end();
+    const Rows = struct {
+        const Self = @This();
+
+        /// Whether row 0's popover is open.
+        open: bool = true,
+
+        /// Row `index`, with a popover open on row 0.
+        ///
+        /// - `self`: the rows.
+        /// - `index`: the row.
+        /// - Returns: the row.
+        fn row(self: *const Self, index: usize) mod.View {
+            const text = mod.Text("row");
+            if (index != 0) return text;
+            const presented: renderer.Binding(bool) = .{ .context = @constCast(self), .get_fn = Self.get, .set_fn = Self.set };
+            return text.popover(presented, mod.Text("menu"));
+        }
+
+        /// The popover binding's reader.
+        ///
+        /// - `context`: the rows.
+        /// - Returns: whether the popover is open.
+        fn get(context: *anyopaque) bool {
+            const self: *Self = @ptrCast(@alignCast(context));
+            return self.open;
+        }
+
+        /// The popover binding's writer.
+        ///
+        /// - `context`: the rows.
+        /// - `value`: whether the popover is open.
+        fn set(context: *anyopaque, value: bool) void {
+            const self: *Self = @ptrCast(@alignCast(context));
+            self.open = value;
+        }
+    };
+    const rows: Rows = .{};
+    var scroll: mod.ScrollState = .{ .viewport_height = 100 };
+    const body = ListBody.build(Rows, &rows, 3, 20, &scroll, Rows.row, 0);
+    const children = body.kind.stack.children;
+    // The measure first, bare; row 0 in view keeps its popover.
+    try std.testing.expectEqual(@as(usize, 0), children[0].modifiers.overlay.len);
+    try std.testing.expectEqual(@as(usize, 1), children[2].modifiers.overlay.len);
+}
+
+test "the widest row, built again to set the width, presents no popover from inside it either" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    mod.BuildScope.shared().begin(arena.allocator());
+    defer mod.BuildScope.shared().end();
+    var open = renderer.State(bool).init(std.testing.allocator, true);
+    defer open.deinit();
+    const nested = mod.HStack(.{ mod.Text("row"), mod.Text("more").popover(open.binding(), mod.Text("menu")) });
+    const bare = ListBody.withoutOverlays(nested);
+    try std.testing.expectEqual(@as(usize, 0), bare.kind.stack.children[1].modifiers.overlay.len);
+    // The row it was copied from keeps its popover.
+    try std.testing.expectEqual(@as(usize, 1), nested.kind.stack.children[1].modifiers.overlay.len);
 }
 
 test "a DiffView runs long lines on and scrolls sideways as far as the widest" {

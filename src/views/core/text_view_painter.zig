@@ -238,10 +238,11 @@ pub const TextViewPainter = struct {
         const top = rect.y + inset;
         const view_height = @max(0, rect.height - 2 * inset);
 
-        // Soft-wrap mode (prose/prompt inputs): render visual wrapped rows instead of
-        // one row per logical line, so long text wraps to the width and stays visible
-        // (no horizontal scroll). Disabled when line numbers are on (code editor).
-        if (view.modifiers.soft_wrap and !editor.line_numbers) {
+        // Soft-wrap mode: render visual wrapped rows instead of one row per
+        // logical line, so long text wraps to the width and stays visible (no
+        // horizontal scroll). With line numbers, a line's number marks its
+        // first row; the rows it continues on have none.
+        if (view.modifiers.soft_wrap) {
             const wrap_width = @max(1, rect.x + rect.width - inset - text_x);
             const rows = try Self.editorRows(context.arena, mod.BuildScope.shared().wrapText(context.arena, face, text, pixel_size, wrap_width), text);
             const row_count = rows.len;
@@ -269,19 +270,29 @@ pub const TextViewPainter = struct {
             const offset = editor.scroll.offset;
 
             const foreground = context.foreground.multiplyAlpha(opacity);
+            const number_color = context.theme.colors.tertiary_label.multiplyAlpha(opacity);
             const selection_color = context.theme.colors.selection.multiplyAlpha(opacity);
             const selection = state.selectionRange();
 
             try canvas.pushClip(rect.insetBy(2, 2), 0);
+            if (editor.line_numbers) {
+                const gutter_x = rect.x + gutter_width;
+                try canvas.line(.{ .x = gutter_x, .y = rect.y }, .{ .x = gutter_x, .y = rect.y + rect.height }, metrics.hairline, context.theme.colors.separator.multiplyAlpha(opacity));
+            }
             if (text.len == 0 and view.modifiers.editor_placeholder.len > 0) {
                 const hint = view.modifiers.editor_placeholder;
                 const hint_color = context.theme.colors.secondary_label.multiplyAlpha(opacity);
                 for (mod.BuildScope.shared().wrapText(context.arena, face, hint, pixel_size, wrap_width), 0..) |row, index|
                     Self.drawEditorLine(context, canvas, hint[row.start..row.end], pixel_size, hint_color, .{ .x = text_x, .y = top + @as(f32, @floatFromInt(index)) * line_height });
             }
+            // The logical line each row belongs to, counted across every row.
+            var line_number: usize = 0;
             for (rows, 0..) |row, index| {
+                const starts_line = Self.startsLine(text, row);
+                if (starts_line and index > 0) line_number += 1;
                 const y = top - offset + @as(f32, @floatFromInt(index)) * line_height;
                 if (y + line_height < top or y > top + view_height) continue;
+                if (editor.line_numbers and starts_line) Self.drawLineNumber(context, canvas, face, pixel_size, line_number + 1, number_color, rect.x + gutter_width - inset, y);
                 if (selection) |range| {
                     if (range.start <= row.end and range.end >= row.start) {
                         const start = @max(range.start, row.start);
@@ -370,13 +381,7 @@ pub const TextViewPainter = struct {
                 }
             }
 
-            if (editor.line_numbers) {
-                var buffer: [20]u8 = undefined;
-                // 20 bytes hold any usize in decimal.
-                const number = buffer[0..std.fmt.printInt(&buffer, line_number + 1, 10, .lower, .{})];
-                const number_width = renderer.TextShaper.init(face).measureLineWidth(number, pixel_size);
-                context.drawText(canvas, number, pixel_size, number_color, .{ .x = rect.x + gutter_width - inset - number_width, .y = y }) catch |err| log.debug("text not drawn [{t}]", .{err});
-            }
+            if (editor.line_numbers) Self.drawLineNumber(context, canvas, face, pixel_size, line_number + 1, number_color, rect.x + gutter_width - inset, y);
 
             if (line_end > line_start) Self.drawEditorLine(context, canvas, text[line_start..line_end], pixel_size, foreground, .{ .x = text_x, .y = y });
 
@@ -477,6 +482,34 @@ pub const TextViewPainter = struct {
         return renderer.TextShaper.init(face).measureLineWidth(sample, pixel_size) + 2 * inset;
     }
 
+    /// Reports whether a wrapped row starts a logical line, rather than
+    /// continuing the one before it.
+    ///
+    /// - `text`: the editor's text.
+    /// - `row`: the row.
+    /// - Returns: true for the text's first row and each row after a line break.
+    fn startsLine(text: []const u8, row: renderer.WrappedLine) bool {
+        return row.start == 0 or (row.start <= text.len and text[row.start - 1] == '\n');
+    }
+
+    /// Draws a line's number in the gutter, right-aligned to `right`.
+    ///
+    /// - `context`: the context.
+    /// - `canvas`: where it is drawn.
+    /// - `face`: the editor's face.
+    /// - `pixel_size`: the editor's size.
+    /// - `number`: the line's number, from 1.
+    /// - `color`: the number's color.
+    /// - `right`: the x its right edge sits at.
+    /// - `y`: the row's top.
+    fn drawLineNumber(context: *const mod.Context, canvas: *renderer.Canvas, face: *const renderer.TtfFont, pixel_size: f32, number: usize, color: renderer.Color, right: f32, y: f32) void {
+        var buffer: [20]u8 = undefined;
+        // 20 bytes hold any usize in decimal.
+        const digits = buffer[0..std.fmt.printInt(&buffer, number, 10, .lower, .{})];
+        const width = renderer.TextShaper.init(face).measureLineWidth(digits, pixel_size);
+        context.drawText(canvas, digits, pixel_size, color, .{ .x = right - width, .y = y }) catch |err| log.debug("text not drawn [{t}]", .{err});
+    }
+
     /// A soft-wrap editor's visual rows: `wrapped`, plus the empty row after
     /// a final newline (which word-wrapping leaves out, as a paragraph ends
     /// there) so the caret can sit on it and a click reach it; at least one row.
@@ -500,6 +533,15 @@ pub const TextViewPainter = struct {
 
 test {
     std.testing.refAllDecls(@This());
+}
+
+test "a wrapped row starts a line at the text's start and after a line break, not mid-line" {
+    const text = "first line that wraps\nsecond";
+    try std.testing.expect(TextViewPainter.startsLine(text, .{ .start = 0, .end = 11, .width = 1 }));
+    try std.testing.expect(!TextViewPainter.startsLine(text, .{ .start = 11, .end = 21, .width = 1 }));
+    try std.testing.expect(TextViewPainter.startsLine(text, .{ .start = 22, .end = 28, .width = 1 }));
+    try std.testing.expect(!TextViewPainter.startsLine(text, .{ .start = 28, .end = 28, .width = 0 }));
+    try std.testing.expect(TextViewPainter.startsLine("abc\n", .{ .start = 4, .end = 4, .width = 0 }));
 }
 
 test "a soft-wrap editor's rows: an empty last line after a newline, never none" {

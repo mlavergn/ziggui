@@ -600,6 +600,18 @@ pub const VideoPlayer = @import("media/module.zig").VideoPlayer;
 pub const VideoPlayerControls = @import("media/module.zig").VideoPlayerControls;
 /// What a `VideoPlayerControls` keeps across frames; app-owned.
 pub const VideoPlayerControlsState = @import("media/module.zig").VideoPlayerControlsState;
+/// What a platform web view reports about its page (`WebPage.update`).
+pub const WebPageState = @import("media/module.zig").WebPageState;
+/// A message a page posted to a bridge, borrowed for the call.
+pub const WebPageMessage = @import("media/module.zig").WebPageMessage;
+/// What `WebPage.onMessage` calls with each message.
+pub const WebPageMessageCallback = @import("media/module.zig").WebPageMessageCallback;
+/// A web page modeled on SwiftUI's `WebPage` (`load`, navigation, bridges, `onChange`).
+pub const WebPage = @import("media/module.zig").WebPage;
+/// A platform web view's operations, installed by the SDL runtime.
+pub const WebPageBackend = @import("media/module.zig").WebPageBackend;
+/// A web page's view in the view tree.
+pub const WebView = @import("media/module.zig").WebView;
 /// A platform view the app owns, placed where layout puts it.
 pub const NativeView = @import("media/module.zig").NativeView;
 

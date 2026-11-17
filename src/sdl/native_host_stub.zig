@@ -40,6 +40,17 @@ pub const NativeHostStub = struct {
     /// Nothing to hand back.
     pub fn release() void {}
 
+    /// No platform view takes editing keys.
+    ///
+    /// - `keycode`: the key's `SDL_Keycode`.
+    /// - `modifiers`: its `SDL_Keymod` mask.
+    /// - Returns: false.
+    pub fn performEdit(keycode: u32, modifiers: u16) bool {
+        _ = keycode;
+        _ = modifiers;
+        return false;
+    }
+
     /// No platform view is shown.
     ///
     /// - `point`: the point, in the window's points.

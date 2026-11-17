@@ -88,6 +88,9 @@ pub const Section = enum {
     /// An app's settings: tabs over columned forms.
     settings,
 
+    /// A web page under a browser's toolbar, posting to a bridge.
+    webView,
+
     /// Every section, as sidebar rows.
     pub const items = blk: {
         const values = @typeInfo(Self).@"enum".field_values;
@@ -131,6 +134,7 @@ pub const Section = enum {
             .video => "Video",
             .native => "Native View",
             .settings => "Settings",
+            .webView => "Web View",
         };
     }
 
@@ -166,6 +170,7 @@ pub const Section = enum {
             .video => .monitorPlay,
             .native => .pictureInPicture2,
             .settings => .settings,
+            .webView => .globe,
         };
     }
 
@@ -177,7 +182,7 @@ pub const Section = enum {
     /// - Returns: true for the panels that fill.
     pub fn fills(self: *const Self) bool {
         return switch (self.*) {
-            .table, .textEditor, .navigation, .editor => true,
+            .table, .textEditor, .navigation, .editor, .webView => true,
             else => false,
         };
     }
@@ -358,6 +363,9 @@ pub const Gallery = struct {
     /// The Settings panel and its state.
     settings: gallery.SettingsPanel,
 
+    /// The Web View panel: its page and bookmarks.
+    web: gallery.WebPanel,
+
     /// Whether the Chat panel's tool call is unfolded.
     tool_open: bool = false,
 
@@ -415,7 +423,9 @@ pub const Gallery = struct {
         errdefer showcase.deinit();
         var editor = try gallery.Editor.init(allocator);
         errdefer editor.deinit();
-        const kit = try gallery.Kit.init(allocator);
+        var kit = try gallery.Kit.init(allocator);
+        errdefer kit.deinit();
+        const web = try gallery.WebPanel.init(allocator);
         const self = Self{
             .allocator = allocator,
             .section = ziggui.State(i64).init(allocator, 0),
@@ -427,6 +437,7 @@ pub const Gallery = struct {
             .kit = kit,
             .media = gallery.Media.init(allocator),
             .settings = gallery.SettingsPanel.init(allocator),
+            .web = web,
         };
         return self;
     }
@@ -435,6 +446,7 @@ pub const Gallery = struct {
     ///
     /// - `self`: the gallery to tear down.
     pub fn deinit(self: *Self) void {
+        self.web.deinit();
         self.settings.deinit();
         self.media.deinit();
         self.kit.deinit();
@@ -613,14 +625,14 @@ pub const Gallery = struct {
                 .frameMaxHeight(),
             ziggui.Divider(),
             ziggui.VStack(.{
-                Self.leading(ziggui.Text("Theme").font(.footnote).foreground(active_theme.colors.secondary_label)),
+                ziggui.Text("Theme").font(.footnote).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
                 ziggui.RadioGroup(self.theme_family.binding(), &family_names),
             }).spacing(6).padding(6),
             ziggui.HStack(.{ ziggui.Text("Dark mode"), ziggui.Spacer(), ziggui.Toggle("", self.dark.binding()) })
                 .frameMaxWidth()
                 .padding(6),
             ziggui.VStack(.{
-                Self.leading(ziggui.Text("Accent").font(.footnote).foreground(active_theme.colors.secondary_label)),
+                ziggui.Text("Accent").font(.footnote).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
                 self.accentSwatches(active_theme),
             }).spacing(6).padding(6),
         }).spacing(4).padding(8).frameMaxHeight().backgroundMaterial(.thin);
@@ -662,7 +674,7 @@ pub const Gallery = struct {
         const section = Section.at(self.section.get());
         if (section.fills()) return self.panel(section, active_theme);
         const content = ziggui.VStack(.{
-            Self.leading(ziggui.Text(section.label()).font(.largeTitle)),
+            ziggui.Text(section.label()).font(.largeTitle).frameMaxWidth().frameAlign(.leading),
             self.panel(section, active_theme),
         }).spacing(16);
         return ziggui.ScrollViewState(&self.scroll, content.padding(20).frameMaxWidth())
@@ -705,6 +717,7 @@ pub const Gallery = struct {
             .video => self.media.videoPanel(active_theme),
             .native => self.media.nativePanel(active_theme),
             .settings => self.settings.panel(active_theme),
+            .webView => self.web.panel(active_theme, section.label()),
         };
     }
 
@@ -829,7 +842,7 @@ pub const Gallery = struct {
             ziggui.MenuBar(&self.menu_bar, self.barMenus(), .{}),
             ziggui.Divider(),
             ziggui.VStack(.{
-                Self.leading(ziggui.Text(self.menu_choice).foreground(active_theme.colors.secondary_label)),
+                ziggui.Text(self.menu_choice).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
                 ziggui.Spacer(),
             }).padding(12).frameHeight(260),
         }).spacing(0).border(active_theme.colors.separator, 1));
@@ -867,7 +880,7 @@ pub const Gallery = struct {
                 "~/src/mlavergn/ziggui",
                 ziggui.WindowButtons(.gnome, true, actions),
             ).frameWidth(360).border(active_theme.colors.separator, 1))),
-            Self.leading(ziggui.Text(self.window_said).foreground(active_theme.colors.secondary_label)),
+            ziggui.Text(self.window_said).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
     }
 
@@ -881,7 +894,7 @@ pub const Gallery = struct {
         const listing = [_]ziggui.KeyHint{ .{ .key = "↑↓", .action = "rows" }, .{ .key = "space", .action = "stage" }, .{ .key = "ctrl+N", .action = "new" }, .{ .key = "alt", .action = "menus" } };
         return ziggui.VStack(.{
             Self.card(active_theme, "StatusLine while typing", "ziggui.StatusLine", ziggui.VStack(.{
-                Self.leading(ziggui.Text("Sent to claude-ziggui.").font(.footnote).foreground(active_theme.colors.secondary_label)).padding(6),
+                ziggui.Text("Sent to claude-ziggui.").font(.footnote).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading).padding(6),
                 ziggui.StatusLine(&typing),
             }).spacing(0).border(active_theme.colors.separator, 1)),
             Self.card(active_theme, "StatusLine over a list", "ziggui.StatusLine", ziggui.StatusLine(&listing).border(active_theme.colors.separator, 1)),
@@ -942,7 +955,7 @@ pub const Gallery = struct {
     /// - Returns: the pane.
     fn pane(active_theme: ziggui.Theme, title: []const u8, text: []const u8) ziggui.View {
         return ziggui.VStack(.{
-            Self.leading(ziggui.Text(title).font(.headline)),
+            ziggui.Text(title).font(.headline).frameMaxWidth().frameAlign(.leading),
             ziggui.WrappedText(text).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             ziggui.Spacer(),
         }).spacing(6).padding(12).frameMaxWidth().frameMaxHeight();
@@ -958,19 +971,22 @@ pub const Gallery = struct {
     /// - Returns: the group's view.
     fn card(active_theme: ziggui.Theme, title: []const u8, names: []const u8, content: ziggui.View) ziggui.View {
         return ziggui.VStack(.{
-            Self.leading(ziggui.Text(title).font(.headline)),
+            ziggui.Text(title).font(.headline).frameMaxWidth().frameAlign(.leading),
             ziggui.VStack(.{
                 content.frameMaxWidth()
                     .padding(14)
                     .background(active_theme.colors.secondary_background)
                     .cornerRadius(active_theme.metrics.corner_radius)
                     .frameMaxWidth(),
-                Self.leading(ziggui.Text(names).font(.caption).mono().foreground(active_theme.colors.secondary_label)),
+                ziggui.Text(names).font(.caption).mono().foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             }).spacing(4).frameMaxWidth(),
         }).spacing(8).frameMaxWidth();
     }
 
-    /// Pins `view` to the leading edge of a full-width row.
+    /// Pins `view` to the leading edge of a full-width row, in a stack of its
+    /// own: for a view whose own frame, padding or ground must stay its own (a
+    /// bubble, a fixed-width bar, a card's content). Any other view takes
+    /// `.frameMaxWidth().frameAlign(.leading)`, which changes its own frame.
     ///
     /// - `view`: the view to pin.
     /// - Returns: the row.

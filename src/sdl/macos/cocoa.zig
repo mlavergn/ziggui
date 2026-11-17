@@ -29,10 +29,6 @@ pub const Cocoa = struct {
     /// The process's bridge.
     var shared_cocoa: Self = .{};
 
-    extern "objc" fn objc_allocateClassPair(superclass: mod.Id, name: [*:0]const u8, extra: usize) mod.Id;
-    extern "objc" fn objc_registerClassPair(class: mod.Id) void;
-    extern "objc" fn class_addMethod(class: mod.Id, name: mod.Id, implementation: *const anyopaque, types: [*:0]const u8) u8;
-
     /// The process's bridge.
     ///
     /// - Returns: the shared bridge.
@@ -148,9 +144,8 @@ pub const Cocoa = struct {
         if (button == null) return false;
         mod.ObjectiveC.send(void, button, "setImage:", .{image});
         if (tooltip.len > 0) mod.ObjectiveC.send(void, button, "setToolTip:", .{mod.ObjectiveC.string(tooltip)});
-        const class = objc_allocateClassPair(mod.ObjectiveC.class("NSObject"), "ZigguiStatusItemTarget", 0) orelse return false;
-        _ = class_addMethod(class, mod.ObjectiveC.selectorNamed("click:"), @ptrCast(&Self.statusClick), "v@:@");
-        objc_registerClassPair(class);
+        const class = mod.ObjectiveC.defineClass("ZigguiStatusItemTarget", "NSObject", &.{.{ .selector = "click:", .implementation = @ptrCast(&Self.statusClick), .types = "v@:@" }});
+        if (class == null) return false;
         const target = mod.ObjectiveC.send(mod.Id, class, "new", .{});
         mod.ObjectiveC.send(void, button, "setTarget:", .{target});
         mod.ObjectiveC.send(void, button, "setAction:", .{mod.ObjectiveC.selectorNamed("click:")});
@@ -275,9 +270,7 @@ pub const Cocoa = struct {
     ///
     /// - Returns: the target, or nil when the class could not be registered.
     fn menuTarget() mod.Id {
-        const class = objc_allocateClassPair(mod.ObjectiveC.class("NSObject"), "ZigguiMenuTarget", 0) orelse return null;
-        _ = class_addMethod(class, mod.ObjectiveC.selectorNamed("fire:"), @ptrCast(&Self.fire), "v@:@");
-        objc_registerClassPair(class);
+        const class = mod.ObjectiveC.defineClass("ZigguiMenuTarget", "NSObject", &.{.{ .selector = "fire:", .implementation = @ptrCast(&Self.fire), .types = "v@:@" }});
         return mod.ObjectiveC.send(mod.Id, class, "new", .{});
     }
 

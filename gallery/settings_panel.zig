@@ -130,7 +130,7 @@ pub const SettingsPanel = struct {
         }).spacing(0).frameWidth(500) else ziggui.Empty();
         return ziggui.VStack(.{
             ziggui.HStack(.{ ziggui.Spacer(), window, ziggui.Spacer() }).frameMaxWidth(),
-            Self.leading(ziggui.Text("ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle").font(.caption).mono().foreground(tokens.secondary_label)),
+            ziggui.Text("ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle").font(.caption).mono().foreground(tokens.secondary_label).frameMaxWidth().frameAlign(.leading),
             ziggui.HStack(.{
                 ziggui.Button("Present in a sheet", ziggui.Callback.init(Self, self, Self.openSheet)),
                 ziggui.Spacer(),
@@ -235,14 +235,6 @@ pub const SettingsPanel = struct {
     /// - Returns: the view.
     fn help(text: []const u8) ziggui.View {
         return ziggui.Text(text).font(.callout).foreground(ziggui.BuildScope.shared().tokens().secondary_label);
-    }
-
-    /// Pins `view` to the leading edge of a full-width row.
-    ///
-    /// - `view`: the view.
-    /// - Returns: the row.
-    fn leading(view: ziggui.View) ziggui.View {
-        return ziggui.HStack(.{ view, ziggui.Spacer() }).frameMaxWidth();
     }
 };
 

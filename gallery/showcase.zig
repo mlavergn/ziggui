@@ -394,17 +394,17 @@ pub const Showcase = struct {
         _ = self;
         return ziggui.VStack(.{
             Self.card(theme, "Type scale", "ziggui.Text", ziggui.VStack(.{
-                Self.leading(ziggui.Text("Large Title").font(.largeTitle)),
-                Self.leading(ziggui.Text("Title").font(.title)),
-                Self.leading(ziggui.Text("Headline").font(.headline)),
-                Self.leading(ziggui.Text("Body — the quick brown fox.").font(.body)),
-                Self.leading(ziggui.Text("Footnote").font(.footnote).foreground(theme.colors.secondary_label)),
+                ziggui.Text("Large Title").font(.largeTitle).frameMaxWidth().frameAlign(.leading),
+                ziggui.Text("Title").font(.title).frameMaxWidth().frameAlign(.leading),
+                ziggui.Text("Headline").font(.headline).frameMaxWidth().frameAlign(.leading),
+                ziggui.Text("Body — the quick brown fox.").font(.body).frameMaxWidth().frameAlign(.leading),
+                ziggui.Text("Footnote").font(.footnote).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             }).spacing(6)),
             Self.card(theme, "Wrapped paragraph", "ziggui.WrappedText", ziggui.WrappedText(
                 "WrappedText word-wraps to the width it is given, growing taller as the " ++
                     "column narrows. Reach for it for paragraphs, descriptions, captions.",
             ).foreground(theme.colors.label)),
-            Self.card(theme, "Label", "ziggui.Label", Self.leading(ziggui.Label("Tagged item", theme.colors.accent))),
+            Self.card(theme, "Label", "ziggui.Label", ziggui.Label("Tagged item", theme.colors.accent).frameMaxWidth().frameAlign(.leading)),
             Self.card(theme, "Icon gallery", "ziggui.Icon · ziggui.LazyVGrid", ziggui.LazyVGrid(6, 10, &icon_gallery, Self.iconCell).frameMaxWidth()),
         }).spacing(16);
     }
@@ -433,7 +433,7 @@ pub const Showcase = struct {
                 .{ .x = 1, .y = 1 },
             ).frameMaxWidth().frameHeight(90).cornerRadius(12)),
             Self.card(theme, "Dividers", "ziggui.Divider · ziggui.VDivider", ziggui.VStack(.{
-                Self.leading(ziggui.Text("above")),
+                ziggui.Text("above").frameMaxWidth().frameAlign(.leading),
                 ziggui.Divider(),
                 ziggui.HStack(.{
                     ziggui.Text("left"),
@@ -501,9 +501,9 @@ pub const Showcase = struct {
     pub fn tablePanel(self: *Self, theme: ziggui.Theme, title: []const u8) ziggui.View {
         return ziggui.VStack(.{
             Self.header(title),
-            Self.leading(ziggui.Text("A multi-column table with a header and selectable rows; drag a column's edge in the header to resize it:")
-                .foreground(theme.colors.secondary_label)),
-            Self.leading(ziggui.Text("ziggui.TableResizable · ziggui.TableColumnCustomization").font(.caption).mono().foreground(theme.colors.secondary_label)),
+            ziggui.Text("A multi-column table with a header and selectable rows; drag a column's edge in the header to resize it:")
+                .foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("ziggui.TableResizable · ziggui.TableColumnCustomization").font(.caption).mono().foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             ziggui.TableResizable(&table_columns, &table_rows, self.table_selection.binding(), &self.table_columns)
                 .background(theme.colors.control_background)
                 .cornerRadius(theme.metrics.corner_radius)
@@ -525,7 +525,7 @@ pub const Showcase = struct {
             Self.header(title),
             ziggui.Text("Multi-line editing with selection, line numbers, and mouse drag. Click in and type.")
                 .font(.footnote).foreground(theme.colors.secondary_label).frameMaxWidth(),
-            Self.leading(ziggui.Text("ziggui.TextEditor").font(.caption).mono().foreground(theme.colors.secondary_label)),
+            ziggui.Text("ziggui.TextEditor").font(.caption).mono().foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             ziggui.TextEditor(&self.editor, &self.editor_scroll, true).frameMaxWidth().frameMaxHeight(),
         }).spacing(12).padding(20).frameMaxWidth().frameMaxHeight();
     }
@@ -579,7 +579,7 @@ pub const Showcase = struct {
             }).spacing(12)),
             Self.card(theme, "Custom title bar (Config.custom_titlebar)", "ziggui.Drawing · Theme.drawTitleBar · .modalPassthrough", self.titleBarDemo(theme)),
             Self.card(theme, "Key-ups and quitting", "ziggui.App.setKeyUpHandler · ziggui.Toggle", ziggui.VStack(.{
-                Self.leading(ziggui.Text(key_up_text).foreground(theme.colors.secondary_label)),
+                ziggui.Text(key_up_text).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
                 Self.row("Ask before quitting (close button, ⌘Q)", ziggui.Toggle("", self.ask_quit.binding())),
             }).spacing(10)),
         }).spacing(16);
@@ -631,7 +631,7 @@ pub const Showcase = struct {
         if (self.navigation.top()) |route| return self.navigationDetail(theme, title, route);
         return ziggui.VStack(.{
             Self.header(title),
-            Self.leading(ziggui.Text("Tap a row to push its view onto the stack; ‹ pops it.").foreground(theme.colors.secondary_label)),
+            ziggui.Text("Tap a row to push its view onto the stack; ‹ pops it.").foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             Self.card(theme, "Stack", "ziggui.NavigationLinkIcon · ziggui.NavigationPath", self.navigationList(&navigation_folders, 0)),
             Self.card(theme, "Inset split view (chat style)", "ziggui.NavigationSplitViewInset · ziggui.SidebarStyled", ziggui.NavigationSplitViewInset(
                 ziggui.VStack(.{
@@ -909,7 +909,7 @@ pub const Showcase = struct {
                 .frameMaxWidth()
                 .frameAlign(.leading);
         return ziggui.VStack(.{
-            Self.leading(ziggui.NavigationBackButton(back, &self.navigation)),
+            ziggui.NavigationBackButton(back, &self.navigation).frameMaxWidth().frameAlign(.leading),
             Self.header(Self.navigationTitle(route)),
             content,
             ziggui.Spacer(),
@@ -970,7 +970,7 @@ pub const Showcase = struct {
                     .background(theme.colors.secondary_background)
                     .cornerRadius(theme.metrics.corner_radius)
                     .frameMaxWidth(),
-                Self.leading(ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label)),
+                ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             }).spacing(4).frameMaxWidth(),
         }).spacing(8)
             .frameMaxWidth();
@@ -983,14 +983,6 @@ pub const Showcase = struct {
     /// - Returns: the row.
     fn row(title: []const u8, control: ziggui.View) ziggui.View {
         return ziggui.HStack(.{ ziggui.Text(title), ziggui.Spacer(), control }).frameMaxWidth();
-    }
-
-    /// Pins `content` to the leading edge of a full-width row.
-    ///
-    /// - `content`: the view to pin.
-    /// - Returns: the row.
-    fn leading(content: ziggui.View) ziggui.View {
-        return ziggui.HStack(.{ content, ziggui.Spacer() }).frameMaxWidth();
     }
 
     /// One cell of the icon grid.

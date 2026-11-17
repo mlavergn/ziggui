@@ -123,8 +123,8 @@ pub const Modifiers = struct {
     /// See `.scaledToFit()`.
     scaled_to_fit: bool = false,
     /// A `TextEditor` that word-wraps long lines to its width (no horizontal
-    /// scroll) — for prose/prompt inputs. Ignored when line numbers are on (a
-    /// code editor stays non-wrapping). See `.softWrap()`.
+    /// scroll); with line numbers, each line's number marks its first row.
+    /// See `.softWrap()`.
     soft_wrap: bool = false,
     /// How the `Toggle`s in this subtree draw, or null to inherit. See `.toggleStyle()`.
     toggle_style: ?mod.ToggleStyle = null,

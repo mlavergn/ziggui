@@ -12,7 +12,7 @@ Three things set it apart:
 - **Pure Zig down to the pixels.** Layout, text, themes and a software rasterizer need no C and no window, so every view tests headless. Screenshots render byte for byte the same on every run. On screen, the same frame goes through the GPU.
 - **One import.** An app writes `ziggui.VStack`, `ziggui.Theme`, `ziggui.App`; the build hands its executable the SDL runtime and its tests a core without it.
 
-Since 1.0.0 ziggui includes what used to be the separate zigui library, and builds SDL 3.4.20 itself from the official release.
+Since 1.0.0 ziggui includes what used to be the separate zigui library, and builds SDL 3.4.20 itself from the official release. Since 2.2.0 it also includes the web view that was the separate zigwebview package.
 
 ## Features
 
@@ -25,6 +25,7 @@ Since 1.0.0 ziggui includes what used to be the separate zigui library, and buil
 - **Desktop integration:** native menus, a status item or tray icon (an SNI icon over D-Bus on Linux), panels, clipboard, file dialogs, revealing a file in Finder or Explorer, Linux desktop entries, and reopening the window where it was.
 - **Video:** a player modeled on `AVPlayer`, drawn by the platform's own player behind the window's surface (AVFoundation on macOS), with standard controls painted over it: full screen, volume, skip, play, a scrubber, subtitles and speed.
 - **Native views:** `NativeView` places a platform view the app owns (an `NSView` such as a web view) where layout puts it, hides it while an overlay is open, and moves the keyboard between it and ziggui (macOS; a placeholder elsewhere).
+- **Web pages:** `WebPage` and `WebView`, after SwiftUI's: a page in the platform's own web view (WebKit on macOS), with navigation, load failures, and bridges the page posts messages to, heard only from the origin it first loaded. ⌘C, ⌘X, ⌘V and ⌘A edit the page.
 - **Secure fields:** a password field draws dots, never copies its text, and wipes it from memory when it leaves.
 
 A component gallery shows every view in every theme.
@@ -33,9 +34,9 @@ A component gallery shows every view in every theme.
 
 | Platform | Status |
 | --- | --- |
-| macOS (Apple Silicon) | Full support, including video |
-| Linux (x86_64, ARM) | Full support except video (the player reports it unsupported) |
-| Windows (x86_64) | Full support except video; built with mingw (MSVC builds untested) |
+| macOS (Apple Silicon) | Full support, including video and web pages |
+| Linux (x86_64, ARM) | Full support except video and web pages (each reports it unsupported) |
+| Windows (x86_64) | Full support except video and web pages; built with mingw (MSVC builds untested) |
 
 ## Apps built on ziggui
 
@@ -144,7 +145,10 @@ Environment variables the runtime reads:
 ```
 src/renderer/   pure Zig: geometry, layout, color, canvas, rasterizer, GPU scene, text, themes, state
 src/views/      the views: the engine, controls, containers, text, media, and the widget groups
-src/sdl/        the SDL3 runtime: window, event loop, menus, tray, clipboard, dialogs, video, GPU
+src/sdl/        the SDL3 runtime: window, event loop, menus, tray, clipboard, dialogs, video, web pages, GPU
+  macos/        the Objective-C bridge, AppKit, AVFoundation and WebKit code
+  windows/      the Win32 calls SDL does not make, and the Windows video and web stubs
+  linux/        the D-Bus tray icon, desktop entries, and the Linux video and web stubs
 src/module.zig  the ziggui barrel, the one module apps import
 build/          the SDL3 C build
 gallery/        the component gallery
