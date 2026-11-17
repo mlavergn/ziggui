@@ -13,8 +13,9 @@ const sdl_c = @import("sdl_c");
 pub const VideoBackend = struct {
     const Self = @This();
 
-    /// The platform player: AVFoundation on macOS; Media Foundation on
-    /// Windows and GStreamer on Linux, both stubs for now.
+    /// The platform player: AVFoundation on macOS (its picture behind the
+    /// surface), GStreamer on Linux (its frames drawn in it); Media
+    /// Foundation on Windows, a stub for now.
     const Platform = switch (mod.os_tag) {
         .macos => mod.AvFoundationPlayer,
         .windows => mod.MediaFoundationPlayer,

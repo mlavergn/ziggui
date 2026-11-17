@@ -2235,6 +2235,159 @@ test "video player: headless it is a black frame and registers nothing" {
     try std.testing.expectEqual(@as(f32, 1), framebuffer.at(2, 2).a);
 }
 
+/// A player backend that hands its frames to ziggui, for the test below.
+const FramedBackend = struct {
+    const Self = @This();
+
+    /// The handle `create` hands out.
+    var handle_storage: u8 = 0;
+    /// A 4x2 picture: red, then green, columns.
+    const pixels = [_]u8{
+        255, 0, 0, 255, 255, 0, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255,
+        255, 0, 0, 255, 255, 0, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255,
+    };
+
+    /// The backend over these functions.
+    const backend: mod.PlayerBackend = .{
+        .create = Self.create,
+        .destroy = Self.ignore,
+        .load = Self.load,
+        .set_rate = Self.setRate,
+        .seek = Self.seek,
+        .set_volume = Self.setRate,
+        .set_muted = Self.setMuted,
+        .observe = Self.observe,
+        .tracks = Self.tracks,
+        .select_track = Self.selectTrack,
+        .frame = Self.frame,
+    };
+
+    /// Makes a player.
+    ///
+    /// - Returns: the one handle.
+    fn create() ?*anyopaque {
+        return &handle_storage;
+    }
+
+    /// Does nothing.
+    ///
+    /// - `handle`: the player.
+    fn ignore(handle: *anyopaque) void {
+        _ = handle;
+    }
+
+    /// Does nothing.
+    ///
+    /// - `handle`: the player.
+    /// - `url`: the item.
+    fn load(handle: *anyopaque, url: ?[:0]const u8) void {
+        _ = handle;
+        _ = url;
+    }
+
+    /// Does nothing.
+    ///
+    /// - `handle`: the player.
+    /// - `value`: the rate or volume.
+    fn setRate(handle: *anyopaque, value: f32) void {
+        _ = handle;
+        _ = value;
+    }
+
+    /// Does nothing.
+    ///
+    /// - `handle`: the player.
+    /// - `seconds`: where to.
+    fn seek(handle: *anyopaque, seconds: f64) void {
+        _ = handle;
+        _ = seconds;
+    }
+
+    /// Does nothing.
+    ///
+    /// - `handle`: the player.
+    /// - `muted`: the mute.
+    fn setMuted(handle: *anyopaque, muted: bool) void {
+        _ = handle;
+        _ = muted;
+    }
+
+    /// Reports a ready, paused item.
+    ///
+    /// - `handle`: the player.
+    /// - Returns: the sample.
+    fn observe(handle: *anyopaque) mod.PlayerObservation {
+        _ = handle;
+        return .{ .status = .readyToPlay, .has_item = true };
+    }
+
+    /// Lists no tracks.
+    ///
+    /// - `handle`: the player.
+    /// - `allocator`: unused.
+    /// - `kind`: unused.
+    /// - Returns: none.
+    fn tracks(handle: *anyopaque, allocator: std.mem.Allocator, kind: mod.PlayerTrackKind) std.mem.Allocator.Error![]mod.PlayerTrack {
+        _ = handle;
+        _ = allocator;
+        _ = kind;
+        return &.{};
+    }
+
+    /// Does nothing.
+    ///
+    /// - `handle`: the player.
+    /// - `kind`: unused.
+    /// - `index`: unused.
+    fn selectTrack(handle: *anyopaque, kind: mod.PlayerTrackKind, index: ?usize) void {
+        _ = handle;
+        _ = kind;
+        _ = index;
+    }
+
+    /// The picture.
+    ///
+    /// - `handle`: the player.
+    /// - Returns: the 4x2 picture.
+    fn frame(handle: *anyopaque) ?renderer.Image {
+        _ = handle;
+        return .{ .width = 4, .height = 2, .pixels = &pixels };
+    }
+};
+
+test "video player: where the platform hands its frames over, it draws the latest, aspect-fit" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    mod.Player.setBackend(&FramedBackend.backend);
+    defer mod.Player.setBackend(null);
+    var player = mod.Player.init(std.testing.allocator);
+    defer player.deinit();
+    var canvas = renderer.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+
+    try mod.ViewRenderer.render(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &canvas);
+
+    var frames: usize = 0;
+    var glyphs: usize = 0;
+    for (canvas.commands.items) |command| switch (command) {
+        .videoFrame => |picture| {
+            frames += 1;
+            try std.testing.expectEqual(@as(u32, 4), picture.image.width);
+            // A 2:1 picture fit into a square: full width, half height, centered.
+            try std.testing.expectApproxEqAbs(@as(f32, 200), picture.rect.width, 0.5);
+            try std.testing.expectApproxEqAbs(@as(f32, 100), picture.rect.height, 0.5);
+            try std.testing.expectApproxEqAbs(@as(f32, 50), picture.rect.y, 0.5);
+        },
+        .glyph => glyphs += 1,
+        else => {},
+    };
+    try std.testing.expectEqual(@as(usize, 1), frames);
+    // No placeholder glyph over a picture.
+    try std.testing.expectEqual(@as(usize, 0), glyphs);
+}
+
 test "video player: a scrolled-away player registers an empty visible part" {
     var environment = mod.TestEnvironment.init();
     environment.setup();

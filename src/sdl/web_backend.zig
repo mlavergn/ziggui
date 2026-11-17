@@ -11,8 +11,8 @@ const views = @import("views");
 pub const WebBackend = struct {
     const Self = @This();
 
-    /// The platform web view: WebKit on macOS; WebView2 on Windows and
-    /// WebKitGTK on Linux, both stubs for now.
+    /// The platform web view: WebKit on macOS, WebKitGTK on Linux; WebView2
+    /// on Windows, a stub for now.
     const Platform = switch (mod.os_tag) {
         .macos => mod.WkWebViewBackend,
         .windows => mod.WebView2Backend,

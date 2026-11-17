@@ -1,10 +1,9 @@
-//! The Linux and Windows native-view host: not implemented yet. No region is
+//! The Windows native-view host: not implemented yet. No region is
 //! collected, so every `NativeView` draws its placeholder.
 //!
-//! The intended hosts are a child `GtkWidget` (Linux) or a child `HWND`
-//! (Windows) parented to SDL's window and positioned each frame from the
-//! `NativeRegion`s, as AppKit's is. A web view there is `webkitgtk-6.0`'s
-//! `WebKitWebView` or WebView2's controller window.
+//! The intended host is a child `HWND` parented to SDL's window and
+//! positioned each frame from the `NativeRegion`s, as AppKit's and GTK's
+//! are. A web view there is WebView2's controller window.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_native_host_stub);
@@ -62,6 +61,21 @@ pub const NativeHostStub = struct {
 
     /// Nothing to detach.
     pub fn detachAll() void {}
+
+    /// No toolkit loop runs inside SDL's: nothing to do.
+    pub fn beforeWait() void {}
+
+    /// No toolkit loop runs inside SDL's: nothing to do.
+    pub fn afterWait() void {}
+
+    /// No toolkit wakes the loop.
+    ///
+    /// - `event_type`: the event's type.
+    /// - Returns: false.
+    pub fn isWake(event_type: u32) bool {
+        _ = event_type;
+        return false;
+    }
 };
 
 // -----------------------------------------------------------------------------

@@ -92,6 +92,18 @@ pub const ImageCommand = struct {
     image: mod.Image,
 };
 
+/// An RGBA8 image whose pixels change from frame to frame (a video's
+/// picture), stretched over a rect. Unlike `ImageCommand` it is never cached:
+/// the GPU backend uploads it to a texture of its own on every frame.
+pub const VideoFrameCommand = struct {
+    const Self = @This();
+
+    /// Where the image is drawn.
+    rect: mod.Rect,
+    /// The pixels, valid until the frame is drawn.
+    image: mod.Image,
+};
+
 /// Blur the pixels already drawn beneath `rect`, then composite `tint` over
 /// the result — the primitive behind frosted "material" backgrounds. `sigma`
 /// controls the blur extent. Backend-neutral: the software rasterizer does a
@@ -150,6 +162,8 @@ pub const DrawCommand = union(enum) {
     glyph: GlyphCommand,
     /// Draw an image.
     image: ImageCommand,
+    /// Draw a picture that changes every frame, uncached.
+    videoFrame: VideoFrameCommand,
     /// Frost what is beneath a rect.
     blurRect: BlurRectCommand,
     /// Erase what is beneath a rect to transparent.

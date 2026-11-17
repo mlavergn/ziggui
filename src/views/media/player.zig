@@ -7,6 +7,7 @@
 const std = @import("std");
 const log = std.log.scoped(.ziggui_player);
 const mod = @import("module.zig");
+const renderer = @import("renderer");
 
 /// A media player the app owns, like a `ScrollState`: its address must stay
 /// put while views show it. Call it from the UI thread.
@@ -241,6 +242,20 @@ pub const Player = struct {
     /// - `index`: an index into `tracks`' list, or null for no subtitles.
     pub fn selectTrack(self: *Self, kind: mod.PlayerTrackKind, index: ?usize) void {
         if (self.nativeHandle()) |handle| self.backend.?.select_track(handle, kind, index);
+    }
+
+    /// The latest picture, where the platform hands its frames to ziggui to
+    /// draw (`PlayerBackend.frame`); `VideoPlayer` draws it, and so makes the
+    /// platform player on first need, as placing its picture does where the
+    /// platform draws its own.
+    ///
+    /// - `self`: the player.
+    /// - Returns: the picture, valid until the next call, or null where the
+    ///   platform draws its own, before the first frame, or with no backend.
+    pub fn currentFrame(self: *Self) ?renderer.Image {
+        const handle = self.nativeHandle() orelse return null;
+        const frame = self.backend.?.frame orelse return null;
+        return frame(handle);
     }
 
     /// The platform player, made on first need from the installed backend

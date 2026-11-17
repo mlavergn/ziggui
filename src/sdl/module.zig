@@ -81,8 +81,10 @@ pub const VideoBackend = @import("video_backend.zig").VideoBackend;
 pub const AvFoundationPlayer = @import("macos/module.zig").AvFoundationPlayer;
 /// The Windows media player (Media Foundation): a stub for now.
 pub const MediaFoundationPlayer = @import("windows/module.zig").MediaFoundationPlayer;
-/// The Linux media player (GStreamer): a stub for now.
+/// The Linux media player: GStreamer's `playbin`, its frames drawn by ziggui.
 pub const GstreamerPlayer = @import("linux/module.zig").GstreamerPlayer;
+/// GStreamer and its app sink (Linux), loaded at run time.
+pub const Gstreamer = @import("linux/module.zig").Gstreamer;
 /// This OS's host for `NativeView`: placement, overlay hiding and keyboard focus.
 pub const NativeBackend = @import("native_backend.zig").NativeBackend;
 /// Asks for frames for a moment after the window's content resizes, so placed views land.
@@ -91,13 +93,21 @@ pub const ResizeSettle = @import("resize_settle.zig").ResizeSettle;
 pub const WebBackend = @import("web_backend.zig").WebBackend;
 /// The macOS web view: a `WKWebView` per `WebPage`, placed by the native-view host.
 pub const WkWebViewBackend = @import("macos/module.zig").WkWebViewBackend;
-/// The Linux web view (WebKitGTK): a stub for now.
+/// The Linux web view: a WebKitGTK `WebKitWebView` per `WebPage`, placed by the native-view host.
 pub const WebKitGtkBackend = @import("linux/module.zig").WebKitGtkBackend;
+/// GTK 3, WebKitGTK and the Xlib calls around them (Linux), loaded at run time.
+pub const Gtk = @import("linux/module.zig").Gtk;
+/// Runs GLib's main context inside the SDL loop (Linux).
+pub const GlibPump = @import("linux/module.zig").GlibPump;
+/// The origin rule the Linux web view's bridges apply.
+pub const WebOrigin = @import("linux/module.zig").WebOrigin;
 /// The Windows web view (WebView2): a stub for now.
 pub const WebView2Backend = @import("windows/module.zig").WebView2Backend;
 /// The macOS native-view host: app `NSView`s above the Metal view.
 pub const AppKitNativeHost = @import("macos/module.zig").AppKitNativeHost;
-/// The Linux and Windows native-view host: a stub for now.
+/// The Linux native-view host: app `GtkWidget`s in X11 child windows of SDL's.
+pub const GtkNativeHost = @import("linux/module.zig").GtkNativeHost;
+/// The Windows native-view host: a stub for now.
 pub const NativeHostStub = @import("native_host_stub.zig").NativeHostStub;
 /// The Objective-C runtime bridge the AVFoundation player uses.
 pub const ObjectiveC = @import("macos/module.zig").ObjectiveC;
@@ -135,8 +145,8 @@ test {
         /// Reports whether the test references a barrel declaration's own
         /// declarations: every struct's, except `sdl_c` (all of SDL's C API)
         /// and the structs built for one OS (`Cocoa`, `AvFoundationPlayer`,
-        /// `AppKitNativeHost`, `WkWebViewBackend` and `ObjectiveC` on macOS, `Win32` on Windows, `StatusNotifier`
-        /// on Linux) on any other, so a cross-compiled `zig build test-sdl`
+        /// `AppKitNativeHost`, `WkWebViewBackend` and `ObjectiveC` on macOS, `Win32` on Windows, `StatusNotifier`,
+        /// `Gtk`, `GlibPump`, `GtkNativeHost`, `WebKitGtkBackend`, `Gstreamer` and `GstreamerPlayer` on Linux) on any other, so a cross-compiled `zig build test-sdl`
         /// analyzes what that platform builds.
         ///
         /// - `name`: the declaration's name.
@@ -145,7 +155,7 @@ test {
             if (std.mem.eql(u8, name, "sdl_c")) return false;
             if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
             if (std.mem.eql(u8, name, "Win32")) return os_tag == .windows;
-            if (std.mem.eql(u8, name, "StatusNotifier")) return os_tag == .linux;
+            if (std.mem.eql(u8, name, "StatusNotifier") or std.mem.eql(u8, name, "Gtk") or std.mem.eql(u8, name, "GlibPump") or std.mem.eql(u8, name, "GtkNativeHost") or std.mem.eql(u8, name, "WebKitGtkBackend") or std.mem.eql(u8, name, "Gstreamer") or std.mem.eql(u8, name, "GstreamerPlayer")) return os_tag == .linux;
             return true;
         }
     };

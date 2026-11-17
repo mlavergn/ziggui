@@ -77,6 +77,8 @@ pub const LineCommand = renderer.LineCommand;
 pub const GlyphCommand = renderer.GlyphCommand;
 /// A `DrawCommand.image` payload.
 pub const ImageCommand = renderer.ImageCommand;
+/// Draw a picture that changes every frame, uncached.
+pub const VideoFrameCommand = renderer.VideoFrameCommand;
 /// A `DrawCommand.blurRect` payload.
 pub const BlurRectCommand = renderer.BlurRectCommand;
 /// A `DrawCommand.eraseRect` payload.
@@ -97,6 +99,8 @@ pub const Step = renderer.Step;
 pub const DrawStep = renderer.DrawStep;
 /// A `Step.blur` payload.
 pub const BlurStep = renderer.BlurStep;
+/// Draw a picture from a texture of its own, uploaded this frame.
+pub const FrameStep = renderer.FrameStep;
 /// A pending texture-atlas region upload.
 pub const AtlasUpload = renderer.AtlasUpload;
 /// The GPU scene's texture atlas bookkeeping.

@@ -145,6 +145,7 @@ pub const Rasterizer = struct {
                 .line => |segment| self.drawLine(clips.items, segment.start, segment.end, segment.width, segment.color),
                 .glyph => |glyph| self.drawGlyph(clips.items, glyph.rect, glyph.color, glyph.coverage, glyph.gamma),
                 .image => |image| self.drawImage(clips.items, image.rect, image.image),
+                .videoFrame => |frame| self.drawImage(clips.items, frame.rect, frame.image),
                 .blurRect => |blur| try self.blurRect(clips.items, blur.rect, blur.radius, blur.sigma, blur.tint),
                 .eraseRect => |erase| self.eraseShape(clips.items, erase.rect, erase.radius),
             }

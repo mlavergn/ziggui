@@ -319,6 +319,20 @@ const GpuEncoder = struct {
         self.bindInstanced(pass, self.gpu.primitive_pipeline);
     }
 
+    /// Draws one video frame's instance from its own texture with the linear
+    /// sampler, then binds the atlas again for the runs after it.
+    ///
+    /// - `self`: the encoder.
+    /// - `first`: the frame's instance.
+    /// - `texture`: the texture its picture was uploaded to.
+    fn frameStep(self: *Self, first: u32, texture: ?*sdl_c.SDL_GPUTexture) void {
+        const pass = self.beginPrimitivePass() orelse return;
+        const sampler = self.gpu.frame_sampler orelse self.gpu.sampler;
+        sdl_c.SDL_BindGPUFragmentSamplers(pass, 0, &.{ .texture = texture, .sampler = sampler }, 1);
+        sdl_c.SDL_DrawGPUPrimitives(pass, 4, 1, 0, first);
+        sdl_c.SDL_BindGPUFragmentSamplers(pass, 0, &.{ .texture = self.gpu.atlas_texture, .sampler = self.gpu.sampler }, 1);
+    }
+
     /// Blurs a region: a horizontal pass into scratch, then a vertical pass
     /// with the tint back into the scene.
     ///
@@ -378,6 +392,21 @@ const GpuEncoder = struct {
         sdl_c.SDL_DrawGPUPrimitives(vertical_pass, 4, 1, 0, 0);
         sdl_c.SDL_EndGPURenderPass(vertical_pass);
     }
+};
+
+/// How many video frames (`DrawCommand.videoFrame`) one frame draws at most.
+const max_frame_textures = 8;
+
+/// A texture a video frame is uploaded to, kept while its size holds.
+const FrameTexture = struct {
+    const Self = @This();
+
+    /// The texture, or null before the first frame in this slot.
+    texture: ?*sdl_c.SDL_GPUTexture = null,
+    /// Its width, in pixels.
+    width: u32 = 0,
+    /// Its height, in pixels.
+    height: u32 = 0,
 };
 
 /// The SDL_GPU device, its pipelines, and the textures and buffers a frame
@@ -469,6 +498,14 @@ pub const Gpu = struct {
     /// The instance buffer's size, in bytes.
     instance_capacity: u32 = 0,
 
+    /// The textures `DrawCommand.videoFrame` pictures are uploaded to, one
+    /// per picture in a frame, in paint order; each kept for the next frame.
+    frame_textures: [max_frame_textures]FrameTexture = @splat(.{}),
+
+    /// The linear sampler a video frame is drawn with (scaled pictures look
+    /// blocky with the nearest one), made on first need.
+    frame_sampler: ?*sdl_c.SDL_GPUSampler = null,
+
     /// The upload buffer.
     transfer: ?*sdl_c.SDL_GPUTransferBuffer = null,
 
@@ -503,6 +540,8 @@ pub const Gpu = struct {
         if (self.instance_buffer) |buffer| sdl_c.SDL_ReleaseGPUBuffer(device, buffer);
         if (self.transfer) |transfer| sdl_c.SDL_ReleaseGPUTransferBuffer(device, transfer);
         if (self.atlas_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
+        for (self.frame_textures) |frame_texture| if (frame_texture.texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
+        if (self.frame_sampler) |sampler| sdl_c.SDL_ReleaseGPUSampler(device, sampler);
         if (self.scene_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
         if (self.scratch_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
         sdl_c.SDL_ReleaseGPUSampler(device, self.sampler);
@@ -994,6 +1033,42 @@ pub const Gpu = struct {
         return (pending.width + 2) * (pending.height + 2) * 4;
     }
 
+    /// A video frame's pixels, RGBA8 with no row padding.
+    ///
+    /// - `image`: the frame.
+    /// - Returns: its size in bytes.
+    fn frameBytes(image: renderer.Image) u32 {
+        return image.width * image.height * 4;
+    }
+
+    /// Makes sure slot `index` holds a texture the frame's size (made again
+    /// when the size changes) and the linear sampler exists.
+    ///
+    /// - `self`: the device.
+    /// - `index`: the frame's slot, its order among the scene's frames.
+    /// - `image`: the frame.
+    /// - Returns: false when SDL could not make the texture or the sampler,
+    ///   or the image holds fewer bytes than its size says.
+    fn ensureFrameTexture(self: *Self, index: usize, image: renderer.Image) bool {
+        if (image.pixels.len < Self.frameBytes(image)) return false;
+        if (self.frame_sampler == null) {
+            self.frame_sampler = sdl_c.SDL_CreateGPUSampler(self.device, &.{
+                .min_filter = sdl_c.SDL_GPU_FILTER_LINEAR,
+                .mag_filter = sdl_c.SDL_GPU_FILTER_LINEAR,
+                .mipmap_mode = sdl_c.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+                .address_mode_u = sdl_c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+                .address_mode_v = sdl_c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+                .address_mode_w = sdl_c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            });
+            if (self.frame_sampler == null) return false;
+        }
+        const slot = &self.frame_textures[index];
+        if (slot.texture != null and slot.width == image.width and slot.height == image.height) return true;
+        if (slot.texture) |texture| sdl_c.SDL_ReleaseGPUTexture(self.device, texture);
+        slot.* = .{ .texture = self.makeTexture(image.width, image.height, sdl_c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM), .width = image.width, .height = image.height };
+        return slot.texture != null;
+    }
+
     /// Stage instance data and pending atlas uploads through the (grown as
     /// needed) transfer buffer, recording the copy commands on `command_buffer`.
     ///
@@ -1009,6 +1084,13 @@ pub const Gpu = struct {
         // sample that border, so stale pixels there drew stray lines.
         var total: u32 = instance_bytes;
         for (uploads) |pending| total += Self.paddedBytes(pending);
+        // Each video frame goes up whole, into its own texture.
+        var frame_count: usize = 0;
+        for (scene.steps) |step| if (step == .frame) {
+            if (frame_count == max_frame_textures or !self.ensureFrameTexture(frame_count, step.frame.image)) return false;
+            total += Self.frameBytes(step.frame.image);
+            frame_count += 1;
+        };
         if (total == 0) return true;
 
         if (self.transfer == null or self.transfer_capacity < total) {
@@ -1041,6 +1123,12 @@ pub const Gpu = struct {
             for (0..pending.height) |y| @memcpy(destination[(y + 1) * row + 4 ..][0 .. pending.width * 4], pending.pixels[y * pending.width * 4 ..][0 .. pending.width * 4]);
             offset += size;
         }
+        const frames_offset = offset;
+        for (scene.steps) |step| if (step == .frame) {
+            const size = Self.frameBytes(step.frame.image);
+            @memcpy(mapped[offset..][0..size], step.frame.image.pixels[0..size]);
+            offset += size;
+        };
         sdl_c.SDL_UnmapGPUTransferBuffer(self.device, self.transfer);
 
         const copy = sdl_c.SDL_BeginGPUCopyPass(command_buffer) orelse return false;
@@ -1062,6 +1150,19 @@ pub const Gpu = struct {
             );
             offset += Self.paddedBytes(pending);
         }
+        offset = frames_offset;
+        var frame_index: usize = 0;
+        for (scene.steps) |step| if (step == .frame) {
+            const image = step.frame.image;
+            sdl_c.SDL_UploadToGPUTexture(
+                copy,
+                &.{ .transfer_buffer = self.transfer, .offset = offset, .pixels_per_row = image.width, .rows_per_layer = image.height },
+                &.{ .texture = self.frame_textures[frame_index].texture, .w = image.width, .h = image.height, .d = 1 },
+                true,
+            );
+            offset += Self.frameBytes(image);
+            frame_index += 1;
+        };
         sdl_c.SDL_EndGPUCopyPass(copy);
         self.atlas.clearPending();
         return true;
@@ -1085,11 +1186,16 @@ pub const Gpu = struct {
         height: u32,
     ) void {
         var encoder = GpuEncoder{ .gpu = self, .command_buffer = command_buffer, .width = width, .height = height, .clear = clear };
+        var frame_index: usize = 0;
         for (scene.steps) |step| {
             switch (step) {
                 .draw => |draw| encoder.drawStep(draw.first, draw.count),
                 .blur => |blur| encoder.blurStep(blur),
                 .erase => |erase| encoder.eraseStep(erase.first, erase.count),
+                .frame => |picture| {
+                    encoder.frameStep(picture.first, self.frame_textures[frame_index].texture);
+                    frame_index += 1;
+                },
             }
         }
         encoder.endPass();
@@ -1123,4 +1229,25 @@ test "gpu: an erase cuts a premultiplied transparent hole, and a later fill comp
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0 }, hole);
     try std.testing.expect(scrim[3] >= 126 and scrim[3] <= 129 and scrim[0] <= 1); // premultiplied black at half alpha
     try std.testing.expectEqualSlices(u8, &.{ 255, 255, 255, 255 }, outside);
+}
+
+test "gpu: a video frame draws from its own texture, its new pixels every frame" {
+    if (!sdl_c.SDL_Init(sdl_c.SDL_INIT_VIDEO)) return error.SkipZigTest;
+    defer sdl_c.SDL_Quit();
+    var gpu = Gpu.init(std.testing.allocator, null) orelse return error.SkipZigTest;
+    defer gpu.deinit();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    // One buffer, as a player keeps: the second frame rewrites it in place.
+    var pixels = [_]u8{ 255, 0, 0, 255, 0, 255, 0, 255 };
+    const image = renderer.Image{ .width = 2, .height = 1, .pixels = &pixels };
+    const commands = [_]renderer.DrawCommand{.{ .videoFrame = .{ .rect = .{ .x = 0, .y = 0, .width = 32, .height = 32 }, .image = image } }};
+    const first = gpu.renderToRgba(arena.allocator(), &commands, renderer.Color.white, 32, 32) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(first);
+    try std.testing.expectEqualSlices(u8, &.{ 255, 0, 0, 255 }, first[(16 * 32 + 2) * 4 ..][0..4]);
+    try std.testing.expectEqualSlices(u8, &.{ 0, 255, 0, 255 }, first[(16 * 32 + 29) * 4 ..][0..4]);
+    pixels = .{ 0, 0, 255, 255, 0, 0, 255, 255 };
+    const second = gpu.renderToRgba(arena.allocator(), &commands, renderer.Color.white, 32, 32) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(second);
+    try std.testing.expectEqualSlices(u8, &.{ 0, 0, 255, 255 }, second[(16 * 32 + 2) * 4 ..][0..4]);
 }
