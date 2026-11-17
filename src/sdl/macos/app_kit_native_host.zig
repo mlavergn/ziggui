@@ -103,9 +103,6 @@ pub const AppKitNativeHost = struct {
         "scrollWheel:",
     };
 
-    extern "objc" fn objc_allocateClassPair(superclass: mod.Id, name: [*:0]const u8, extra: usize) mod.Id;
-    extern "objc" fn objc_registerClassPair(class: mod.Id) void;
-    extern "objc" fn class_addMethod(class: mod.Id, name: mod.Id, implementation: *const anyopaque, types: [*:0]const u8) u8;
     extern "objc" fn objc_msgSendSuper() void;
 
     /// The view that held the keyboard when an overlay hid it, to refocus when
@@ -206,6 +203,30 @@ pub const AppKitNativeHost = struct {
         _ = mod.ObjectiveC.send(u8, ns_window, "makeFirstResponder:", .{mod.ObjectiveC.send(mod.Id, ns_window, "contentView", .{})});
     }
 
+    /// Sends an editing key to the first responder (the placed view holding
+    /// the keyboard), as an Edit menu would: the window has none, so a web
+    /// view could not copy or paste otherwise.
+    ///
+    /// - `keycode`: the key's `SDL_Keycode`.
+    /// - `modifiers`: its `SDL_Keymod` mask.
+    /// - Returns: true when it was ⌘C, ⌘X, ⌘V or ⌘A and a placed view held the keyboard.
+    pub fn performEdit(keycode: u32, modifiers: u16) bool {
+        if (!Self.isEditChord(modifiers)) return false;
+        const action: [*:0]const u8 = switch (keycode) {
+            sdl_c.SDLK_C => "copy:",
+            sdl_c.SDLK_X => "cut:",
+            sdl_c.SDLK_V => "paste:",
+            sdl_c.SDLK_A => "selectAll:",
+            else => return false,
+        };
+        if (Self.focusedResponder() == null) return false;
+        // `copy:` and `paste:` autorelease pasteboard objects.
+        const pool = mod.ObjectiveC.pushPool();
+        defer mod.ObjectiveC.popPool(pool);
+        const application = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSApplication"), "sharedApplication", .{});
+        return mod.ObjectiveC.send(u8, application, "sendAction:to:from:", .{ mod.ObjectiveC.selectorNamed(action), @as(mod.Id, null), @as(mod.Id, null) }) != 0;
+    }
+
     /// Reports whether a point falls on a shown view.
     ///
     /// - `point`: the point, in the window's points.
@@ -233,6 +254,16 @@ pub const AppKitNativeHost = struct {
         suppressed = false;
     }
 
+    /// Whether a key's modifiers are ⌘ alone: ⌃A in a field moves to the
+    /// line's start, and ⌘⇧V or ⌘⌥C are other commands, not an edit.
+    ///
+    /// - `modifiers`: the `SDL_Keymod` mask.
+    /// - Returns: true for ⌘ with no ⇧, ⌥ or ⌃.
+    fn isEditChord(modifiers: u16) bool {
+        const others: u16 = @intCast(sdl_c.SDL_KMOD_SHIFT | sdl_c.SDL_KMOD_ALT | sdl_c.SDL_KMOD_CTRL);
+        return (modifiers & sdl_c.SDL_KMOD_GUI) != 0 and (modifiers & others) == 0;
+    }
+
     /// Stops SDL's text input for a placed view taking the keyboard, so SDL
     /// does not insert its keys a second time, and unfocuses ziggui's field.
     /// Runs before the view is first responder when a press lands in it.
@@ -251,14 +282,13 @@ pub const AppKitNativeHost = struct {
     ///
     /// - Returns: the class, or null when the runtime will not register it.
     fn containerClass() mod.Id {
-        const existing = mod.ObjectiveC.class("ZigguiNativeContainer");
-        if (existing != null) return existing;
-        const class = objc_allocateClassPair(mod.ObjectiveC.class("NSView"), "ZigguiNativeContainer", 0);
-        if (class == null) return null;
-        _ = class_addMethod(class, mod.ObjectiveC.selectorNamed("hitTest:"), @ptrCast(&Self.hitTest), "@@:{CGPoint=dd}");
-        for (absorbed_events) |name| _ = class_addMethod(class, mod.ObjectiveC.selectorNamed(name), @ptrCast(&Self.absorb), "v@:@");
-        objc_registerClassPair(class);
-        return class;
+        const methods = comptime blk: {
+            var list: [1 + absorbed_events.len]mod.ObjectiveCMethod = undefined;
+            list[0] = .{ .selector = "hitTest:", .implementation = @ptrCast(&Self.hitTest), .types = "@@:{CGPoint=dd}" };
+            for (absorbed_events, list[1..]) |name, *method| method.* = .{ .selector = name, .implementation = @ptrCast(&Self.absorb), .types = "v@:@" };
+            break :blk list;
+        };
+        return mod.ObjectiveC.defineClass("ZigguiNativeContainer", "NSView", &methods);
     }
 
     /// `-[ZigguiNativeContainer hitTest:]`: AppKit's hit test, which on a
@@ -462,4 +492,12 @@ test "with nothing placed the host holds no focus and no point" {
     try std.testing.expect(AppKitNativeHost.presents);
     try std.testing.expect(!AppKitNativeHost.hasFocus());
     try std.testing.expect(!AppKitNativeHost.contains(.{ .x = 10, .y = 10 }));
+}
+
+test "an edit goes to a placed view for command alone" {
+    try std.testing.expect(AppKitNativeHost.isEditChord(@intCast(sdl_c.SDL_KMOD_LGUI)));
+    try std.testing.expect(!AppKitNativeHost.isEditChord(@intCast(sdl_c.SDL_KMOD_LCTRL)));
+    try std.testing.expect(!AppKitNativeHost.isEditChord(@intCast(sdl_c.SDL_KMOD_LGUI | sdl_c.SDL_KMOD_LSHIFT)));
+    try std.testing.expect(!AppKitNativeHost.isEditChord(@intCast(sdl_c.SDL_KMOD_LGUI | sdl_c.SDL_KMOD_LALT)));
+    try std.testing.expect(!AppKitNativeHost.isEditChord(0));
 }

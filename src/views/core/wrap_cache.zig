@@ -34,6 +34,11 @@ pub const WrapCache = struct {
     /// Cached wraps past which the next frame boundary retires them.
     const max_wraps: usize = 2048;
 
+    /// Bytes of cached wraps past which the next frame boundary retires
+    /// them, however few: a long text (a soft-wrapped editor's whole
+    /// buffer, a new key per keystroke) wraps to thousands of rows a time.
+    const max_wrap_bytes: usize = 32 * 1024 * 1024;
+
     /// Cached rich layouts past which the next frame boundary retires them.
     const max_rich: usize = 4096;
 
@@ -48,6 +53,9 @@ pub const WrapCache = struct {
 
     /// The wraps the last boundary retired: no longer looked up, freed at the next.
     retired_map: std.AutoHashMapUnmanaged(u64, []renderer.WrappedLine) = .empty,
+
+    /// The bytes `map`'s wraps hold.
+    wrap_bytes: usize = 0,
 
     /// The rich layouts the last boundary retired, freed at the next.
     retired_rich: std.AutoHashMapUnmanaged(u64, RichEntry) = .empty,
@@ -83,7 +91,10 @@ pub const WrapCache = struct {
     pub fn beginFrame(self: *Self) void {
         self.clear(&self.retired_map);
         self.clearRich(&self.retired_rich);
-        if (self.map.count() > max_wraps) std.mem.swap(std.AutoHashMapUnmanaged(u64, []renderer.WrappedLine), &self.map, &self.retired_map);
+        if (self.map.count() > max_wraps or self.wrap_bytes > max_wrap_bytes) {
+            std.mem.swap(std.AutoHashMapUnmanaged(u64, []renderer.WrappedLine), &self.map, &self.retired_map);
+            self.wrap_bytes = 0;
+        }
         if (self.rich.count() > max_rich) std.mem.swap(std.AutoHashMapUnmanaged(u64, RichEntry), &self.rich, &self.retired_rich);
     }
 
@@ -115,6 +126,7 @@ pub const WrapCache = struct {
             return renderer.TextShaper.init(face).wrapText(arena, text, pixel_size, max_width) catch &.{};
         };
         slot.value_ptr.* = lines;
+        self.wrap_bytes += lines.len * @sizeOf(renderer.WrappedLine);
         return lines;
     }
 
@@ -265,4 +277,28 @@ test "a full wrap cache keeps a frame's layouts alive past the next frame bounda
     scope.begin(arena);
     try std.testing.expectEqual(@as(u32, 0), cache.retired_rich.count());
     try std.testing.expectEqual(@as(u32, 0), cache.retired_map.count());
+}
+
+test "a wrap cache retires its wraps once they outgrow its bytes, however few" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    const context = environment.context();
+    const arena = environment.arena_state.allocator();
+    var cache = WrapCache.init(std.testing.allocator);
+    defer cache.deinit();
+    // A text of short words wraps to a row per word at a narrow width: a few
+    // edits of it pass the byte bound long before the count bound.
+    const words = try arena.alloc(u8, 400_000);
+    for (words, 0..) |*byte, index| byte.* = if (index % 4 == 3) ' ' else 'w';
+    var edits: usize = 0;
+    while (cache.wrap_bytes <= WrapCache.max_wrap_bytes) : (edits += 1) {
+        words[0] = @intCast('a' + edits % 26);
+        words[1] = @intCast('a' + edits / 26 % 26);
+        _ = cache.wrap(arena, context.cache.face, words, 14, 10);
+    }
+    try std.testing.expect(cache.map.count() < WrapCache.max_wraps);
+    cache.beginFrame();
+    try std.testing.expectEqual(@as(u32, 0), cache.map.count());
+    try std.testing.expectEqual(@as(usize, 0), cache.wrap_bytes);
 }

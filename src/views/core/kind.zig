@@ -302,6 +302,9 @@ pub const NativeViewData = struct {
 
     /// The platform view (an `NSView` on macOS), or null for a placeholder; the app owns it.
     handle: ?*anyopaque,
+
+    /// The glyph the placeholder shows (a `WebView`'s is a globe).
+    placeholder: renderer.Icon = .appWindow,
 };
 
 /// What a view is.

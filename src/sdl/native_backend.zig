@@ -51,6 +51,17 @@ pub const NativeBackend = struct {
         Platform.release();
     }
 
+    /// Sends an editing key the app did not consume (⌘C, ⌘X, ⌘V, ⌘A, with
+    /// no other modifier) to the platform view holding the keyboard, as an
+    /// Edit menu would.
+    ///
+    /// - `keycode`: the key's `SDL_Keycode`.
+    /// - `modifiers`: its `SDL_Keymod` mask.
+    /// - Returns: true when it was an editing key a view took.
+    pub fn performEdit(keycode: u32, modifiers: u16) bool {
+        return Platform.performEdit(keycode, modifiers);
+    }
+
     /// Reports whether a point falls on a shown platform view, whose clicks
     /// are its own and never ziggui's.
     ///

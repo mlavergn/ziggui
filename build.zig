@@ -132,13 +132,14 @@ const Modules = struct {
             },
         });
         Self.linkSdl(b, sdl, sdl_c, options);
-        // cocoa.zig reaches AppKit (the unified title bar, the menu bar, template
-        // tray icons) through the Objective-C runtime, and av_foundation_player.zig
-        // AVFoundation, Core Media and Core Animation (`VideoPlayer`).
+        // src/sdl/macos/: cocoa.zig reaches AppKit (the unified title bar, the
+        // menu bar, template tray icons) through the Objective-C runtime,
+        // av_foundation_player.zig AVFoundation, Core Media and Core Animation
+        // (`VideoPlayer`), and wk_web_view_backend.zig WebKit (`WebView`).
         if (options.target.result.os.tag == .macos) {
             if (options.macos_sdk) |sdk| Self.addMacosSdk(b, sdl, sdk);
             sdl.linkSystemLibrary("objc", .{});
-            for ([_][]const u8{ "AVFoundation", "CoreMedia", "CoreGraphics", "QuartzCore" }) |framework| sdl.linkFramework(framework, .{});
+            for ([_][]const u8{ "AVFoundation", "CoreMedia", "CoreGraphics", "QuartzCore", "WebKit" }) |framework| sdl.linkFramework(framework, .{});
         }
 
         const barrel = b.createModule(.{
