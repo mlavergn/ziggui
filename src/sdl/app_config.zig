@@ -106,6 +106,29 @@ pub const AppConfig = struct {
     /// A face behind the bundled emoji font for codepoints no bundled face has
     /// (a system CJK font, `renderer.Font.fromExternal`). Must outlive `run`.
     fallback_font: ?*const renderer.TtfFont = null,
+
+    /// The largest width or height `restoring` opens a window at, in points:
+    /// a size past it was read from a corrupt file.
+    pub const max_restored_size: u32 = 16384;
+
+    /// This configuration opening the window where it was saved: `x`, `y`,
+    /// `width`, `height` and `maximized` from `place` (the size between
+    /// `min_width`/`min_height` and `max_restored_size`), unchanged with none.
+    ///
+    /// - `self`: the configuration, its minimums set.
+    /// - `place`: the saved place (`App.windowPlace`); null for the defaults.
+    /// - Returns: the configuration to run with.
+    pub fn restoring(self: *const Self, place: ?views.WindowPlace) Self {
+        var placed = self.*;
+        const saved = place orelse return placed;
+        placed.x = saved.x;
+        placed.y = saved.y;
+        // A minimum past the cap would invert the range, which `clamp` asserts against.
+        placed.width = std.math.clamp(saved.width, std.math.clamp(self.min_width, 1, max_restored_size), max_restored_size);
+        placed.height = std.math.clamp(saved.height, std.math.clamp(self.min_height, 1, max_restored_size), max_restored_size);
+        placed.maximized = saved.maximized;
+        return placed;
+    }
 };
 
 // -----------------------------------------------------------------------------
@@ -115,4 +138,23 @@ test {
     std.testing.refAllDecls(@This());
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "restoring opens the window at its saved place, never below the minimums" {
+    const base: AppConfig = .{ .width = 1320, .height = 840, .min_width = 900, .min_height = 560 };
+    const none = base.restoring(null);
+    try std.testing.expectEqual(@as(u32, 1320), none.width);
+    try std.testing.expectEqual(@as(?i32, null), none.x);
+    const placed = base.restoring(.{ .x = 40, .y = -20, .width = 1500, .height = 300, .maximized = true });
+    try std.testing.expectEqual(@as(?i32, 40), placed.x);
+    try std.testing.expectEqual(@as(?i32, -20), placed.y);
+    try std.testing.expectEqual(@as(u32, 1500), placed.width);
+    try std.testing.expectEqual(@as(u32, 560), placed.height);
+    try std.testing.expect(placed.maximized);
+    // A corrupt file's size is cut to the largest window opened.
+    const corrupt = base.restoring(.{ .x = 0, .y = 0, .width = std.math.maxInt(u32), .height = 700 });
+    try std.testing.expectEqual(AppConfig.max_restored_size, corrupt.width);
+    // A minimum past the cap opens at the cap rather than failing.
+    const huge: AppConfig = .{ .min_width = std.math.maxInt(u32) };
+    try std.testing.expectEqual(AppConfig.max_restored_size, huge.restoring(.{ .x = 0, .y = 0, .width = 800, .height = 600 }).width);
 }

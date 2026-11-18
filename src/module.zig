@@ -582,6 +582,12 @@ pub const DesktopEntryState = views.DesktopEntryState;
 pub const HeadlessPlatform = views.HeadlessPlatform;
 /// A window's frame: its measures, its top band and drawn title bar, and how its menu bar spells a key.
 pub const WindowChrome = views.WindowChrome;
+/// Where a window was and how big: what an app saves to reopen it there
+/// (`App.windowPlace`, `AppConfig.restoring`).
+pub const WindowPlace = views.WindowPlace;
+/// Holds a window's place and its dragged dividers for the app to save once
+/// they rest (`noteWindow`, `notePanes`, `due`, `restore`).
+pub const WindowMemory = views.WindowMemory;
 /// One row of a `Sidebar`.
 pub const SidebarItem = views.SidebarItem;
 /// How a `Sidebar` highlights its selection.

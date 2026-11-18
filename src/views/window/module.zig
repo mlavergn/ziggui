@@ -20,6 +20,10 @@ pub const DesktopEntryState = @import("desktop_entry_state.zig").DesktopEntrySta
 pub const HeadlessPlatform = @import("headless_platform.zig").HeadlessPlatform;
 /// A window's frame: its measures, its top band and drawn title bar, and how its menu bar spells a key.
 pub const WindowChrome = @import("window_chrome.zig").WindowChrome;
+/// Where a window was and how big: what an app saves to reopen it there.
+pub const WindowPlace = @import("window_place.zig").WindowPlace;
+/// Holds a window's place and its dragged dividers for the app to save once they rest.
+pub const WindowMemory = @import("window_memory.zig").WindowMemory;
 /// What `WindowButtons` do: minimize, maximize or restore, close.
 pub const WindowActions = @import("window_actions.zig").WindowActions;
 /// A `TitleBar`'s height, in points.
@@ -31,6 +35,8 @@ pub const TitleBar = @import("title_bar.zig").TitleBar;
 /// Minimize, maximize or restore, and close, in the platform's look.
 pub const WindowButtons = @import("title_bar.zig").WindowButtons;
 
+/// Where a split view's divider sits (from the views module).
+pub const SplitState = @import("../module.zig").SplitState;
 /// A tap region registered while painting (from the views module).
 pub const HitRegion = @import("../module.zig").HitRegion;
 /// A read/write handle on a `State` (from the views module).
@@ -88,6 +94,8 @@ test {
     // Nothing here does I/O to trace.
     _ = log;
     _ = @import("app_hooks.zig");
+    _ = @import("window_memory.zig");
+    _ = @import("window_place.zig");
     _ = @import("window_hit.zig");
     _ = @import("window_hit_area.zig");
     _ = @import("desktop_entry.zig");

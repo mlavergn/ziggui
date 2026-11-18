@@ -302,6 +302,16 @@ pub const App = struct {
         return Self.currentFrame(window);
     }
 
+    /// The main window's place to save: `windowFrame` and whether it is
+    /// maximized, given back at launch through `AppConfig.restoring`.
+    ///
+    /// - `self`: the app.
+    /// - Returns: the place; null with no window.
+    pub fn windowPlace(self: *const Self) ?views.WindowPlace {
+        const frame = self.windowFrame() orelse return null;
+        return .{ .x = frame.x, .y = frame.y, .width = frame.width, .height = frame.height, .maximized = self.isMaximized() };
+    }
+
     /// Records `window`'s frame as its restored one, unless it is maximized,
     /// minimized or full screen. The event loop calls it as the main window
     /// opens, moves and resizes.

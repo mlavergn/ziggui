@@ -382,6 +382,10 @@ pub const DesktopEntryState = @import("window/module.zig").DesktopEntryState;
 pub const HeadlessPlatform = @import("window/module.zig").HeadlessPlatform;
 /// A window's frame: its measures, its top band and drawn title bar, and how its menu bar spells a key.
 pub const WindowChrome = @import("window/module.zig").WindowChrome;
+/// Where a window was and how big: what an app saves to reopen it there.
+pub const WindowPlace = @import("window/module.zig").WindowPlace;
+/// Holds a window's place and its dragged dividers for the app to save once they rest.
+pub const WindowMemory = @import("window/module.zig").WindowMemory;
 /// One row of a `Sidebar`.
 pub const SidebarItem = @import("containers/module.zig").SidebarItem;
 /// How a `Sidebar` highlights its selection.
