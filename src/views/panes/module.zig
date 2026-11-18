@@ -26,6 +26,10 @@ pub const VirtualListBoth = @import("panes.zig").VirtualListBoth;
 pub const DiffView = @import("panes.zig").DiffView;
 /// A `DiffView` whose lines can be selected and copied (`DiffSelection`).
 pub const SelectableDiffView = @import("panes.zig").SelectableDiffView;
+/// A `SelectableDiffView` with links on every hunk header, pinned to the pane's right edge (`HunkAction`).
+pub const SelectableDiffViewWithActions = @import("panes.zig").SelectableDiffViewWithActions;
+/// A link on a `SelectableDiffViewWithActions`' hunk headers, called with its hunk's index.
+pub const HunkAction = @import("hunk_action.zig").HunkAction;
 /// The lines selected in a `SelectableDiffView`, kept by the app.
 pub const DiffSelection = @import("diff_selection.zig").DiffSelection;
 /// A table's header row.
@@ -87,5 +91,6 @@ test {
     _ = @import("diff_line.zig");
     _ = @import("diff_layout.zig");
     _ = @import("diff_selection.zig");
+    _ = @import("hunk_action.zig");
     _ = @import("panes.zig");
 }

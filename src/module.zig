@@ -772,6 +772,10 @@ pub const VirtualListBoth = views.VirtualListBoth;
 pub const DiffView = views.DiffView;
 /// A `DiffView` whose lines can be selected and copied (`DiffSelection`).
 pub const SelectableDiffView = views.SelectableDiffView;
+/// A `SelectableDiffView` with links on every hunk header, pinned to the pane's right edge (`HunkAction`).
+pub const SelectableDiffViewWithActions = views.SelectableDiffViewWithActions;
+/// A link on a `SelectableDiffViewWithActions`' hunk headers, called with its hunk's index.
+pub const HunkAction = views.HunkAction;
 /// The lines selected in a `SelectableDiffView`, kept by the app beside the diff's `ScrollState`.
 pub const DiffSelection = views.DiffSelection;
 /// A table's header row.

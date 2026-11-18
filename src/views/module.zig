@@ -500,6 +500,10 @@ pub const VirtualListBoth = @import("panes/module.zig").VirtualListBoth;
 pub const DiffView = @import("panes/module.zig").DiffView;
 /// A `DiffView` whose lines can be selected and copied (`DiffSelection`).
 pub const SelectableDiffView = @import("panes/module.zig").SelectableDiffView;
+/// A `SelectableDiffView` with links on every hunk header, pinned to the pane's right edge (`HunkAction`).
+pub const SelectableDiffViewWithActions = @import("panes/module.zig").SelectableDiffViewWithActions;
+/// A link on a `SelectableDiffViewWithActions`' hunk headers, called with its hunk's index.
+pub const HunkAction = @import("panes/module.zig").HunkAction;
 /// The lines selected in a `SelectableDiffView`, kept by the app.
 pub const DiffSelection = @import("panes/module.zig").DiffSelection;
 /// A table's header row.

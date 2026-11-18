@@ -140,6 +140,10 @@ const DiffIndex = struct {
 const DiffModel = struct {
     const Self = @This();
 
+    /// The drag area under a hunk action's link: it takes the press, so the
+    /// row's line selection does not start, and does nothing as it moves.
+    const link_drag: mod.DragCallback = .{ .function = Self.ignoreDrag };
+
     /// The diff.
     lines: []const mod.DiffLine,
 
@@ -151,6 +155,15 @@ const DiffModel = struct {
 
     /// The selected lines, for a `SelectableDiffView`; null for a plain `DiffView`.
     selection: ?*mod.DiffSelection = null,
+
+    /// The links on every hunk header, for a `SelectableDiffViewWithActions`.
+    actions: []const mod.HunkAction = &.{},
+
+    /// How wide a hunk header's text is drawn before its links, so they end
+    /// at the pane's right edge however far it scrolled sideways; null while
+    /// the pane's width is unknown (the first frame), the links then
+    /// following the text.
+    pin: ?f32 = null,
 
     /// The colors, read once per frame.
     tokens: mod.BuildTokens,
@@ -199,9 +212,13 @@ const DiffModel = struct {
         const bar = mod.Rectangle(if (selected) tokens.accent else renderer.Color.transparent).frameWidth(mod.DiffLayout.bar_width);
         const gutter_width = mod.DiffLayout.gutterWidth(self.digits);
         const body: mod.View = switch (line.kind) {
-            .hunkHeader, .fileHeader, .note => mod.Text(Self.expandTabs(line.text)).mono().size(mod.DiffLayout.font_size)
-                .foreground(if (line.kind == .fileHeader) tokens.label else tokens.secondary_label)
-                .weight(if (line.kind == .fileHeader) .semibold else .regular),
+            .hunkHeader, .fileHeader, .note => blk: {
+                const text = mod.Text(Self.expandTabs(line.text)).mono().size(mod.DiffLayout.font_size)
+                    .foreground(if (line.kind == .fileHeader) tokens.label else tokens.secondary_label)
+                    .weight(if (line.kind == .fileHeader) .semibold else .regular);
+                if (line.kind != .hunkHeader or line.continued or self.actions.len == 0) break :blk text;
+                break :blk self.withActions(text, hunk orelse break :blk text);
+            },
             else => mod.HStack(.{
                 Self.numberCell(line.old, gutter_width, tokens.secondary_label),
                 Self.numberCell(line.new, gutter_width, tokens.secondary_label),
@@ -229,6 +246,43 @@ const DiffModel = struct {
         if (selection.contains(index)) row_view = row_view.background(tokens.selection.withAlpha(0.28));
         // Beneath the row's own tap, so a press both picks the hunk and starts the selection.
         return mod.HStack(.{row_view}).spacing(0).frameMaxWidth().onDrag(selection.dragCallback(index));
+    }
+
+    /// A hunk header's text, cut where its links begin, then the links. A
+    /// copy of the whole text at zero height keeps the row as wide as its
+    /// text, so the diff still scrolls sideways as far as it did.
+    ///
+    /// - `self`: the model.
+    /// - `text`: the header's text.
+    /// - `hunk`: the hunk the header starts.
+    /// - Returns: the header's body.
+    fn withActions(self: *const Self, text: mod.View, hunk: usize) mod.View {
+        const links = mod.BuildScope.shared().allocator().alloc(mod.View, self.actions.len) catch @panic("oom");
+        for (self.actions, links) |action, *link| link.* = Self.actionLink(action, hunk, self.tokens);
+        const group = mod.StackBuilder.fromSlice(.horizontal, mod.HunkAction.spacing, .center, links);
+        const pin = self.pin orelse return mod.HStack(.{ text, group }).spacing(mod.DiffLayout.cell_spacing);
+        return mod.StackBuilder.make(.vertical, 0, .leading, .{
+            // A cell of space between the cut text and the first link.
+            mod.HStack(.{ text.frameWidth(@max(0, pin - mod.DiffLayout.cell_width)).frameAlign(.leading).clipped(), group }).spacing(@min(pin, mod.DiffLayout.cell_width)),
+            text.frameHeight(0).clipped(),
+        });
+    }
+
+    /// One hunk action's link: its label in the accent color (the secondary
+    /// label color, and no tap, when disabled), over a drag area of its own,
+    /// so a press on it starts no line selection in the row beneath.
+    ///
+    /// - `action`: the action.
+    /// - `hunk`: the hunk it is called with.
+    /// - `tokens`: the frame's colors.
+    /// - Returns: the link.
+    fn actionLink(action: mod.HunkAction, hunk: usize, tokens: mod.BuildTokens) mod.View {
+        const label = mod.Text(action.label).mono().size(mod.DiffLayout.font_size)
+            .foreground(if (action.disabled) tokens.secondary_label else tokens.accent)
+            .paddingInsets(.{ .leading = mod.HunkAction.padding, .trailing = mod.HunkAction.padding })
+            .frameHeight(mod.diff_row_height);
+        if (action.disabled) return label;
+        return mod.HStack(.{label.onTap(action.callback.bind(hunk))}).spacing(0).onDrag(Self.link_drag);
     }
 
     /// A gutter cell: a line number, right-aligned, or blank.
@@ -262,6 +316,10 @@ const DiffModel = struct {
     fn expandTabs(text: []const u8) []const u8 {
         return mod.DiffLayout.expandTabs(mod.BuildScope.shared().allocator(), text) catch @panic("oom");
     }
+
+    /// A drag handler that does nothing: a hunk action's link takes the
+    /// press, so the row's line selection does not start.
+    fn ignoreDrag(_: ?*anyopaque, _: f32, _: f32) void {}
 };
 
 /// The stack a `VirtualList` scrolls: the rows in view between two spacers.
@@ -445,7 +503,7 @@ pub fn VirtualListBoth(
 /// - `on_hunk`: when set, called with the hunk a tapped row belongs to.
 /// - Returns: the diff.
 pub fn DiffView(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback) mod.View {
-    return diffList(lines, selected, scroll, on_hunk, null);
+    return diffList(lines, selected, scroll, on_hunk, null, &.{});
 }
 
 /// A `DiffView` whose lines can be selected and copied: a press selects a
@@ -463,7 +521,28 @@ pub fn DiffView(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.Scro
 /// - Returns: the diff.
 pub fn SelectableDiffView(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback, selection: *mod.DiffSelection) mod.View {
     selection.track(lines);
-    return diffList(lines, selected, scroll, on_hunk, selection);
+    return diffList(lines, selected, scroll, on_hunk, selection, &.{});
+}
+
+/// A `SelectableDiffView` with links on every hunk header (a hunk's Stage and
+/// Discard, say): borderless labels in the accent color, pinned to the pane's
+/// right edge, so they stay put as the diff scrolls sideways and cover the
+/// end of a header too long for the pane (the row is still as wide as its
+/// text). A tap calls the action with the header's hunk and starts no line
+/// selection; a disabled action is drawn in the secondary label color and a
+/// tap on it is the row's. Rows stay `diff_row_height` tall; a wrapped
+/// header's continued rows have none. No actions draws as `SelectableDiffView`.
+///
+/// - `lines`: the diff.
+/// - `selected`: the hunk to mark, if any.
+/// - `scroll`: the diff's scroll position, both ways.
+/// - `on_hunk`: when set, called with the hunk a tapped row belongs to.
+/// - `selection`: the selected lines, kept by the app beside `scroll`.
+/// - `actions`: the links, in order, on every hunk header.
+/// - Returns: the diff.
+pub fn SelectableDiffViewWithActions(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback, selection: *mod.DiffSelection, actions: []const mod.HunkAction) mod.View {
+    selection.track(lines);
+    return diffList(lines, selected, scroll, on_hunk, selection, actions);
 }
 
 /// The diff's rows over a `VirtualListBoth`, selectable when `selection` is set.
@@ -473,10 +552,16 @@ pub fn SelectableDiffView(lines: []const mod.DiffLine, selected: ?usize, scroll:
 /// - `scroll`: the diff's scroll position, both ways.
 /// - `on_hunk`: the hunk tap handler, if any.
 /// - `selection`: the selected lines, or null for none.
+/// - `actions`: the links on every hunk header; empty for none.
 /// - Returns: the diff.
-fn diffList(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback, selection: ?*mod.DiffSelection) mod.View {
+fn diffList(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback, selection: ?*mod.DiffSelection, actions: []const mod.HunkAction) mod.View {
     const model = mod.BuildScope.shared().allocator().create(DiffModel) catch @panic("oom");
-    model.* = .{ .lines = lines, .selected = selected, .on_hunk = on_hunk, .selection = selection, .tokens = mod.BuildScope.shared().tokens() };
+    model.* = .{ .lines = lines, .selected = selected, .on_hunk = on_hunk, .selection = selection, .actions = actions, .tokens = mod.BuildScope.shared().tokens() };
+    if (actions.len > 0 and scroll.viewport_width > 0) {
+        // The pane's right edge, in the row's coordinates, less the links and the row's bar.
+        const edge = scroll.offset_x + scroll.viewport_width - mod.HunkAction.groupWidth(actions);
+        model.pin = @max(0, edge - mod.DiffLayout.bar_width - mod.DiffLayout.bar_spacing);
+    }
     model.indexHunks(mod.RowRange.visible(lines.len, mod.diff_row_height, scroll));
     return VirtualListBoth(DiffModel, model, lines.len, mod.diff_row_height, scroll, DiffModel.row, if (lines.len > 0) model.widest else null);
 }
@@ -619,6 +704,196 @@ test "a SelectableDiffView's press picks the hunk and selects the line; a drag a
     _ = canvas.tap(.{ .x = 150, .y = 1.5 * mod.diff_row_height });
     pointer.endDrag();
     try std.testing.expect(mod.TextSelection.shared().selectedText() == null);
+}
+
+test "a SelectableDiffViewWithActions pins its links to the pane's right edge, and a tap calls the header's hunk" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    const long: [120]u8 = @splat('x');
+    const lines = [_]mod.DiffLine{
+        .{ .kind = .hunkHeader, .text = "@@ -1 +1 @@" },
+        .{ .kind = .added, .text = "one", .new = 1 },
+        .{ .kind = .hunkHeader, .text = "@@ -9 +9 @@ " ++ long },
+        .{ .kind = .removed, .text = "two", .old = 9 },
+    };
+    const Probe = struct {
+        const Self = @This();
+        hunk: ?usize = null,
+        staged: ?usize = null,
+        discarded: ?usize = null,
+        /// Notes the hunk a row tap names.
+        ///
+        /// - `self`: the probe.
+        /// - `index`: the hunk.
+        fn onHunk(self: *Self, index: usize) void {
+            self.hunk = index;
+        }
+        /// Notes the hunk Stage was tapped on.
+        ///
+        /// - `self`: the probe.
+        /// - `index`: the hunk.
+        fn onStage(self: *Self, index: usize) void {
+            self.staged = index;
+        }
+        /// Notes the hunk Discard was tapped on.
+        ///
+        /// - `self`: the probe.
+        /// - `index`: the hunk.
+        fn onDiscard(self: *Self, index: usize) void {
+            self.discarded = index;
+        }
+    };
+    var probe: Probe = .{};
+    var selection: mod.DiffSelection = .{};
+    defer selection.clear();
+    const on_hunk = mod.IndexCallback.init(Probe, &probe, Probe.onHunk);
+    var actions = [_]mod.HunkAction{
+        .{ .label = "Stage", .callback = mod.IndexCallback.init(Probe, &probe, Probe.onStage) },
+        .{ .label = "Discard", .callback = mod.IndexCallback.init(Probe, &probe, Probe.onDiscard) },
+    };
+    const width: u32 = 300;
+    const height: u32 = @intFromFloat(4 * mod.diff_row_height);
+    var scroll: mod.ScrollState = .{ .viewport_height = 4 * mod.diff_row_height };
+    // Discard's middle and Stage's, from the pane's right edge.
+    const discard_x: f32 = 300 - mod.HunkAction.trailing - 25;
+    const stage_x: f32 = discard_x - 55;
+    const pointer = mod.PointerInput.shared();
+
+    // The first frame learns the pane's width; the second pins the links.
+    for (0..2) |_| {
+        canvas.begin(renderer.MacosTheme.light);
+        const view = SelectableDiffViewWithActions(&lines, 0, &scroll, on_hunk, &selection, &actions);
+        canvas.end();
+        var frame = try canvas.render(view, width, height);
+        frame.deinit();
+    }
+    const content_width = scroll.content_width;
+    try std.testing.expect(content_width > 300);
+    // Discard on the second header: hunk 1, and no line selected.
+    try std.testing.expect(canvas.tap(.{ .x = discard_x, .y = 2.5 * mod.diff_row_height }));
+    pointer.endDrag();
+    try std.testing.expectEqual(@as(?usize, 1), probe.discarded);
+    try std.testing.expectEqual(@as(?usize, null), probe.hunk);
+    try std.testing.expect(!selection.contains(2));
+    try std.testing.expect(canvas.tap(.{ .x = stage_x, .y = 0.5 * mod.diff_row_height }));
+    pointer.endDrag();
+    try std.testing.expectEqual(@as(?usize, 0), probe.staged);
+
+    // Scrolled sideways, the links stay at the pane's right edge, and the
+    // diff is as wide as before: the long header still sets it.
+    scroll.offset_x = 200;
+    probe = .{};
+    canvas.begin(renderer.MacosTheme.light);
+    const scrolled = SelectableDiffViewWithActions(&lines, 0, &scroll, on_hunk, &selection, &actions);
+    canvas.end();
+    var scrolled_frame = try canvas.render(scrolled, width, height);
+    defer scrolled_frame.deinit();
+    try std.testing.expectEqual(content_width, scroll.content_width);
+    try std.testing.expect(canvas.tap(.{ .x = discard_x, .y = 2.5 * mod.diff_row_height }));
+    pointer.endDrag();
+    try std.testing.expectEqual(@as(?usize, 1), probe.discarded);
+
+    // A disabled link takes no tap: the row beneath does.
+    for (&actions) |*action| action.disabled = true;
+    probe = .{};
+    canvas.begin(renderer.MacosTheme.light);
+    const disabled = SelectableDiffViewWithActions(&lines, 0, &scroll, on_hunk, &selection, &actions);
+    canvas.end();
+    var disabled_frame = try canvas.render(disabled, width, height);
+    defer disabled_frame.deinit();
+    try std.testing.expect(canvas.tap(.{ .x = discard_x, .y = 2.5 * mod.diff_row_height }));
+    pointer.endDrag();
+    try std.testing.expectEqual(@as(?usize, null), probe.discarded);
+    try std.testing.expectEqual(@as(?usize, 1), probe.hunk);
+}
+
+test "a wrapped hunk header carries its links on its first row only, and a narrow pane cuts its text" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    const long: [80]u8 = @splat('x');
+    const lines = [_]mod.DiffLine{
+        .{ .kind = .hunkHeader, .text = "@@ -1 +1 @@ " ++ long },
+        .{ .kind = .hunkHeader, .text = &long, .continued = true },
+        .{ .kind = .added, .text = "one", .new = 1 },
+    };
+    const Probe = struct {
+        const Self = @This();
+        hunk: ?usize = null,
+        acted: ?usize = null,
+        /// Notes the hunk a row tap names.
+        ///
+        /// - `self`: the probe.
+        /// - `index`: the hunk.
+        fn onHunk(self: *Self, index: usize) void {
+            self.hunk = index;
+        }
+        /// Notes the hunk the link was tapped on.
+        ///
+        /// - `self`: the probe.
+        /// - `index`: the hunk.
+        fn onAction(self: *Self, index: usize) void {
+            self.acted = index;
+        }
+    };
+    var probe: Probe = .{};
+    var selection: mod.DiffSelection = .{};
+    defer selection.clear();
+    const actions = [_]mod.HunkAction{.{ .label = "Stage", .callback = mod.IndexCallback.init(Probe, &probe, Probe.onAction) }};
+    const width: u32 = 200;
+    const height: u32 = @intFromFloat(3 * mod.diff_row_height);
+    var scroll: mod.ScrollState = .{ .viewport_height = 3 * mod.diff_row_height };
+    for (0..2) |_| {
+        canvas.begin(renderer.MacosTheme.light);
+        const view = SelectableDiffViewWithActions(&lines, null, &scroll, mod.IndexCallback.init(Probe, &probe, Probe.onHunk), &selection, &actions);
+        canvas.end();
+        var frame = try canvas.render(view, width, height);
+        frame.deinit();
+    }
+    const link_x: f32 = 200 - mod.HunkAction.trailing - 10;
+    // The continued row has no link: a tap there is the row's.
+    try std.testing.expect(canvas.tap(.{ .x = link_x, .y = 1.5 * mod.diff_row_height }));
+    mod.PointerInput.shared().endDrag();
+    try std.testing.expectEqual(@as(?usize, null), probe.acted);
+    try std.testing.expectEqual(@as(?usize, 0), probe.hunk);
+    try std.testing.expect(canvas.tap(.{ .x = link_x, .y = 0.5 * mod.diff_row_height }));
+    mod.PointerInput.shared().endDrag();
+    try std.testing.expectEqual(@as(?usize, 0), probe.acted);
+
+    // The header's text is drawn cut a cell before the link, inside the pane.
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    mod.BuildScope.shared().begin(arena.allocator());
+    defer mod.BuildScope.shared().end();
+    const model: DiffModel = .{ .lines = &lines, .selected = null, .on_hunk = null, .actions = &actions, .pin = 100, .tokens = mod.BuildScope.shared().tokens() };
+    const body = model.withActions(mod.Text(lines[0].text), 0);
+    const shown = body.kind.stack.children[0].kind.stack.children[0];
+    try std.testing.expectEqual(@as(?f32, 100 - mod.DiffLayout.cell_width), shown.modifiers.frame.?.width);
+    // The whole text again, at zero height, keeps the row as wide.
+    try std.testing.expectEqual(@as(?f32, 0), body.kind.stack.children[1].modifiers.frame.?.height);
+}
+
+test "a SelectableDiffViewWithActions with no actions draws as a SelectableDiffView" {
+    const canvas = try mod.TestCanvas.create(std.testing.allocator);
+    defer canvas.destroy();
+    const lines = [_]mod.DiffLine{
+        .{ .kind = .hunkHeader, .text = "@@ -1 +1 @@" },
+        .{ .kind = .added, .text = "one", .new = 1 },
+    };
+    var selection: mod.DiffSelection = .{};
+    defer selection.clear();
+    var scroll: mod.ScrollState = .{ .viewport_height = 2 * mod.diff_row_height, .viewport_width = 200 };
+    const height: u32 = @intFromFloat(2 * mod.diff_row_height);
+    canvas.begin(renderer.MacosTheme.light);
+    const plain = SelectableDiffView(&lines, 0, &scroll, null, &selection);
+    canvas.end();
+    var plain_frame = try canvas.render(plain, 200, height);
+    defer plain_frame.deinit();
+    canvas.begin(renderer.MacosTheme.light);
+    const bare = SelectableDiffViewWithActions(&lines, 0, &scroll, null, &selection, &.{});
+    canvas.end();
+    var bare_frame = try canvas.render(bare, 200, height);
+    defer bare_frame.deinit();
+    try std.testing.expectEqualSlices(u8, std.mem.sliceAsBytes(plain_frame.pixels), std.mem.sliceAsBytes(bare_frame.pixels));
 }
 
 test "the widest row, built again to set the width, presents no popover of its own" {

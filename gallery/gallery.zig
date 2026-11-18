@@ -849,13 +849,17 @@ pub const Gallery = struct {
     /// - Returns: the panel's view.
     fn panesPanel(self: *Self, active_theme: ziggui.Theme) ziggui.View {
         const on_hunk = ziggui.IndexCallback.init(Self, self, Self.selectHunk);
+        const actions = ziggui.BuildScope.shared().allocator().dupe(ziggui.HunkAction, &.{
+            .{ .label = "Select", .callback = on_hunk },
+            .{ .label = "Disabled", .callback = on_hunk, .disabled = true },
+        }) catch @panic("oom");
         return ziggui.VStack(.{
             Self.card(active_theme, "Table rows over a virtual list (10,000 rows)", "ziggui.TableHeader · ziggui.TableRow · ziggui.VirtualList", ziggui.VStack(.{
                 ziggui.TableHeader(&file_columns),
                 ziggui.VirtualList(Self, self, file_count, file_row_height, &self.files_scroll, Self.fileRow).frameHeight(150),
             }).spacing(0)),
-            Self.card(active_theme, "SelectableDiffView (tap a row for its hunk and line, drag or shift-tap for more, ⌘C copies)", "ziggui.SelectableDiffView · ziggui.DiffSelection", ziggui.VStack(.{
-                ziggui.SelectableDiffView(&sample_diff, self.hunk_selected, &self.diff_scroll, on_hunk, &self.diff_selection),
+            Self.card(active_theme, "SelectableDiffView with hunk links (tap a row for its hunk and line, drag for more, ⌘C copies)", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection", ziggui.VStack(.{
+                ziggui.SelectableDiffViewWithActions(&sample_diff, self.hunk_selected, &self.diff_scroll, on_hunk, &self.diff_selection, actions),
             }).spacing(0).frameHeight(diff_rows_shown * ziggui.diff_row_height)),
         }).spacing(16);
     }
