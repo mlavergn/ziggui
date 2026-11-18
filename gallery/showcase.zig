@@ -128,6 +128,11 @@ const editor_sample =
 pub const Showcase = struct {
     const Self = @This();
 
+    /// The Picture card's picture width, in pixels.
+    const picture_width = 2048;
+    /// The Picture card's picture height, in pixels.
+    const picture_height = 1536;
+
     /// Allocates the state the panels bind to.
     allocator: std.mem.Allocator,
 
@@ -222,6 +227,13 @@ pub const Showcase = struct {
     /// The Text Editor panel's scroll position.
     editor_scroll: ziggui.ScrollState = .{},
 
+    /// The Picture card's 2048 × 1536 test pattern, RGBA8.
+    picture_pixels: []u8 = &.{},
+    /// The Picture card's zoom: 1 fits the picture to the card.
+    picture_zoom: f32 = 1,
+    /// The Picture card's pan, in points from the fitted position.
+    picture_offset: ziggui.Point = .{ .x = 0, .y = 0 },
+
     /// Constructs the panels' state as the showcase opened.
     ///
     /// - `allocator`: allocator for the state; must outlive the showcase.
@@ -258,6 +270,8 @@ pub const Showcase = struct {
         };
         errdefer self.deinit();
         try self.editor.setText(editor_sample);
+        self.picture_pixels = try allocator.alloc(u8, picture_width * picture_height * 4);
+        Self.paintPattern(self.picture_pixels);
         return self;
     }
 
@@ -268,6 +282,7 @@ pub const Showcase = struct {
         if (ziggui.Focus.shared().focused()) |field| {
             if (field == &self.name or field == &self.editor) ziggui.Focus.shared().clear();
         }
+        self.allocator.free(self.picture_pixels);
         self.editor.deinit();
         self.show_quit.deinit();
         self.ask_quit.deinit();
@@ -578,6 +593,7 @@ pub const Showcase = struct {
                 ziggui.Spacer(),
             }).spacing(12)),
             Self.card(theme, "Custom title bar (Config.custom_titlebar)", "ziggui.Drawing · Theme.drawTitleBar · .modalPassthrough", self.titleBarDemo(theme)),
+            Self.card(theme, "A large picture (drag to pan)", "ziggui.Drawing · Pen.picture · .onDrag · .clipped", self.pictureDemo(theme)),
             Self.card(theme, "Key-ups and quitting", "ziggui.App.setKeyUpHandler · ziggui.Toggle", ziggui.VStack(.{
                 ziggui.Text(key_up_text).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
                 Self.row("Ask before quitting (close button, ⌘Q)", ziggui.Toggle("", self.ask_quit.binding())),
@@ -857,6 +873,105 @@ pub const Showcase = struct {
                 ziggui.Text("×").foreground(foreground).padding(6).onTap(ziggui.Callback.init(Self, self, Self.closeWindow)).modalPassthrough(),
             }).spacing(12).paddingInsets(.{ .leading = 10, .trailing = 4 }).frameHeight(32),
         }).frameMaxWidth().frameHeight(32);
+    }
+
+    /// The Picture card: a 2048 × 1536 picture drawn from a texture of its own
+    /// (`Pen.picture`, never the atlas), dragged to pan and zoomed with the buttons.
+    ///
+    /// - `self`: the showcase.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the card's content.
+    fn pictureDemo(self: *Self, theme: ziggui.Theme) ziggui.View {
+        const zoom_text = ziggui.BuildScope.shared().allocator().print("{d:.0}%", .{self.picture_zoom * 100}) catch @panic("oom");
+        return ziggui.VStack(.{
+            ziggui.Drawing(Self, self, Self.drawPicture).frameMaxWidth().frameHeight(180).clipped().cornerRadius(8)
+                .onDrag(.{ .context = self, .function = Self.panPicture }),
+            ziggui.HStack(.{
+                ziggui.ButtonRoled("−", .normal, ziggui.Callback.init(Self, self, Self.zoomPictureOut)),
+                ziggui.ButtonRoled("Fit", .normal, ziggui.Callback.init(Self, self, Self.fitPicture)),
+                ziggui.ButtonRoled("+", .normal, ziggui.Callback.init(Self, self, Self.zoomPictureIn)),
+                ziggui.Text(zoom_text).foreground(theme.colors.secondary_label),
+                ziggui.Spacer(),
+            }).spacing(8),
+        }).spacing(8);
+    }
+
+    /// Paints the Picture card: the picture fitted to the frame, scaled by the
+    /// zoom about the frame's center and moved by the pan.
+    ///
+    /// - `self`: the showcase.
+    /// - `pen`: the paint context.
+    /// - `bounds`: the card's frame.
+    /// - Returns: nothing; propagates allocation failure.
+    fn drawPicture(self: *const Self, pen: *ziggui.Pen, bounds: ziggui.Rect) std.mem.Allocator.Error!void {
+        const image = ziggui.ImagePixels{ .width = picture_width, .height = picture_height, .pixels = self.picture_pixels };
+        const fit = @min(bounds.width / @as(f32, picture_width), bounds.height / @as(f32, picture_height));
+        const scale = fit * self.picture_zoom;
+        const width = @as(f32, picture_width) * scale;
+        const height = @as(f32, picture_height) * scale;
+        const rect = ziggui.Rect{
+            .x = bounds.x + (bounds.width - width) / 2 + self.picture_offset.x,
+            .y = bounds.y + (bounds.height - height) / 2 + self.picture_offset.y,
+            .width = width,
+            .height = height,
+        };
+        try pen.picture(rect, image, @intFromPtr(self.picture_pixels.ptr), 1);
+    }
+
+    /// Pans the Picture card.
+    ///
+    /// - `context`: the showcase.
+    /// - `delta_x`: the movement across, in points.
+    /// - `delta_y`: the movement down, in points.
+    fn panPicture(context: ?*anyopaque, delta_x: f32, delta_y: f32) void {
+        const self: *Self = @ptrCast(@alignCast(context.?));
+        self.picture_offset.x += delta_x;
+        self.picture_offset.y += delta_y;
+    }
+
+    /// Zooms the Picture card in by half again.
+    ///
+    /// - `self`: the showcase.
+    fn zoomPictureIn(self: *Self) void {
+        self.picture_zoom = @min(self.picture_zoom * 1.5, 32);
+        self.picture_offset.x *= 1.5;
+        self.picture_offset.y *= 1.5;
+    }
+
+    /// Zooms the Picture card out by a third.
+    ///
+    /// - `self`: the showcase.
+    fn zoomPictureOut(self: *Self) void {
+        self.picture_zoom = @max(self.picture_zoom / 1.5, 0.25);
+        self.picture_offset.x /= 1.5;
+        self.picture_offset.y /= 1.5;
+    }
+
+    /// Fits the Picture card's picture to the card again.
+    ///
+    /// - `self`: the showcase.
+    fn fitPicture(self: *Self) void {
+        self.picture_zoom = 1;
+        self.picture_offset = .{ .x = 0, .y = 0 };
+    }
+
+    /// Paints the Picture card's test pattern: hue across, light down, and a
+    /// grid every 128 pixels, so zooming and panning are easy to follow.
+    ///
+    /// - `pixels`: `picture_width × picture_height` RGBA8.
+    fn paintPattern(pixels: []u8) void {
+        for (0..picture_height) |y| {
+            for (0..picture_width) |x| {
+                const index = (y * picture_width + x) * 4;
+                const grid = x % 128 < 3 or y % 128 < 3;
+                const across: f32 = @as(f32, @floatFromInt(x)) / picture_width;
+                const down: f32 = @as(f32, @floatFromInt(y)) / picture_height;
+                pixels[index] = if (grid) 255 else @intFromFloat(255 * across);
+                pixels[index + 1] = if (grid) 255 else @intFromFloat(255 * (1 - down));
+                pixels[index + 2] = if (grid) 255 else @intFromFloat(255 * down * (1 - across));
+                pixels[index + 3] = 255;
+            }
+        }
     }
 
     /// Paints the theme family's title bar (`Theme.drawTitleBar`).

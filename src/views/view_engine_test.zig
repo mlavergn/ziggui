@@ -1724,6 +1724,48 @@ test "view: a Drawing paints into its frame" {
     try std.testing.expect(framebuffer.at(35, 10).r > 0.9);
 }
 
+test "view: a Drawing's picture skips the atlas and stays inside the clip" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var canvas = renderer.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+    const Photo = struct {
+        const Self = @This();
+        pixels: [4 * 4 * 4]u8,
+        /// Draws the picture twice the frame's width, so half of it falls past the frame.
+        ///
+        /// - `self`: the probe.
+        /// - `pen`: the pen.
+        /// - `rect`: the frame.
+        /// - Returns: nothing; propagates allocation failure.
+        fn draw(self: *const Self, pen: *mod.Pen, rect: renderer.Rect) std.mem.Allocator.Error!void {
+            const image = renderer.Image{ .width = 4, .height = 4, .pixels = &self.pixels };
+            try pen.picture(.{ .x = rect.x, .y = rect.y, .width = rect.width * 2, .height = rect.height }, image, @intFromPtr(&self.pixels), 1);
+        }
+    };
+    var photo = Photo{ .pixels = undefined };
+    for (0..16) |index| photo.pixels[index * 4 ..][0..4].* = .{ 255, 0, 0, 255 };
+    const root = renderer.Rect{ .x = 0, .y = 0, .width = 60, .height = 20 };
+    try mod.ViewRenderer.render(&context, mod.HStack(.{ mod.Drawing(Photo, &photo, Photo.draw).frame(40, 20).clipped(), mod.Spacer() }).spacing(0).frame(60, 20), root, &canvas);
+
+    var pictures: usize = 0;
+    for (canvas.commands.items) |command| {
+        if (command == .videoFrame) pictures += 1;
+        try std.testing.expect(command != .image);
+    }
+    try std.testing.expectEqual(1, pictures);
+
+    var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, 60, 20);
+    defer framebuffer.deinit();
+    framebuffer.clear(renderer.Color.white);
+    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try std.testing.expect(framebuffer.at(20, 10).r > 0.9 and framebuffer.at(20, 10).g < 0.1);
+    // Past the clip the picture is not drawn.
+    try std.testing.expect(framebuffer.at(50, 10).g > 0.9);
+}
+
 test "view: an alert widens to content that cannot be narrower" {
     var environment = mod.TestEnvironment.init();
     environment.setup();

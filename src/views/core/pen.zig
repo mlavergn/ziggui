@@ -39,6 +39,23 @@ pub const Pen = struct {
         try self.canvas.fillRoundedRect(rect, radius, self.tint(color));
     }
 
+    /// Draws a picture from a texture of its own rather than the shared atlas:
+    /// an image too large to share it (a photo) or one whose pixels change
+    /// (a frame). The GPU backend uploads it once per `generation` of `key`
+    /// and draws it through the current clip, so drawing it larger than the
+    /// view, offset, zooms and pans it for the cost of a quad; the software
+    /// rasterizer draws it as an image. A frame draws at most eight pictures.
+    ///
+    /// - `self`: the pen.
+    /// - `rect`: where the whole picture is drawn, possibly past the view.
+    /// - `image`: the pixels, valid until the frame is drawn.
+    /// - `key`: what the picture is (its pixels' address will do), stable while shown.
+    /// - `generation`: changes whenever the pixels do.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn picture(self: *Self, rect: renderer.Rect, image: renderer.Image, key: usize, generation: u64) std.mem.Allocator.Error!void {
+        try self.canvas.drawVideoFrame(rect, image, key, generation);
+    }
+
     /// Fills `rect` with `top` at its top edge fading to `bottom` at its bottom edge.
     ///
     /// - `self`: the pen.
