@@ -87,19 +87,19 @@ test {
 }
 
 test "a badge takes its tone's ground and text, and hugs its text" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const tokens = mod.BuildScope.shared().tokens();
     const danger = Badge("failed", .danger);
     const code = Badge("-32601", .neutral).mono();
     const row = mod.HStack(.{ Badge("ok", .success), mod.Spacer() });
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(tokens.danger_soft, danger.modifiers.background.?.color);
     try std.testing.expectEqual(tokens.removed, danger.modifiers.foreground.?);
     try std.testing.expect(code.modifiers.mono);
 
-    var frame = try canvas.render(row, 200, 20);
+    var frame = try window.render(row, 200, 20);
     defer frame.deinit();
     // The ground is tinted green at the leading edge and absent far right.
     const inside = frame.at(2, 10);

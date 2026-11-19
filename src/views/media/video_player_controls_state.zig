@@ -30,14 +30,40 @@ pub const VideoPlayerControlsState = struct {
     /// The player the controls drive, set as they build.
     player: ?*mod.Player = null,
 
+    /// What the subtitles button does instead of stepping to the next track
+    /// (an app that keeps the choice); null steps (`nextSubtitles`).
+    on_subtitles: ?mod.Callback = null,
+
+    /// The `FrameClock` time the controls stay up until wherever the pointer
+    /// is (`reveal`: a key pressed); 0 for none.
+    revealed_until_ms: u64 = 0,
+
     /// Whether the controls show wherever the pointer is: while the player
     /// is not playing. Playing, they show only while it is over the player.
     ///
     /// - `self`: the state.
     /// - Returns: true while they stay up.
     pub fn pinned(self: *const Self) bool {
+        if (self.revealed()) return true;
         const player = self.player orelse return true;
         return player.rate == 0;
+    }
+
+    /// Keeps the controls up for `duration_ms` wherever the pointer is, as a
+    /// player shows them when a key is pressed.
+    ///
+    /// - `self`: the state.
+    /// - `duration_ms`: how long, in milliseconds.
+    pub fn reveal(self: *Self, duration_ms: u64) void {
+        self.revealed_until_ms = mod.FrameClock.shared().time() + duration_ms;
+    }
+
+    /// Whether a `reveal` holds the controls up now.
+    ///
+    /// - `self`: the state.
+    /// - Returns: true until it ends.
+    pub fn revealed(self: *const Self) bool {
+        return self.revealed_until_ms > mod.FrameClock.shared().time();
     }
 
     /// The speed the speed button names and play resumes at.
@@ -77,16 +103,24 @@ pub const VideoPlayerControlsState = struct {
     ///
     /// - `self`: the state.
     pub fn skipBack(self: *Self) void {
-        const player = self.player orelse return;
-        player.seek(@max(0, player.observe().current_seconds - self.skip_seconds));
+        self.skipBy(-self.skip_seconds);
     }
 
     /// Moves the playhead `skip_seconds` on.
     ///
     /// - `self`: the state.
     pub fn skipForward(self: *Self) void {
+        self.skipBy(self.skip_seconds);
+    }
+
+    /// Moves the playhead by `seconds` from where it is, never before the
+    /// start (the skip buttons, here and in `AudioPlayerControlsState`).
+    ///
+    /// - `self`: the state.
+    /// - `seconds`: how far, back when negative.
+    pub fn skipBy(self: *Self, seconds: f64) void {
         const player = self.player orelse return;
-        player.seek(player.observe().current_seconds + self.skip_seconds);
+        player.seek(@max(0, player.observe().current_seconds + seconds));
     }
 
     /// Mutes or unmutes.

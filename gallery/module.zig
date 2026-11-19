@@ -29,6 +29,8 @@ pub const Editor = @import("editor.zig").Editor;
 pub const Kit = @import("kit.zig").Kit;
 /// The Video panel: a `VideoPlayer` and its player.
 pub const Media = @import("media.zig").Media;
+/// The Pickers panel: menu-style pickers in a form, and outside one.
+pub const Pickers = @import("pickers.zig").Pickers;
 /// The Settings panel: an app's settings (`ziggui.Settings`), and their state.
 pub const SettingsPanel = @import("settings_panel.zig").SettingsPanel;
 /// The Web View panel: a `WebPage` under a browser's toolbar, and its bookmarks.

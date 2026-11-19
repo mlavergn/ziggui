@@ -40,15 +40,15 @@ test {
 }
 
 test "a setting row puts its control at the far edge, its text at the near one" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const bare = SettingRow("Strip inbound auth", "", mod.Empty());
     const row = SettingRow("Strip inbound auth", "Replace the client's Authorization with the profile's token before forwarding.", mod.Rectangle(renderer.Color.black).frame(30, 16));
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(@as(usize, 1), bare.kind.stack.children[0].kind.stack.children.len);
 
-    var frame = try canvas.render(row, 300, 60);
+    var frame = try window.render(row, 300, 60);
     defer frame.deinit();
     try std.testing.expect(frame.at(290, 30).r < 0.1);
     // Nothing dark in the gap between the wrapped text and the control.

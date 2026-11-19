@@ -53,8 +53,8 @@ pub const Icon = @import("../module.zig").Icon;
 pub const Spacer = @import("../module.zig").Spacer;
 /// Builds stack views from tuples or slices (`fromSlice` keeps its slice), from the views module.
 pub const StackBuilder = @import("../module.zig").StackBuilder;
-/// A headless frame for the unit tests (from the views module).
-pub const TestCanvas = @import("../module.zig").TestCanvas;
+/// A headless window for the unit tests (from the views module).
+pub const TestWindow = @import("../module.zig").TestWindow;
 /// One line of text (from the views module).
 pub const Text = @import("../module.zig").Text;
 /// A one-line text field (from the views module).

@@ -143,23 +143,23 @@ test {
 }
 
 test "a NavigationLink row pushes from anywhere along it, its chevron included" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var navigation = mod.NavigationPath.init(std.testing.allocator);
     defer navigation.deinit();
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const view = mod.VStack(.{
         NavigationLink("Inbox", 1, &navigation),
         NavigationLinkIcon("Archive", .archive, 2, &navigation),
     }).spacing(0);
-    canvas.end();
-    var framebuffer = try canvas.render(view, 300, 80);
+    window.end();
+    var framebuffer = try window.render(view, 300, 80);
     defer framebuffer.deinit();
     // The first row's trailing edge, where its chevron is.
-    try std.testing.expect(canvas.tap(.{ .x = 290, .y = 10 }));
+    try std.testing.expect(window.tap(.{ .x = 290, .y = 10 }));
     try std.testing.expectEqual(@as(?i64, 1), navigation.top());
     // The second row, past its title.
-    try std.testing.expect(canvas.tap(.{ .x = 200, .y = 50 }));
+    try std.testing.expect(window.tap(.{ .x = 200, .y = 50 }));
     try std.testing.expectEqual(@as(?i64, 2), navigation.top());
     try std.testing.expectEqual(@as(usize, 2), navigation.depth());
 }

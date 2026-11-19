@@ -29,8 +29,8 @@ pub const PointerInput = @import("../module.zig").PointerInput;
 pub const Rectangle = @import("../module.zig").Rectangle;
 /// Flexible space in a stack (from the views module).
 pub const Spacer = @import("../module.zig").Spacer;
-/// A headless frame for the unit tests (from the views module).
-pub const TestCanvas = @import("../module.zig").TestCanvas;
+/// A headless window for the unit tests (from the views module).
+pub const TestWindow = @import("../module.zig").TestWindow;
 /// Children stacked vertically (from the views module).
 pub const VStack = @import("../module.zig").VStack;
 /// A node of the view tree (from the views module).

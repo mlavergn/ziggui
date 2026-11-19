@@ -79,14 +79,22 @@ pub const WindowHitTest = @import("window_hit_test.zig").WindowHitTest;
 pub const Gpu = @import("gpu/gpu.zig").Gpu;
 /// This OS's media player for `Player`, and the placement of its pictures.
 pub const VideoBackend = @import("video_backend.zig").VideoBackend;
+/// This OS's audio output listing for `AudioOutputs`.
+pub const AudioBackend = @import("audio_backend.zig").AudioBackend;
 /// A video frame the player hands the renderer to draw under the surface (Windows).
 pub const VideoUnderlay = @import("video_underlay.zig").VideoUnderlay;
 /// The macOS media player: AVFoundation, its pictures behind the Metal view.
 pub const AvFoundationPlayer = @import("macos/module.zig").AvFoundationPlayer;
+/// The macOS audio outputs: Core Audio's output devices, by UID.
+pub const CoreAudioOutputs = @import("macos/module.zig").CoreAudioOutputs;
 /// The Windows media player: Media Foundation, its frames drawn under the surface.
 pub const MediaFoundationPlayer = @import("windows/module.zig").MediaFoundationPlayer;
+/// The Windows audio outputs: the active render endpoints, by endpoint id.
+pub const MmDeviceAudioOutputs = @import("windows/module.zig").MmDeviceAudioOutputs;
 /// The Linux media player: GStreamer's `playbin`, its frames drawn by ziggui.
 pub const GstreamerPlayer = @import("linux/module.zig").GstreamerPlayer;
+/// The Linux audio outputs: GStreamer's device monitor, and a device's sink for a player.
+pub const GstreamerAudioOutputs = @import("linux/module.zig").GstreamerAudioOutputs;
 /// GStreamer and its app sink (Linux), loaded at run time.
 pub const Gstreamer = @import("linux/module.zig").Gstreamer;
 /// This OS's host for `NativeView`: placement, overlay hiding and keyboard focus.
@@ -154,20 +162,22 @@ test {
         /// Reports whether the test references a barrel declaration's own
         /// declarations: every struct's, except `sdl_c` (all of SDL's C API)
         /// and the structs built for one OS (`Cocoa`, `AvFoundationPlayer`,
-        /// `AppKitNativeHost`, `WkWebViewBackend` and `ObjectiveC` on macOS,
+        /// `AppKitNativeHost`, `WkWebViewBackend`, `CoreAudioOutputs` and
+        /// `ObjectiveC` on macOS,
         /// `Win32`, `Win32NativeHost`, `Com`, `WebView2Backend` and
-        /// `MediaFoundationPlayer` on Windows, `StatusNotifier`, `Gtk`,
-        /// `GlibPump`, `GtkNativeHost`, `WebKitGtkBackend`, `Gstreamer` and
-        /// `GstreamerPlayer` on Linux) on any other, so a cross-compiled
+        /// `MediaFoundationPlayer` and `MmDeviceAudioOutputs` on Windows, `StatusNotifier`, `Gtk`,
+        /// `GlibPump`, `GtkNativeHost`, `WebKitGtkBackend`, `Gstreamer`,
+        /// `GstreamerPlayer` and `GstreamerAudioOutputs` on Linux) on any
+        /// other, so a cross-compiled
         /// `zig build test-sdl` analyzes what that platform builds.
         ///
         /// - `name`: the declaration's name.
         /// - Returns: true when the test references its declarations.
         fn descends(comptime name: []const u8) bool {
             if (std.mem.eql(u8, name, "sdl_c")) return false;
-            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
-            if (std.mem.eql(u8, name, "Win32") or std.mem.eql(u8, name, "Win32NativeHost") or std.mem.eql(u8, name, "Com") or std.mem.eql(u8, name, "WebView2Backend") or std.mem.eql(u8, name, "MediaFoundationPlayer")) return os_tag == .windows;
-            if (std.mem.eql(u8, name, "StatusNotifier") or std.mem.eql(u8, name, "Gtk") or std.mem.eql(u8, name, "GlibPump") or std.mem.eql(u8, name, "GtkNativeHost") or std.mem.eql(u8, name, "WebKitGtkBackend") or std.mem.eql(u8, name, "Gstreamer") or std.mem.eql(u8, name, "GstreamerPlayer")) return os_tag == .linux;
+            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "CoreAudioOutputs") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
+            if (std.mem.eql(u8, name, "Win32") or std.mem.eql(u8, name, "Win32NativeHost") or std.mem.eql(u8, name, "Com") or std.mem.eql(u8, name, "WebView2Backend") or std.mem.eql(u8, name, "MediaFoundationPlayer") or std.mem.eql(u8, name, "MmDeviceAudioOutputs")) return os_tag == .windows;
+            if (std.mem.eql(u8, name, "StatusNotifier") or std.mem.eql(u8, name, "Gtk") or std.mem.eql(u8, name, "GlibPump") or std.mem.eql(u8, name, "GtkNativeHost") or std.mem.eql(u8, name, "WebKitGtkBackend") or std.mem.eql(u8, name, "Gstreamer") or std.mem.eql(u8, name, "GstreamerPlayer") or std.mem.eql(u8, name, "GstreamerAudioOutputs")) return os_tag == .linux;
             return true;
         }
     };

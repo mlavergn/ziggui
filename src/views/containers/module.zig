@@ -151,8 +151,8 @@ pub const DisplayText = @import("../module.zig").DisplayText;
 pub const WrappedText = @import("../module.zig").WrappedText;
 /// A filled rectangle (from the views module).
 pub const Rectangle = @import("../module.zig").Rectangle;
-/// A headless frame for the unit tests (from the views module).
-pub const TestCanvas = @import("../module.zig").TestCanvas;
+/// A headless window for the unit tests (from the views module).
+pub const TestWindow = @import("../module.zig").TestWindow;
 /// An icon from the icon font (from the views module).
 pub const Icon = @import("../module.zig").Icon;
 /// A toggle (a `Form` test's rows), from the views module.
@@ -165,7 +165,7 @@ pub const Button = @import("../module.zig").Button;
 pub const ButtonRoled = @import("../module.zig").ButtonRoled;
 /// A button showing its keyboard shortcut (from the views module).
 pub const ButtonKeyed = @import("../module.zig").ButtonKeyed;
-/// A segmented picker over a selection binding (from the views module).
+/// A picker over a selection binding: segmented or a pop-up menu (from the views module).
 pub const Picker = @import("../module.zig").Picker;
 
 // -----------------------------------------------------------------------------

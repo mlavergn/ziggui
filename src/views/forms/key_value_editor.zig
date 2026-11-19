@@ -45,34 +45,34 @@ test {
 }
 
 test "a key/value editor draws a row per pair, adds on Add, removes on ×" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var state = mod.KeyValueState.init(std.testing.allocator);
     defer state.deinit();
     defer mod.Focus.shared().clear();
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const empty = mod.VStack(.{ KeyValueEditor(&state, "Name", "Value"), mod.Spacer() });
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(@as(usize, 1), empty.kind.stack.children[0].kind.stack.children.len);
-    var first = try canvas.render(empty, 400, 120);
+    var first = try window.render(empty, 400, 120);
     first.deinit();
     // The Add button sits at the leading edge.
-    try std.testing.expect(canvas.tap(.{ .x = 20, .y = 11 }));
+    try std.testing.expect(window.tap(.{ .x = 20, .y = 11 }));
     try std.testing.expectEqual(@as(usize, 1), state.count());
     try std.testing.expect(mod.Focus.shared().focused() == &state.rows.items[0].key);
 
     try state.setPairs(&.{ .{ "Accept", "application/json" }, .{ "X-Trace", "1" } });
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const two = mod.VStack(.{ KeyValueEditor(&state, "Name", "Value"), mod.Spacer() });
-    canvas.end();
-    var frame = try canvas.render(two, 400, 120);
+    window.end();
+    var frame = try window.render(two, 400, 120);
     defer frame.deinit();
     // The first row's remove button is at the trailing edge of the top row.
     var removed = false;
     var x: f32 = 399;
     while (x > 300 and !removed) : (x -= 2) {
-        removed = canvas.tap(.{ .x = x, .y = 11 }) and state.count() == 1;
+        removed = window.tap(.{ .x = x, .y = 11 }) and state.count() == 1;
     }
     try std.testing.expect(removed);
     try std.testing.expectEqualStrings("X-Trace", state.rows.items[0].key.text());

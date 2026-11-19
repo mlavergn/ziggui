@@ -14,6 +14,8 @@ pub const StatusNotifier = @import("status_notifier.zig").StatusNotifier;
 pub const DesktopInstall = @import("desktop_install.zig").DesktopInstall;
 /// The Linux media player: GStreamer's `playbin`, its frames drawn by ziggui.
 pub const GstreamerPlayer = @import("gstreamer_player.zig").GstreamerPlayer;
+/// The Linux audio outputs: GStreamer's device monitor, and a device's sink for a player.
+pub const GstreamerAudioOutputs = @import("gstreamer_audio_outputs.zig").GstreamerAudioOutputs;
 /// GStreamer and its app sink, loaded at run time.
 pub const Gstreamer = @import("gstreamer.zig").Gstreamer;
 /// The GStreamer entry points `Gstreamer.start` resolves.
@@ -22,6 +24,8 @@ pub const GstreamerApi = @import("gstreamer.zig").GstreamerApi;
 pub const GstMiniObject = @import("gstreamer.zig").GstMiniObject;
 /// GStreamer's bus message.
 pub const GstMessage = @import("gstreamer.zig").GstMessage;
+/// GLib's linked list node (the device monitor's devices).
+pub const GList = @import("gstreamer.zig").GList;
 /// A mapped GStreamer buffer.
 pub const GstMapInfo = @import("gstreamer.zig").GstMapInfo;
 /// The app sink's callbacks.

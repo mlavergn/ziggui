@@ -1,5 +1,6 @@
-//! The bits of COM the Windows web view and media player share: the
-//! apartment, vtable slots called by index, `IUnknown`, and UTF-16 strings.
+//! The bits of COM the Windows web view, media player and audio outputs
+//! share: the apartment, vtable slots called by index, `IUnknown`,
+//! `PROPVARIANT`, and UTF-16 strings.
 //! Windows only: every caller is behind `os_tag == .windows`.
 
 const std = @import("std");
@@ -13,6 +14,30 @@ pub const HRESULT = i32;
 extern "ole32" fn CoInitializeEx(reserved: ?*anyopaque, flags: u32) callconv(.winapi) HRESULT;
 extern "ole32" fn CoCreateInstance(class: *const std.os.windows.GUID, outer: ?*anyopaque, context: u32, interface: *const std.os.windows.GUID, object: *?*anyopaque) callconv(.winapi) HRESULT;
 extern "ole32" fn CoTaskMemFree(memory: ?*anyopaque) callconv(.winapi) void;
+extern "ole32" fn PropVariantClear(value: *PROPVARIANT) callconv(.winapi) HRESULT;
+
+/// COM's `PROPVARIANT`, as far as a string or GUID value reads it.
+pub const PROPVARIANT = extern struct {
+    const Self = @This();
+
+    /// `VT_LPWSTR`: a value holding a wide string.
+    pub const vt_lpwstr: u16 = 31;
+    /// `VT_CLSID`: a value holding a GUID.
+    pub const vt_clsid: u16 = 72;
+
+    /// `vt`: the value's type.
+    vt: u16 = 0,
+    /// `wReserved1`.
+    reserved1: u16 = 0,
+    /// `wReserved2`.
+    reserved2: u16 = 0,
+    /// `wReserved3`.
+    reserved3: u16 = 0,
+    /// `pwszVal` for `VT_LPWSTR`, `puuid` for `VT_CLSID`.
+    pointer: ?*anyopaque = null,
+    /// The rest of the union.
+    padding: u64 = 0,
+};
 
 /// `IUnknown`'s vtable slots, the first three of every interface.
 const UnknownSlot = struct {
@@ -118,6 +143,13 @@ pub const Com = struct {
     pub fn release(object: ?*anyopaque) void {
         const held = object orelse return;
         _ = Self.method(*const fn (*anyopaque) callconv(.winapi) u32, held, UnknownSlot.release)(held);
+    }
+
+    /// Frees what a `PROPVARIANT` holds (`PropVariantClear`).
+    ///
+    /// - `value`: the value, emptied.
+    pub fn clearVariant(value: *PROPVARIANT) void {
+        _ = PropVariantClear(value);
     }
 
     /// Frees a string or buffer COM handed over (`CoTaskMemAlloc`'d).

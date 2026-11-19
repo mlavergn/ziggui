@@ -98,11 +98,11 @@ const ForEachProbe = struct {
 };
 
 test "a form divides the sections a ForEach makes" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const view = Form(.{mod.ForEach(&for_each_labels, ForEachProbe.section)});
-    canvas.end();
+    window.end();
     // Three sections, two dividers between them.
     try std.testing.expectEqual(@as(usize, 5), view.kind.stack.children.len);
     try std.testing.expect(view.kind.stack.children[1].kind == .divider);
@@ -110,22 +110,22 @@ test "a form divides the sections a ForEach makes" {
 }
 
 test "a form's label column holds inside a scroll view" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var on = renderer.State(bool).init(std.testing.allocator, false);
     defer on.deinit();
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const view = Form(.{
         Section(.{LabeledContent("A longer label:", mod.Toggle("Outside", on.binding()))}),
         mod.ScrollView(Section(.{LabeledContent("A:", mod.Toggle("Inside", on.binding()))})).frameHeight(40),
     });
-    canvas.end();
-    var frame = try canvas.render(view, 400, 160);
+    window.end();
+    var frame = try window.render(view, 400, 160);
     defer frame.deinit();
     // The toggle in the scroll view starts where the one outside it does.
     var starts: [2]f32 = undefined;
     var found: usize = 0;
-    for (canvas.hits.items) |hit| {
+    for (window.hits.items) |hit| {
         if (hit.action == .toggle and found < 2) {
             starts[found] = hit.rect.x;
             found += 1;
@@ -136,20 +136,20 @@ test "a form's label column holds inside a scroll view" {
 }
 
 test "a form's labels share the widest one's column, and its toggles are checkboxes" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var probe: FormProbe = .{ .on = renderer.State(bool).init(std.testing.allocator, false) };
     defer probe.on.deinit();
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const view = probe.form();
-    canvas.end();
-    var frame = try canvas.render(view, 400, 120);
+    window.end();
+    var frame = try window.render(view, 400, 120);
     defer frame.deinit();
     // Both toggles start at the same x, past the longer label: the column is shared.
     var starts: [2]f32 = undefined;
     var first_middle: f32 = 0;
     var found: usize = 0;
-    for (canvas.hits.items) |hit| {
+    for (window.hits.items) |hit| {
         if (hit.action == .toggle and found < 2) {
             if (found == 0) first_middle = hit.rect.midY();
             starts[found] = hit.rect.x;
@@ -160,8 +160,8 @@ test "a form's labels share the widest one's column, and its toggles are checkbo
     try std.testing.expectEqual(starts[0], starts[1]);
     try std.testing.expect(starts[0] > 60);
     // A checkbox hugs its label: the toggle's region ends well short of the row.
-    for (canvas.hits.items) |hit| if (hit.action == .toggle) try std.testing.expect(hit.rect.maxX() < 300);
+    for (window.hits.items) |hit| if (hit.action == .toggle) try std.testing.expect(hit.rect.maxX() < 300);
     // A tap on the first checkbox turns it on.
-    try std.testing.expect(canvas.tap(.{ .x = starts[0] + 4, .y = first_middle }));
+    try std.testing.expect(window.tap(.{ .x = starts[0] + 4, .y = first_middle }));
     try std.testing.expect(probe.on.get());
 }

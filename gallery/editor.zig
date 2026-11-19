@@ -656,16 +656,16 @@ test "the editor draws with the find bar and the dialog" {
 
     var editor = try Editor.init(allocator);
     defer editor.deinit();
-    const canvas = try ziggui.TestCanvas.create(allocator);
-    defer canvas.destroy();
+    const window = try ziggui.TestWindow.create(allocator);
+    defer window.destroy();
 
     editor.toggleFind();
     editor.openDialog();
     const theme = ziggui.ThemeFamily.all[0].forScheme(.dark);
-    canvas.begin(theme);
+    window.begin(theme);
     const root = editor.body(theme);
-    canvas.end();
-    var framebuffer = try canvas.render(root, gallery.test_width, gallery.test_height);
+    window.end();
+    var framebuffer = try window.render(root, gallery.test_width, gallery.test_height);
     defer framebuffer.deinit();
-    try std.testing.expectEqual(@as(usize, 1), canvas.overlays.items.len);
+    try std.testing.expectEqual(@as(usize, 1), window.overlays.items.len);
 }

@@ -617,8 +617,8 @@ test {
 }
 
 test "a DiffView builds only the rows in view, and taps name the hunk" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const lines = try std.testing.allocator.alloc(mod.DiffLine, 5000);
     defer std.testing.allocator.free(lines);
     for (lines, 0..) |*line, index| line.* = if (index % 50 == 0)
@@ -638,20 +638,20 @@ test "a DiffView builds only the rows in view, and taps name the hunk" {
     };
     var probe: Probe = .{};
     var scroll: mod.ScrollState = .{ .offset = 60 * mod.diff_row_height, .viewport_height = 10 * mod.diff_row_height };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const view = DiffView(lines, 1, &scroll, mod.IndexCallback.init(Probe, &probe, Probe.onHunk));
-    canvas.end();
-    var frame = try canvas.render(view, 300, @intFromFloat(10 * mod.diff_row_height));
+    window.end();
+    var frame = try window.render(view, 300, @intFromFloat(10 * mod.diff_row_height));
     defer frame.deinit();
     try std.testing.expectEqual(@as(f32, 5000) * mod.diff_row_height, scroll.content_height);
     // Row 60 is at the top, in hunk 1 (rows 50..99).
-    try std.testing.expect(canvas.tap(.{ .x = 150, .y = 5 }));
+    try std.testing.expect(window.tap(.{ .x = 150, .y = 5 }));
     try std.testing.expectEqual(@as(?usize, 1), probe.hunk);
 }
 
 test "a SelectableDiffView's press picks the hunk and selects the line; a drag and a shift-press extend it" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const lines = [_]mod.DiffLine{
         .{ .kind = .hunkHeader, .text = "@@ -1,3 +1,3 @@" },
         .{ .kind = .removed, .text = "one", .old = 1 },
@@ -673,42 +673,42 @@ test "a SelectableDiffView's press picks the hunk and selects the line; a drag a
     var selection: mod.DiffSelection = .{};
     defer selection.clear();
     var scroll: mod.ScrollState = .{ .viewport_height = 4 * mod.diff_row_height };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const view = SelectableDiffView(&lines, 0, &scroll, mod.IndexCallback.init(Probe, &probe, Probe.onHunk), &selection);
-    canvas.end();
-    var frame = try canvas.render(view, 300, @intFromFloat(4 * mod.diff_row_height));
+    window.end();
+    var frame = try window.render(view, 300, @intFromFloat(4 * mod.diff_row_height));
     defer frame.deinit();
     const pointer = mod.PointerInput.shared();
     // A press on row 1: its hunk, and the line.
-    try std.testing.expect(canvas.tap(.{ .x = 150, .y = 1.5 * mod.diff_row_height }));
+    try std.testing.expect(window.tap(.{ .x = 150, .y = 1.5 * mod.diff_row_height }));
     try std.testing.expectEqual(@as(?usize, 0), probe.hunk);
     try std.testing.expect(selection.contains(1) and !selection.contains(2));
     // Dragged a row down, then let go: two lines, copied whole.
-    pointer.drag(canvas.hits.items, .{ .x = 150, .y = 2.5 * mod.diff_row_height });
+    pointer.drag(window.hits.items, .{ .x = 150, .y = 2.5 * mod.diff_row_height });
     pointer.endDrag();
     try std.testing.expect(selection.contains(2));
     try std.testing.expectEqualStrings("one\ntwo\n", mod.TextSelection.shared().selectedText().?);
     // A shift-press on row 3 extends from row 1.
     pointer.setClickModifiers(true, false);
     defer pointer.setClickModifiers(false, false);
-    try std.testing.expect(canvas.tap(.{ .x = 150, .y = 3.5 * mod.diff_row_height }));
+    try std.testing.expect(window.tap(.{ .x = 150, .y = 3.5 * mod.diff_row_height }));
     pointer.endDrag();
     try std.testing.expectEqualStrings("one\ntwo\nthree\n", mod.TextSelection.shared().selectedText().?);
     // A plain DiffView selects nothing.
     selection.clear();
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const plain = DiffView(&lines, 0, &scroll, null);
-    canvas.end();
-    var plain_frame = try canvas.render(plain, 300, @intFromFloat(4 * mod.diff_row_height));
+    window.end();
+    var plain_frame = try window.render(plain, 300, @intFromFloat(4 * mod.diff_row_height));
     defer plain_frame.deinit();
-    _ = canvas.tap(.{ .x = 150, .y = 1.5 * mod.diff_row_height });
+    _ = window.tap(.{ .x = 150, .y = 1.5 * mod.diff_row_height });
     pointer.endDrag();
     try std.testing.expect(mod.TextSelection.shared().selectedText() == null);
 }
 
 test "a SelectableDiffViewWithActions pins its links to the pane's right edge, and a tap calls the header's hunk" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const long: [120]u8 = @splat('x');
     const lines = [_]mod.DiffLine{
         .{ .kind = .hunkHeader, .text = "@@ -1 +1 @@" },
@@ -761,21 +761,21 @@ test "a SelectableDiffViewWithActions pins its links to the pane's right edge, a
 
     // The first frame learns the pane's width; the second pins the links.
     for (0..2) |_| {
-        canvas.begin(renderer.MacosTheme.light);
+        window.begin(renderer.MacosTheme.light);
         const view = SelectableDiffViewWithActions(&lines, 0, &scroll, on_hunk, &selection, &actions);
-        canvas.end();
-        var frame = try canvas.render(view, width, height);
+        window.end();
+        var frame = try window.render(view, width, height);
         frame.deinit();
     }
     const content_width = scroll.content_width;
     try std.testing.expect(content_width > 300);
     // Discard on the second header: hunk 1, and no line selected.
-    try std.testing.expect(canvas.tap(.{ .x = discard_x, .y = 2.5 * mod.diff_row_height }));
+    try std.testing.expect(window.tap(.{ .x = discard_x, .y = 2.5 * mod.diff_row_height }));
     pointer.endDrag();
     try std.testing.expectEqual(@as(?usize, 1), probe.discarded);
     try std.testing.expectEqual(@as(?usize, null), probe.hunk);
     try std.testing.expect(!selection.contains(2));
-    try std.testing.expect(canvas.tap(.{ .x = stage_x, .y = 0.5 * mod.diff_row_height }));
+    try std.testing.expect(window.tap(.{ .x = stage_x, .y = 0.5 * mod.diff_row_height }));
     pointer.endDrag();
     try std.testing.expectEqual(@as(?usize, 0), probe.staged);
 
@@ -783,33 +783,33 @@ test "a SelectableDiffViewWithActions pins its links to the pane's right edge, a
     // diff is as wide as before: the long header still sets it.
     scroll.offset_x = 200;
     probe = .{};
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const scrolled = SelectableDiffViewWithActions(&lines, 0, &scroll, on_hunk, &selection, &actions);
-    canvas.end();
-    var scrolled_frame = try canvas.render(scrolled, width, height);
+    window.end();
+    var scrolled_frame = try window.render(scrolled, width, height);
     defer scrolled_frame.deinit();
     try std.testing.expectEqual(content_width, scroll.content_width);
-    try std.testing.expect(canvas.tap(.{ .x = discard_x, .y = 2.5 * mod.diff_row_height }));
+    try std.testing.expect(window.tap(.{ .x = discard_x, .y = 2.5 * mod.diff_row_height }));
     pointer.endDrag();
     try std.testing.expectEqual(@as(?usize, 1), probe.discarded);
 
     // A disabled link takes no tap: the row beneath does.
     for (&actions) |*action| action.disabled = true;
     probe = .{};
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const disabled = SelectableDiffViewWithActions(&lines, 0, &scroll, on_hunk, &selection, &actions);
-    canvas.end();
-    var disabled_frame = try canvas.render(disabled, width, height);
+    window.end();
+    var disabled_frame = try window.render(disabled, width, height);
     defer disabled_frame.deinit();
-    try std.testing.expect(canvas.tap(.{ .x = discard_x, .y = 2.5 * mod.diff_row_height }));
+    try std.testing.expect(window.tap(.{ .x = discard_x, .y = 2.5 * mod.diff_row_height }));
     pointer.endDrag();
     try std.testing.expectEqual(@as(?usize, null), probe.discarded);
     try std.testing.expectEqual(@as(?usize, 1), probe.hunk);
 }
 
 test "a wrapped hunk header carries its links on its first row only, and a narrow pane cuts its text" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const long: [80]u8 = @splat('x');
     const lines = [_]mod.DiffLine{
         .{ .kind = .hunkHeader, .text = "@@ -1 +1 @@ " ++ long },
@@ -843,19 +843,19 @@ test "a wrapped hunk header carries its links on its first row only, and a narro
     const height: u32 = @intFromFloat(3 * mod.diff_row_height);
     var scroll: mod.ScrollState = .{ .viewport_height = 3 * mod.diff_row_height };
     for (0..2) |_| {
-        canvas.begin(renderer.MacosTheme.light);
+        window.begin(renderer.MacosTheme.light);
         const view = SelectableDiffViewWithActions(&lines, null, &scroll, mod.IndexCallback.init(Probe, &probe, Probe.onHunk), &selection, &actions);
-        canvas.end();
-        var frame = try canvas.render(view, width, height);
+        window.end();
+        var frame = try window.render(view, width, height);
         frame.deinit();
     }
     const link_x: f32 = 200 - mod.HunkAction.trailing - 10;
     // The continued row has no link: a tap there is the row's.
-    try std.testing.expect(canvas.tap(.{ .x = link_x, .y = 1.5 * mod.diff_row_height }));
+    try std.testing.expect(window.tap(.{ .x = link_x, .y = 1.5 * mod.diff_row_height }));
     mod.PointerInput.shared().endDrag();
     try std.testing.expectEqual(@as(?usize, null), probe.acted);
     try std.testing.expectEqual(@as(?usize, 0), probe.hunk);
-    try std.testing.expect(canvas.tap(.{ .x = link_x, .y = 0.5 * mod.diff_row_height }));
+    try std.testing.expect(window.tap(.{ .x = link_x, .y = 0.5 * mod.diff_row_height }));
     mod.PointerInput.shared().endDrag();
     try std.testing.expectEqual(@as(?usize, 0), probe.acted);
 
@@ -873,8 +873,8 @@ test "a wrapped hunk header carries its links on its first row only, and a narro
 }
 
 test "a SelectableDiffViewWithActions with no actions draws as a SelectableDiffView" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const lines = [_]mod.DiffLine{
         .{ .kind = .hunkHeader, .text = "@@ -1 +1 @@" },
         .{ .kind = .added, .text = "one", .new = 1 },
@@ -883,15 +883,15 @@ test "a SelectableDiffViewWithActions with no actions draws as a SelectableDiffV
     defer selection.clear();
     var scroll: mod.ScrollState = .{ .viewport_height = 2 * mod.diff_row_height, .viewport_width = 200 };
     const height: u32 = @intFromFloat(2 * mod.diff_row_height);
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const plain = SelectableDiffView(&lines, 0, &scroll, null, &selection);
-    canvas.end();
-    var plain_frame = try canvas.render(plain, 200, height);
+    window.end();
+    var plain_frame = try window.render(plain, 200, height);
     defer plain_frame.deinit();
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const bare = SelectableDiffViewWithActions(&lines, 0, &scroll, null, &selection, &.{});
-    canvas.end();
-    var bare_frame = try canvas.render(bare, 200, height);
+    window.end();
+    var bare_frame = try window.render(bare, 200, height);
     defer bare_frame.deinit();
     try std.testing.expectEqualSlices(u8, std.mem.sliceAsBytes(plain_frame.pixels), std.mem.sliceAsBytes(bare_frame.pixels));
 }
@@ -961,8 +961,8 @@ test "the widest row, built again to set the width, presents no popover from ins
 }
 
 test "a DiffView runs long lines on and scrolls sideways as far as the widest" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const long: [400]u8 = @splat('x');
     var lines: [200]mod.DiffLine = undefined;
     for (&lines, 0..) |*line, index| line.* = .{ .kind = .context, .text = if (index == 150) &long else "x", .old = @intCast(index), .new = @intCast(index) };
@@ -970,20 +970,20 @@ test "a DiffView runs long lines on and scrolls sideways as far as the widest" {
     const height: u32 = @intFromFloat(10 * mod.diff_row_height);
 
     // The long line is far below the rows in view, yet it sets the width.
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     var view = DiffView(&lines, null, &scroll, null);
-    canvas.end();
-    var first = try canvas.render(view, 300, height);
+    window.end();
+    var first = try window.render(view, 300, height);
     first.deinit();
     try std.testing.expect(scroll.content_width > 1000);
     try std.testing.expectEqual(@as(f32, 300), scroll.viewport_width);
 
     // Scrolled past the end, it clamps to the long line's end.
     scroll.offset_x = 1_000_000;
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     view = DiffView(&lines, null, &scroll, null);
-    canvas.end();
-    var second = try canvas.render(view, 300, height);
+    window.end();
+    var second = try window.render(view, 300, height);
     second.deinit();
     try std.testing.expectEqual(scroll.content_width - 300, scroll.offset_x);
 
@@ -994,17 +994,17 @@ test "a DiffView runs long lines on and scrolls sideways as far as the widest" {
         .{ .kind = .removed, .text = "c", .old = 2 },
     };
     var fits: mod.ScrollState = .{};
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     view = DiffView(&short, null, &fits, null);
-    canvas.end();
-    var third = try canvas.render(view, 300, height);
+    window.end();
+    var third = try window.render(view, 300, height);
     third.deinit();
     try std.testing.expectEqual(@as(f32, 0), fits.maxOffsetX());
 }
 
 test "a DiffView over lines wrapped to its width has nothing to scroll across" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
     const long: [400]u8 = @splat('x');
@@ -1030,10 +1030,10 @@ test "a DiffView over lines wrapped to its width has nothing to scroll across" {
 
     // Run on, the long line scrolls across.
     var scroll: mod.ScrollState = .{ .viewport_height = 20 * mod.diff_row_height };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     var view = DiffView(&lines, null, &scroll, null);
-    canvas.end();
-    var first = try canvas.render(view, width, height);
+    window.end();
+    var first = try window.render(view, width, height);
     first.deinit();
     try std.testing.expect(scroll.maxOffsetX() > 0);
 
@@ -1044,17 +1044,17 @@ test "a DiffView over lines wrapped to its width has nothing to scroll across" {
     try std.testing.expect(rows.len > lines.len);
     var wrapped: mod.ScrollState = .{ .viewport_height = 20 * mod.diff_row_height };
     for (0..2) |_| {
-        canvas.begin(renderer.MacosTheme.light);
+        window.begin(renderer.MacosTheme.light);
         view = DiffView(rows, 0, &wrapped, mod.IndexCallback.init(Probe, &probe, Probe.onHunk));
-        canvas.end();
-        var frame = try canvas.render(view, width, height);
+        window.end();
+        var frame = try window.render(view, width, height);
         frame.deinit();
     }
     try std.testing.expectEqual(@as(f32, 0), wrapped.maxOffsetX());
     try std.testing.expectEqual(@as(f32, @floatFromInt(rows.len)) * mod.diff_row_height, wrapped.content_height);
     // A continued row taps as its line's hunk.
     try std.testing.expect(rows[2].continued);
-    try std.testing.expect(canvas.tap(.{ .x = 150, .y = 2.5 * mod.diff_row_height }));
+    try std.testing.expect(window.tap(.{ .x = 150, .y = 2.5 * mod.diff_row_height }));
     try std.testing.expectEqual(@as(?usize, 0), probe.hunk);
 }
 
@@ -1128,14 +1128,14 @@ test "a DiffView reads a diff whole once, until the diff changes" {
 }
 
 test "a table row stripes odd rows and fills a selected one" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const columns = [_]mod.DataColumn{ .{ .title = "Name" }, .{ .title = "Size", .width = 60, .trailing = true } };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const even = TableRow(&columns, &.{ mod.Text("a"), mod.Text("1") }, 0, false);
     const odd = TableRow(&columns, &.{ mod.Text("b"), mod.Text("2") }, 1, false);
     const header = TableHeader(&columns);
-    canvas.end();
+    window.end();
     try std.testing.expect(even.modifiers.background == null);
     try std.testing.expect(odd.modifiers.background != null);
     try std.testing.expect(header.kind == .stack);

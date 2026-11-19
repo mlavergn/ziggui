@@ -258,18 +258,18 @@ test "settings panel: the sheet opens and closes" {
 test "settings panel: beta releases are offered only while updates are checked" {
     var panel = SettingsPanel.init(std.testing.allocator);
     defer panel.deinit();
-    const canvas = try ziggui.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try ziggui.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     for ([_]bool{ true, false }) |checking| {
         panel.check_updates.set(checking);
-        canvas.begin(ziggui.MacosTheme.light);
+        window.begin(ziggui.MacosTheme.light);
         const view = panel.settings();
-        canvas.end();
-        var frame = try canvas.render(view, 500, 420);
+        window.end();
+        var frame = try window.render(view, 500, 420);
         defer frame.deinit();
         // The General page's toggles in order: reopen, check, beta, crash reports.
         var toggles: usize = 0;
-        for (canvas.hits.items) |hit| {
+        for (window.hits.items) |hit| {
             if (hit.action != .toggle) continue;
             if (toggles == 2) try std.testing.expectEqual(!checking, hit.disabled);
             toggles += 1;

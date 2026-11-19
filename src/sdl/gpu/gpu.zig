@@ -1,4 +1,4 @@
-//! SDL_GPU backend: renders a `Canvas` command list on the GPU (Metal on
+//! SDL_GPU backend: renders a `DisplayList` command list on the GPU (Metal on
 //! macOS, Direct3D 12 or Vulkan on Windows, Vulkan on Linux) through
 //! SDL3's GPU API, with no dependencies beyond the SDL3 the runtime already links.
 //!
@@ -37,6 +37,7 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_gpu);
 const mod = @import("../module.zig");
 const renderer = @import("renderer");
+const views = @import("views");
 const sdl_c = @import("sdl_c");
 
 const primitive_vertex_spirv = @embedFile("shaders/prim.vert.spv");
@@ -642,6 +643,17 @@ pub const Gpu = struct {
         self.atlas.deinit();
     }
 
+    /// Notes this device for system reports (`views.SystemInfo`): its driver,
+    /// and the GPU's name and driver version as SDL reports them.
+    ///
+    /// - `self`: the backend.
+    pub fn noteSystem(self: *const Self) void {
+        const properties = sdl_c.SDL_GetGPUDeviceProperties(self.device);
+        const name = std.mem.span(sdl_c.SDL_GetStringProperty(properties, sdl_c.SDL_PROP_GPU_DEVICE_NAME_STRING, ""));
+        const driver_version = std.mem.span(sdl_c.SDL_GetStringProperty(properties, sdl_c.SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING, ""));
+        views.SystemInfo.shared().noteGraphics(.gpu, self.driverName(), name, driver_version);
+    }
+
     /// The name of the driver SDL chose ("metal", "vulkan", "direct3d12").
     ///
     /// - `self`: the backend.
@@ -786,6 +798,17 @@ pub const Gpu = struct {
         return out;
     }
 
+    /// Whether SDL's blits cannot run on `device`: a Direct3D 12 device whose
+    /// driver takes no DXIL, the format SDL's own blit shaders are in.
+    ///
+    /// - `device`: the device.
+    /// - Returns: true when `SDL_BlitGPUTexture` would find no pipeline.
+    fn lacksBlits(device: *sdl_c.SDL_GPUDevice) bool {
+        const driver = sdl_c.SDL_GetGPUDeviceDriver(device) orelse return false;
+        if (!std.mem.eql(u8, std.mem.span(driver), "direct3d12")) return false;
+        return sdl_c.SDL_GetGPUShaderFormats(device) & sdl_c.SDL_GPU_SHADERFORMAT_DXIL == 0;
+    }
+
     /// Creates the device for `formats` and builds the pipelines.
     ///
     /// - `allocator`: allocator for the device's buffers.
@@ -797,6 +820,16 @@ pub const Gpu = struct {
             std.log.info("ziggui: no GPU backend ({s}); using the software rasterizer", .{sdl_c.SDL_GetError()});
             return null;
         };
+        // SDL's Direct3D 12 blits (the swapchain's, every frame) are DXIL
+        // shaders it makes whatever the driver takes, so a driver without
+        // Shader Model 6 (DXBC only: a 2015 AMD one) has no blit, and the first
+        // frame fails an SDL assertion (crashes in a release build). Such a
+        // device is refused, and the caller tries the next backend.
+        if (is_windows and Self.lacksBlits(device)) {
+            std.log.info("ziggui: Direct3D 12 here takes no DXIL, which SDL's blits need; trying another GPU backend", .{});
+            sdl_c.SDL_DestroyGPUDevice(device);
+            return null;
+        }
         var target_format: sdl_c.SDL_GPUTextureFormat = sdl_c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
         if (window) |claimed| {
             if (!sdl_c.SDL_ClaimWindowForGPUDevice(device, claimed)) {

@@ -132,8 +132,8 @@ test "window chrome spells ⌘ as ctrl+, and a bare shortcut as ctrl+<key>" {
 }
 
 test "the top band keeps its title centered in the window with a view at its left" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var tapped: u32 = 0;
     const Probe = struct {
         const Self = @This();
@@ -148,17 +148,17 @@ test "the top band keeps its title centered in the window with a view at its lef
     };
     const on_tap: mod.Callback = .{ .context = &tapped, .function = Probe.tap };
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const plain = WindowChrome.topBar(mod.HStack(.{mod.Rectangle(renderer.Color.black).frame(40, 10)}), true);
-    canvas.end();
-    var before = try canvas.render(plain, 600, WindowChrome.top_bar_height);
+    window.end();
+    var before = try window.render(plain, 600, WindowChrome.top_bar_height);
     defer before.deinit();
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const leading = mod.Rectangle(renderer.Color.black).frame(30, 20).onTap(on_tap);
     const band = WindowChrome.topBarLeading(leading, 30, mod.HStack(.{mod.Rectangle(renderer.Color.black).frame(40, 10)}), true);
-    canvas.end();
-    var after = try canvas.render(band, 600, WindowChrome.top_bar_height);
+    window.end();
+    var after = try window.render(band, 600, WindowChrome.top_bar_height);
     defer after.deinit();
 
     // The title is where it was: centered in the window.
@@ -170,16 +170,16 @@ test "the top band keeps its title centered in the window with a view at its lef
     const start = WindowChrome.traffic_lights_width + WindowChrome.lights_gap;
     try std.testing.expect(after.at(start + 15, 20).r < 0.5);
     try std.testing.expect(after.at(start - 10, 20).r > 0.5);
-    try std.testing.expect(canvas.tap(.{ .x = start + 15, .y = 20 }));
+    try std.testing.expect(window.tap(.{ .x = start + 15, .y = 20 }));
     try std.testing.expectEqual(1, tapped);
 }
 
 test "the drawn title bar puts a view before the window buttons" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const pixels = [_]u8{ 0, 0, 0, 255 };
     const icon: renderer.Image = .{ .width = 1, .height = 1, .pixels = &pixels };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const bar = WindowChrome.titleBarWith(
         icon,
         mod.Empty(),
@@ -187,8 +187,8 @@ test "the drawn title bar puts a view before the window buttons" {
         mod.Rectangle(renderer.Color.black).frame(30, 20),
         mod.Rectangle(renderer.Color.white).frame(60, 20),
     );
-    canvas.end();
-    var frame = try canvas.render(bar, 600, mod.title_bar_height);
+    window.end();
+    var frame = try window.render(bar, 600, mod.title_bar_height);
     defer frame.deinit();
     // The buttons are flush right; the trailing view sits 8pt before them.
     const y = mod.title_bar_height / 2;
@@ -197,22 +197,22 @@ test "the drawn title bar puts a view before the window buttons" {
 }
 
 test "an icon segmented control in the top band keeps its clicks; the band's empty space drags" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var selection = renderer.State(i64).init(std.testing.allocator, 0);
     defer selection.deinit();
     const segments = [_]mod.IconSegment{ .{ .icon = .gitBranch, .title = "Git" }, .{ .icon = .code, .title = "Files" } };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const band = WindowChrome.topBarLeading(mod.IconSegmentedControl(selection.binding(), &segments), mod.IconSegment.controlWidth(segments.len), mod.Text("~/src/app"), true);
-    canvas.end();
-    var frame = try canvas.render(band, 800, WindowChrome.top_bar_height);
+    window.end();
+    var frame = try window.render(band, 800, WindowChrome.top_bar_height);
     defer frame.deinit();
-    const area: mod.WindowHitArea = .{ .size = .{ .width = 800, .height = 600 }, .drag_band = WindowChrome.top_bar_height, .hits = canvas.hits.items };
+    const area: mod.WindowHitArea = .{ .size = .{ .width = 800, .height = 600 }, .drag_band = WindowChrome.top_bar_height, .hits = window.hits.items };
     const second: renderer.Point = .{ .x = WindowChrome.traffic_lights_width + WindowChrome.lights_gap + 2 + 32 + 2 + 16, .y = 20 };
     // The track starts past the gap: the band behind the lights' gap is bare.
     try std.testing.expect(frame.at(WindowChrome.traffic_lights_width + WindowChrome.lights_gap / 2, 20).r > 0.99);
     try std.testing.expectEqual(mod.WindowHit.normal, area.at(second));
     try std.testing.expectEqual(mod.WindowHit.draggable, area.at(.{ .x = 600, .y = 20 }));
-    try std.testing.expect(canvas.tap(second));
+    try std.testing.expect(window.tap(second));
     try std.testing.expectEqual(@as(i64, 1), selection.get());
 }

@@ -146,37 +146,37 @@ test {
 }
 
 test "a status mark paints its state's color, and a stopped one only a ring" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const idle_view = StatusMark(.idle, 20);
-    canvas.end();
-    var idle = try canvas.render(idle_view, 20, 20);
+    window.end();
+    var idle = try window.render(idle_view, 20, 20);
     defer idle.deinit();
     const centre = idle.at(10, 10);
     try std.testing.expect(centre.g > centre.r and centre.g > centre.b);
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const stopped_view = StatusMark(.stopped, 20);
-    canvas.end();
-    var stopped = try canvas.render(stopped_view, 20, 20);
+    window.end();
+    var stopped = try window.render(stopped_view, 20, 20);
     defer stopped.deinit();
     // The middle of a ring is the background.
     try std.testing.expect(stopped.at(10, 10).r > 0.95 and stopped.at(10, 10).b > 0.95);
 }
 
 test "a disclosure group shows its content only while expanded" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const Probe = struct {
         const Self = @This();
         /// A tap that does nothing.
         fn noop(_: ?*anyopaque) void {}
     };
     const callback: mod.Callback = .{ .function = Probe.noop };
-    canvas.begin(renderer.MacosTheme.light);
-    defer canvas.end();
+    window.begin(renderer.MacosTheme.light);
+    defer window.end();
     const closed = DisclosureGroup(mod.Text("ls"), false, callback, mod.Text("a.txt"));
     const open = DisclosureGroup(mod.Text("ls"), true, callback, mod.Text("a.txt"));
     // Closed is the header row alone; open stacks the content under it.
@@ -186,22 +186,22 @@ test "a disclosure group shows its content only while expanded" {
 }
 
 test "a chip is tappable only with a callback, and a code block keeps its text" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const Probe = struct {
         const Self = @This();
         /// A tap that does nothing.
         fn noop(_: ?*anyopaque) void {}
     };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const plain = Chip("Ask", null, null);
     const tappable = Chip("Ask", .sparkles, .{ .function = Probe.noop });
     const code = CodeBlock("const x = 1;");
-    canvas.end();
+    window.end();
     try std.testing.expect(plain.modifiers.on_tap == null);
     try std.testing.expect(tappable.modifiers.on_tap != null);
 
-    var frame = try canvas.render(code, 200, 40);
+    var frame = try window.render(code, 200, 40);
     defer frame.deinit();
     // The panel is tinted, darker than the white around it.
     try std.testing.expect(frame.at(4, 20).r < 1.0);

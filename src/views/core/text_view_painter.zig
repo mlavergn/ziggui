@@ -37,9 +37,9 @@ pub const TextViewPainter = struct {
     /// - `view`: the paragraph's view (its modifiers).
     /// - `rich`: the paragraph.
     /// - `rect`: its frame.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paintRichText(context: *const mod.Context, view: mod.View, rich: mod.RichTextData, rect: renderer.Rect, canvas: *renderer.Canvas) !void {
+    pub fn paintRichText(context: *const mod.Context, view: mod.View, rich: mod.RichTextData, rect: renderer.Rect, display_list: *renderer.DisplayList) !void {
         const opacity = context.opacity;
         const pixel_size = context.resolvedFontSize(view);
         const faces = context.richFaces();
@@ -50,7 +50,7 @@ pub const TextViewPainter = struct {
             hit.* = .{ .key = mod.TextSelection.keyFor(rich.spans, pixel_size, &view.modifiers), .origin = rect.origin(), .layout = laid_out, .spans = rich.spans, .faces = faces, .pixel_size = pixel_size, .scale = context.scale };
             try context.hit_regions.append(context.arena, .{ .rect = rect, .action = .{ .textSelect = hit }, .disabled = context.disabled });
             const selection = mod.TextSelection.shared();
-            if (selection.current) |span| if (span.key == hit.key) try selection.paint(context, hit, span, canvas);
+            if (selection.current) |span| if (span.key == hit.key) try selection.paint(context, hit, span, display_list);
         }
         for (laid_out.lines) |line| {
             const baseline = rect.y + line.y + line.baseline;
@@ -61,17 +61,17 @@ pub const TextViewPainter = struct {
                 const line_height = renderer.TextShaper.init(face).lineHeight(span_size);
                 const ascent = renderer.TextShaper.init(face).ascentPixels(span_size);
                 const x = rect.x + run.x;
-                if (span.background) |background| try canvas.fillRoundedRect(.{ .x = x - 2, .y = baseline - ascent, .width = run.width + 4, .height = line_height }, 4, background.multiplyAlpha(opacity));
+                if (span.background) |background| try display_list.fillRoundedRect(.{ .x = x - 2, .y = baseline - ascent, .width = run.width + 4, .height = line_height }, 4, background.multiplyAlpha(opacity));
                 const color = (span.color orelse if (span.link != null) context.theme.colors.accent else context.foreground).multiplyAlpha(opacity);
                 const cache = faces.cacheFor(span) orelse context.cache;
                 const piece = span.text[run.start..run.end];
                 if (context.scale == 1) {
-                    try renderer.TextPainter.shared().drawText(canvas, cache, piece, span_size, color, .{ .x = x, .y = baseline - ascent });
+                    try renderer.TextPainter.shared().drawText(display_list, cache, piece, span_size, color, .{ .x = x, .y = baseline - ascent });
                 } else {
-                    try renderer.TextPainter.shared().drawTextScaled(canvas, cache, piece, span_size, context.scale, color, .{ .x = x, .y = baseline - ascent });
+                    try renderer.TextPainter.shared().drawTextScaled(display_list, cache, piece, span_size, context.scale, color, .{ .x = x, .y = baseline - ascent });
                 }
-                if (span.underline or span.link != null) try canvas.fillRect(.{ .x = x, .y = baseline + 1.5, .width = run.width, .height = 1 }, color);
-                if (span.strike) try canvas.fillRect(.{ .x = x, .y = baseline - ascent * 0.35, .width = run.width, .height = 1 }, color);
+                if (span.underline or span.link != null) try display_list.fillRect(.{ .x = x, .y = baseline + 1.5, .width = run.width, .height = 1 }, color);
+                if (span.strike) try display_list.fillRect(.{ .x = x, .y = baseline - ascent * 0.35, .width = run.width, .height = 1 }, color);
                 if (span.link) |url| {
                     const target = try context.arena.create(LinkTarget);
                     target.* = .{ .url = url };
@@ -92,9 +92,9 @@ pub const TextViewPainter = struct {
     /// - `view`: the text's view (its modifiers).
     /// - `wrapped`: the text.
     /// - `rect`: its frame.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paintWrappedText(context: *const mod.Context, view: mod.View, wrapped: mod.WrappedTextData, rect: renderer.Rect, canvas: *renderer.Canvas) !void {
+    pub fn paintWrappedText(context: *const mod.Context, view: mod.View, wrapped: mod.WrappedTextData, rect: renderer.Rect, display_list: *renderer.DisplayList) !void {
         const opacity = context.opacity;
         const pixel_size = context.resolvedFontSize(view);
         const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
@@ -103,7 +103,7 @@ pub const TextViewPainter = struct {
         for (lines, 0..) |line, index| {
             const slice = wrapped.string[line.start..line.end];
             const y = rect.y + @as(f32, @floatFromInt(index)) * line_height;
-            context.drawText(canvas, slice, pixel_size, color, .{ .x = rect.x, .y = y }) catch |err| log.debug("text not drawn [{t}]", .{err});
+            context.drawText(display_list, slice, pixel_size, color, .{ .x = rect.x, .y = y }) catch |err| log.debug("text not drawn [{t}]", .{err});
         }
     }
 
@@ -114,9 +114,9 @@ pub const TextViewPainter = struct {
     /// - `view`: the field's view (its modifiers).
     /// - `field`: the field.
     /// - `rect`: its frame.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paintTextField(context: *const mod.Context, view: mod.View, field: mod.TextFieldData, rect: renderer.Rect, canvas: *renderer.Canvas) !void {
+    pub fn paintTextField(context: *const mod.Context, view: mod.View, field: mod.TextFieldData, rect: renderer.Rect, display_list: *renderer.DisplayList) !void {
         const opacity = context.opacity;
         const metrics = context.theme.metrics;
         // Honor an explicit `.cornerRadius(...)` so fields can be pill-shaped; fall
@@ -129,7 +129,7 @@ pub const TextViewPainter = struct {
         // A secure field's state refuses copy, cut and accessibility (`TextFieldState.secure`).
         field.state.secure = view.modifiers.secure;
         // The theme draws the input surface (background + border).
-        if (!view.modifiers.chromeless) try context.theme.painter.field(context.surface(canvas), rect, radius, .{ .focused = focused });
+        if (!view.modifiers.chromeless) try context.theme.painter.field(context.surface(display_list), rect, radius, .{ .focused = focused });
 
         const pixel_size = context.theme.typography.body.size;
         const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
@@ -158,7 +158,7 @@ pub const TextViewPainter = struct {
         const scroll_x: f32 = if (focused) Self.followCaret(field.state.scroll_x, caret_offset, shaper.measureLineWidth(content, pixel_size), visible_width) else 0;
         field.state.scroll_x = scroll_x;
         const origin_x = rect.x + inset - scroll_x;
-        try canvas.pushClip(.{ .x = rect.x + inset / 2, .y = rect.y, .width = @max(0, rect.width - inset), .height = rect.height }, 0);
+        try display_list.pushClip(.{ .x = rect.x + inset / 2, .y = rect.y, .width = @max(0, rect.width - inset), .height = rect.height }, 0);
 
         // Selection highlight, drawn behind the text so the glyphs stay readable.
         // A secure field's selection is over the real text; it highlights the
@@ -169,21 +169,21 @@ pub const TextViewPainter = struct {
                 const end = if (secure) Self.secureOffset(real, selection.end) else selection.end;
                 const highlight_start = origin_x + shaper.measureLineWidth(content[0..start], pixel_size);
                 const highlight_end = origin_x + shaper.measureLineWidth(content[0..end], pixel_size);
-                try canvas.fillRect(.{ .x = highlight_start, .y = text_y, .width = @max(1, highlight_end - highlight_start), .height = line_height }, context.theme.colors.selection.multiplyAlpha(opacity));
+                try display_list.fillRect(.{ .x = highlight_start, .y = text_y, .width = @max(1, highlight_end - highlight_start), .height = line_height }, context.theme.colors.selection.multiplyAlpha(opacity));
             }
         }
 
         if (content.len == 0 and field.placeholder.len > 0) {
-            context.drawText(canvas, field.placeholder, pixel_size, context.theme.colors.tertiary_label.multiplyAlpha(opacity), .{ .x = origin_x, .y = text_y }) catch |err| log.debug("text not drawn [{t}]", .{err});
+            context.drawText(display_list, field.placeholder, pixel_size, context.theme.colors.tertiary_label.multiplyAlpha(opacity), .{ .x = origin_x, .y = text_y }) catch |err| log.debug("text not drawn [{t}]", .{err});
         } else {
-            context.drawText(canvas, content, pixel_size, context.foreground.multiplyAlpha(opacity), .{ .x = origin_x, .y = text_y }) catch |err| log.debug("text not drawn [{t}]", .{err});
+            context.drawText(display_list, content, pixel_size, context.foreground.multiplyAlpha(opacity), .{ .x = origin_x, .y = text_y }) catch |err| log.debug("text not drawn [{t}]", .{err});
         }
         // caret
         if (focused and mod.Focus.shared().caretVisible()) {
             const caret_x = origin_x + caret_offset;
-            try canvas.line(.{ .x = caret_x, .y = text_y + 2 }, .{ .x = caret_x, .y = text_y + line_height - 2 }, 1, context.theme.colors.accent.multiplyAlpha(opacity));
+            try display_list.line(.{ .x = caret_x, .y = text_y + 2 }, .{ .x = caret_x, .y = text_y + line_height - 2 }, 1, context.theme.colors.accent.multiplyAlpha(opacity));
         }
-        try canvas.popClip();
+        try display_list.popClip();
         // A `textClick` region (not a bare `.focus`) so a single-line field also
         // supports click-to-place-caret, drag-selection, and double-click word
         // selection — its one line starts at the scrolled text origin.
@@ -212,9 +212,9 @@ pub const TextViewPainter = struct {
     /// - `view`: the editor's view (its modifiers).
     /// - `editor`: the editor.
     /// - `rect`: its frame.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paintTextEditor(context: *const mod.Context, view: mod.View, editor: mod.TextEditorData, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    pub fn paintTextEditor(context: *const mod.Context, view: mod.View, editor: mod.TextEditorData, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const state = editor.state;
         state.multiline = true;
         const opacity = context.opacity;
@@ -227,7 +227,7 @@ pub const TextViewPainter = struct {
 
         const radius = if (view.modifiers.corner_radius > 0) view.modifiers.corner_radius else metrics.control_corner_radius;
         // The theme draws the editor surface (background + border).
-        if (!view.modifiers.chromeless) try context.theme.painter.field(context.surface(canvas), rect, radius, .{ .focused = focused });
+        if (!view.modifiers.chromeless) try context.theme.painter.field(context.surface(display_list), rect, radius, .{ .focused = focused });
 
         const text = state.text();
         const line_count = mod.TextLines.init(text).lineCount();
@@ -274,16 +274,16 @@ pub const TextViewPainter = struct {
             const selection_color = context.theme.colors.selection.multiplyAlpha(opacity);
             const selection = state.selectionRange();
 
-            try canvas.pushClip(rect.insetBy(2, 2), 0);
+            try display_list.pushClip(rect.insetBy(2, 2), 0);
             if (editor.line_numbers) {
                 const gutter_x = rect.x + gutter_width;
-                try canvas.line(.{ .x = gutter_x, .y = rect.y }, .{ .x = gutter_x, .y = rect.y + rect.height }, metrics.hairline, context.theme.colors.separator.multiplyAlpha(opacity));
+                try display_list.line(.{ .x = gutter_x, .y = rect.y }, .{ .x = gutter_x, .y = rect.y + rect.height }, metrics.hairline, context.theme.colors.separator.multiplyAlpha(opacity));
             }
             if (text.len == 0 and view.modifiers.editor_placeholder.len > 0) {
                 const hint = view.modifiers.editor_placeholder;
                 const hint_color = context.theme.colors.secondary_label.multiplyAlpha(opacity);
                 for (mod.BuildScope.shared().wrapText(context.arena, face, hint, pixel_size, wrap_width), 0..) |row, index|
-                    Self.drawEditorLine(context, canvas, hint[row.start..row.end], pixel_size, hint_color, .{ .x = text_x, .y = top + @as(f32, @floatFromInt(index)) * line_height });
+                    Self.drawEditorLine(context, display_list, hint[row.start..row.end], pixel_size, hint_color, .{ .x = text_x, .y = top + @as(f32, @floatFromInt(index)) * line_height });
             }
             // The logical line each row belongs to, counted across every row.
             var line_number: usize = 0;
@@ -292,24 +292,24 @@ pub const TextViewPainter = struct {
                 if (starts_line and index > 0) line_number += 1;
                 const y = top - offset + @as(f32, @floatFromInt(index)) * line_height;
                 if (y + line_height < top or y > top + view_height) continue;
-                if (editor.line_numbers and starts_line) Self.drawLineNumber(context, canvas, face, pixel_size, line_number + 1, number_color, rect.x + gutter_width - inset, y);
+                if (editor.line_numbers and starts_line) Self.drawLineNumber(context, display_list, face, pixel_size, line_number + 1, number_color, rect.x + gutter_width - inset, y);
                 if (selection) |range| {
                     if (range.start <= row.end and range.end >= row.start) {
                         const start = @max(range.start, row.start);
                         const end = @min(range.end, row.end);
                         const highlight_start = text_x + mod.EditorMetrics.init(face, pixel_size).prefixWidth(text[row.start..start]);
                         const highlight_end = text_x + mod.EditorMetrics.init(face, pixel_size).prefixWidth(text[row.start..end]);
-                        try canvas.fillRect(.{ .x = highlight_start, .y = y, .width = @max(1, highlight_end - highlight_start), .height = line_height }, selection_color);
+                        try display_list.fillRect(.{ .x = highlight_start, .y = y, .width = @max(1, highlight_end - highlight_start), .height = line_height }, selection_color);
                     }
                 }
-                if (row.end > row.start) Self.drawEditorLine(context, canvas, text[row.start..row.end], pixel_size, foreground, .{ .x = text_x, .y = y });
+                if (row.end > row.start) Self.drawEditorLine(context, display_list, text[row.start..row.end], pixel_size, foreground, .{ .x = text_x, .y = y });
                 if (focused and caret_on and index == caret_row) {
                     const caret_position = std.math.clamp(state.caret, row.start, row.end);
                     const caret_x = text_x + mod.EditorMetrics.init(face, pixel_size).prefixWidth(text[row.start..caret_position]);
-                    try canvas.line(.{ .x = caret_x, .y = y + 1 }, .{ .x = caret_x, .y = y + line_height - 1 }, 1, context.theme.colors.accent.multiplyAlpha(opacity));
+                    try display_list.line(.{ .x = caret_x, .y = y + 1 }, .{ .x = caret_x, .y = y + line_height - 1 }, 1, context.theme.colors.accent.multiplyAlpha(opacity));
                 }
             }
-            canvas.popClip() catch |err| log.debug("clip not popped [{t}]", .{err});
+            display_list.popClip() catch |err| log.debug("clip not popped [{t}]", .{err});
 
             try context.hit_regions.append(context.arena, .{
                 .rect = rect,
@@ -351,13 +351,13 @@ pub const TextViewPainter = struct {
         const space_width = renderer.TextShaper.init(face).measureLineWidth(" ", pixel_size);
 
         // Clip to the interior (inside the border/corners) while drawing content.
-        try canvas.pushClip(rect.insetBy(2, 2), 0);
+        try display_list.pushClip(rect.insetBy(2, 2), 0);
         if (text.len == 0 and view.modifiers.editor_placeholder.len > 0)
-            Self.drawEditorLine(context, canvas, view.modifiers.editor_placeholder, pixel_size, context.theme.colors.secondary_label.multiplyAlpha(opacity), .{ .x = text_x, .y = top });
+            Self.drawEditorLine(context, display_list, view.modifiers.editor_placeholder, pixel_size, context.theme.colors.secondary_label.multiplyAlpha(opacity), .{ .x = text_x, .y = top });
 
         if (editor.line_numbers) {
             const gutter_x = rect.x + gutter_width;
-            try canvas.line(.{ .x = gutter_x, .y = rect.y }, .{ .x = gutter_x, .y = rect.y + rect.height }, metrics.hairline, context.theme.colors.separator.multiplyAlpha(opacity));
+            try display_list.line(.{ .x = gutter_x, .y = rect.y }, .{ .x = gutter_x, .y = rect.y + rect.height }, metrics.hairline, context.theme.colors.separator.multiplyAlpha(opacity));
         }
 
         var line_number: usize = 0;
@@ -377,21 +377,21 @@ pub const TextViewPainter = struct {
                     const highlight_start = text_x + mod.EditorMetrics.init(face, pixel_size).prefixWidth(text[line_start..start]);
                     var highlight_end = text_x + mod.EditorMetrics.init(face, pixel_size).prefixWidth(text[line_start..end]);
                     if (range.end > line_end) highlight_end += space_width; // a selected line-break reads as a trailing sliver
-                    try canvas.fillRect(.{ .x = highlight_start, .y = y, .width = @max(1, highlight_end - highlight_start), .height = line_height }, selection_color);
+                    try display_list.fillRect(.{ .x = highlight_start, .y = y, .width = @max(1, highlight_end - highlight_start), .height = line_height }, selection_color);
                 }
             }
 
-            if (editor.line_numbers) Self.drawLineNumber(context, canvas, face, pixel_size, line_number + 1, number_color, rect.x + gutter_width - inset, y);
+            if (editor.line_numbers) Self.drawLineNumber(context, display_list, face, pixel_size, line_number + 1, number_color, rect.x + gutter_width - inset, y);
 
-            if (line_end > line_start) Self.drawEditorLine(context, canvas, text[line_start..line_end], pixel_size, foreground, .{ .x = text_x, .y = y });
+            if (line_end > line_start) Self.drawEditorLine(context, display_list, text[line_start..line_end], pixel_size, foreground, .{ .x = text_x, .y = y });
 
             if (focused and caret_on and line_number == caret_line) {
                 const caret_x = text_x + mod.EditorMetrics.init(face, pixel_size).prefixWidth(text[line_start..state.caret]);
-                try canvas.line(.{ .x = caret_x, .y = y + 1 }, .{ .x = caret_x, .y = y + line_height - 1 }, 1, context.theme.colors.accent.multiplyAlpha(opacity));
+                try display_list.line(.{ .x = caret_x, .y = y + 1 }, .{ .x = caret_x, .y = y + line_height - 1 }, 1, context.theme.colors.accent.multiplyAlpha(opacity));
             }
         }
 
-        canvas.popClip() catch |err| log.debug("clip not popped [{t}]", .{err});
+        display_list.popClip() catch |err| log.debug("clip not popped [{t}]", .{err});
 
         try context.hit_regions.append(context.arena, .{
             .rect = rect,
@@ -443,12 +443,12 @@ pub const TextViewPainter = struct {
     /// (drawing text between tabs run-by-run) so caret/selection x's line up with it.
     ///
     /// - `context`: the context.
-    /// - `canvas`: where it draws.
+    /// - `display_list`: where it draws.
     /// - `line`: the line's text.
     /// - `pixel_size`: its size.
     /// - `color`: its color.
     /// - `origin`: its top-left.
-    fn drawEditorLine(context: *const mod.Context, canvas: *renderer.Canvas, line: []const u8, pixel_size: f32, color: renderer.Color, origin: renderer.Point) void {
+    fn drawEditorLine(context: *const mod.Context, display_list: *renderer.DisplayList, line: []const u8, pixel_size: f32, color: renderer.Color, origin: renderer.Point) void {
         const tab_width = mod.EditorMetrics.init(context.cache.face, pixel_size).tabMetrics().tab;
         var x: f32 = 0;
         var segment_start: usize = 0;
@@ -456,14 +456,14 @@ pub const TextViewPainter = struct {
             if (character != '\t') continue;
             const segment = line[segment_start..index];
             if (segment.len > 0) {
-                context.drawText(canvas, segment, pixel_size, color, .{ .x = origin.x + x, .y = origin.y }) catch |err| log.debug("text not drawn [{t}]", .{err});
+                context.drawText(display_list, segment, pixel_size, color, .{ .x = origin.x + x, .y = origin.y }) catch |err| log.debug("text not drawn [{t}]", .{err});
                 x += renderer.TextShaper.init(context.cache.face).measureLineWidth(segment, pixel_size);
             }
             x = (@floor(x / tab_width) + 1) * tab_width;
             segment_start = index + 1;
         }
         const tail = line[segment_start..];
-        if (tail.len > 0) context.drawText(canvas, tail, pixel_size, color, .{ .x = origin.x + x, .y = origin.y }) catch |err| log.debug("text not drawn [{t}]", .{err});
+        if (tail.len > 0) context.drawText(display_list, tail, pixel_size, color, .{ .x = origin.x + x, .y = origin.y }) catch |err| log.debug("text not drawn [{t}]", .{err});
     }
 
     /// Width of the line-number gutter: enough for `line_count`'s digits plus padding.
@@ -495,19 +495,19 @@ pub const TextViewPainter = struct {
     /// Draws a line's number in the gutter, right-aligned to `right`.
     ///
     /// - `context`: the context.
-    /// - `canvas`: where it is drawn.
+    /// - `display_list`: where it is drawn.
     /// - `face`: the editor's face.
     /// - `pixel_size`: the editor's size.
     /// - `number`: the line's number, from 1.
     /// - `color`: the number's color.
     /// - `right`: the x its right edge sits at.
     /// - `y`: the row's top.
-    fn drawLineNumber(context: *const mod.Context, canvas: *renderer.Canvas, face: *const renderer.TtfFont, pixel_size: f32, number: usize, color: renderer.Color, right: f32, y: f32) void {
+    fn drawLineNumber(context: *const mod.Context, display_list: *renderer.DisplayList, face: *const renderer.TtfFont, pixel_size: f32, number: usize, color: renderer.Color, right: f32, y: f32) void {
         var buffer: [20]u8 = undefined;
         // 20 bytes hold any usize in decimal.
         const digits = buffer[0..std.fmt.printInt(&buffer, number, 10, .lower, .{})];
         const width = renderer.TextShaper.init(face).measureLineWidth(digits, pixel_size);
-        context.drawText(canvas, digits, pixel_size, color, .{ .x = right - width, .y = y }) catch |err| log.debug("text not drawn [{t}]", .{err});
+        context.drawText(display_list, digits, pixel_size, color, .{ .x = right - width, .y = y }) catch |err| log.debug("text not drawn [{t}]", .{err});
     }
 
     /// A soft-wrap editor's visual rows: `wrapped`, plus the empty row after
@@ -563,8 +563,8 @@ test "a soft-wrap editor's rows: an empty last line after a newline, never none"
 }
 
 test "a one-line field keeps a long text and its selection inside itself, the caret in view" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var state = mod.TextFieldState.init(std.testing.allocator);
     defer state.deinit();
     defer mod.Focus.shared().clear();
@@ -572,10 +572,10 @@ test "a one-line field keeps a long text and its selection inside itself, the ca
     mod.Focus.shared().set(&state);
     state.selectAll();
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const field = mod.HStack(.{ mod.TextField("", &state).frameWidth(160), mod.Spacer() });
-    canvas.end();
-    var frame = try canvas.render(field, 400, 30);
+    window.end();
+    var frame = try window.render(field, 400, 30);
     defer frame.deinit();
     // Past the field's right edge the window shows, not the selection.
     const outside = frame.at(300, 15);

@@ -67,8 +67,8 @@ test {
 }
 
 test "a search field shows its clear button only with text, and the button empties it and calls back" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var state = mod.TextFieldState.init(std.testing.allocator);
     defer state.deinit();
     defer mod.Focus.shared().clear();
@@ -84,23 +84,23 @@ test "a search field shows its clear button only with text, and the button empti
     };
     var probe: Probe = .{};
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const empty = SearchField("Filter", &state, null, mod.Callback.init(Probe, &probe, Probe.onClear));
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(@as(usize, 3), empty.kind.stack.children.len);
     try std.testing.expect(empty.kind.stack.children[2].kind == .empty);
 
     try state.setText("photos");
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const full = SearchField("Filter", &state, null, mod.Callback.init(Probe, &probe, Probe.onClear));
-    canvas.end();
-    var frame = try canvas.render(full, 300, 28);
+    window.end();
+    var frame = try window.render(full, 300, 28);
     defer frame.deinit();
     // The × sits at the field's trailing end.
     var cleared = false;
     var x: f32 = 296;
     while (x > 240 and !cleared) : (x -= 2) {
-        cleared = canvas.tap(.{ .x = x, .y = 14 }) and state.text().len == 0;
+        cleared = window.tap(.{ .x = x, .y = 14 }) and state.text().len == 0;
     }
     try std.testing.expect(cleared);
     try std.testing.expectEqual(@as(usize, 1), probe.cleared);

@@ -45,13 +45,13 @@ test {
 }
 
 test "a status line draws its hints, and none" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     for ([_][]const mod.KeyHint{ &.{ .{ .key = "enter", .action = "send" }, .{ .key = "esc", .action = "stop" } }, &.{} }) |hints| {
-        canvas.begin(renderer.ThemeFamily.macos.forScheme(.light));
+        window.begin(renderer.ThemeFamily.macos.forScheme(.light));
         const line = StatusLine(hints);
-        canvas.end();
-        var frame = try canvas.render(line, 400, 24);
+        window.end();
+        var frame = try window.render(line, 400, 24);
         frame.deinit();
     }
 }

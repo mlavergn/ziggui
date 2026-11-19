@@ -42,23 +42,23 @@ test {
 }
 
 test "confirm alert sets the question over its two buttons, and drops an empty detail" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const question = mod.Confirm{ .title = "Delete a.txt?", .yes_label = "Delete", .on_yes = .{ .function = TestConfirm.nothing } };
     const view = ConfirmAlert(&question, "No", .{ .function = TestConfirm.nothing }, .{ .function = TestConfirm.nothing });
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(@as(usize, 3), view.kind.stack.children.len);
     try std.testing.expect(view.kind.stack.children[1].kind == .empty);
 }
 
 test "confirm alert draws a question that destroys nothing with a prominent agreement" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const question = mod.Confirm{ .title = "Restart?", .yes_label = "Restart", .destructive = false, .on_yes = .{ .function = TestConfirm.nothing } };
     const view = ConfirmAlert(&question, "Cancel", .{ .function = TestConfirm.nothing }, .{ .function = TestConfirm.nothing });
-    canvas.end();
+    window.end();
     const buttons = view.kind.stack.children[2].kind.stack.children;
     try std.testing.expect(buttons[2].kind.button.role == .prominent);
 }

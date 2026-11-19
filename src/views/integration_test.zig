@@ -1,6 +1,6 @@
 //! End-to-end integration tests: build a realistic SwiftUI-style screen with
 //! the public component API, render it through the full pipeline (view → layout
-//! → canvas → software rasterizer), and assert on the resulting pixels and on
+//! → display list → software rasterizer), and assert on the resulting pixels and on
 //! interaction. This exercises the whole stack headlessly and stands in for the
 //! `examples/settings` demo in CI.
 
@@ -179,19 +179,19 @@ test "integration: settings screen renders a rich, non-empty frame" {
     var context = harness.context();
     const tree = settings.body();
 
-    var canvas = renderer.Canvas.init(harness.arena.allocator());
+    var display_list = renderer.DisplayList.init(harness.arena.allocator());
     const width: u32 = 400;
     const height: u32 = 500;
-    try canvas.fillRect(.{ .x = 0, .y = 0, .width = width, .height = height }, renderer.MacosTheme.light.colors.window_background);
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = width, .height = height }, &canvas);
+    try display_list.fillRect(.{ .x = 0, .y = 0, .width = width, .height = height }, renderer.MacosTheme.light.colors.window_background);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = width, .height = height }, &display_list);
 
     var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, width, height);
     defer framebuffer.deinit();
     framebuffer.clear(renderer.MacosTheme.light.colors.window_background);
-    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
 
     // The screen should produce a substantial command list...
-    try std.testing.expect(canvas.count() > 15);
+    try std.testing.expect(display_list.count() > 15);
     // ...register interactive regions (toggle + slider)...
     try std.testing.expect(harness.hits.items.len >= 2);
 
@@ -221,10 +221,10 @@ test "integration: tapping the Wi‑Fi toggle flips state across a rebuild" {
     }
 
     var context = harness.context();
-    var canvas = renderer.Canvas.init(harness.arena.allocator());
+    var display_list = renderer.DisplayList.init(harness.arena.allocator());
     const width: u32 = 400;
     const height: u32 = 500;
-    try mod.ViewRenderer.render(&context, settings.body(), .{ .x = 0, .y = 0, .width = width, .height = height }, &canvas);
+    try mod.ViewRenderer.render(&context, settings.body(), .{ .x = 0, .y = 0, .width = width, .height = height }, &display_list);
 
     // Find the toggle hit region and tap its center.
     var tapped = false;
@@ -261,10 +261,10 @@ test "integration: nav + tabs + sheet + material + a11y compose in one render" {
     context.overlays = &overlays;
     context.a11y = &a11y;
 
-    var canvas = renderer.Canvas.init(harness.arena.allocator());
+    var display_list = renderer.DisplayList.init(harness.arena.allocator());
     const width: u32 = 600;
     const height: u32 = 460;
-    try mod.ViewRenderer.render(&context, showcase.body(), .{ .x = 0, .y = 0, .width = width, .height = height }, &canvas);
+    try mod.ViewRenderer.render(&context, showcase.body(), .{ .x = 0, .y = 0, .width = width, .height = height }, &display_list);
 
     // the .sheet was presented -> one overlay collected, drawn as a scrim
     try std.testing.expectEqual(@as(usize, 1), overlays.items.len);
@@ -272,7 +272,7 @@ test "integration: nav + tabs + sheet + material + a11y compose in one render" {
 
     // the material card emitted a blur command
     var has_blur = false;
-    for (canvas.commands.items) |command| {
+    for (display_list.commands.items) |command| {
         if (command == .blurRect) has_blur = true;
     }
     try std.testing.expect(has_blur);
@@ -292,8 +292,8 @@ test "integration: nav + tabs + sheet + material + a11y compose in one render" {
     showcase.show_sheet.set(false);
     harness.hits.clearRetainingCapacity();
     overlays.clearRetainingCapacity();
-    canvas.clearCommands();
-    try mod.ViewRenderer.render(&context, showcase.body(), .{ .x = 0, .y = 0, .width = width, .height = height }, &canvas);
+    display_list.clearCommands();
+    try mod.ViewRenderer.render(&context, showcase.body(), .{ .x = 0, .y = 0, .width = width, .height = height }, &display_list);
     try std.testing.expectEqual(@as(usize, 0), overlays.items.len); // no overlay now
 
     var switched = false;

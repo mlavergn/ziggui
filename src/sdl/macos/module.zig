@@ -28,6 +28,8 @@ pub const CMTimeRange = @import("objective_c.zig").CMTimeRange;
 pub const Cocoa = @import("cocoa.zig").Cocoa;
 /// The macOS media player: AVFoundation, its pictures behind the Metal view.
 pub const AvFoundationPlayer = @import("av_foundation_player.zig").AvFoundationPlayer;
+/// The macOS audio outputs: Core Audio's output devices, by UID.
+pub const CoreAudioOutputs = @import("core_audio_outputs.zig").CoreAudioOutputs;
 /// The macOS native-view host: app `NSView`s above the Metal view.
 pub const AppKitNativeHost = @import("app_kit_native_host.zig").AppKitNativeHost;
 /// The macOS web view: a `WKWebView` per `WebPage`, placed by the native-view host.

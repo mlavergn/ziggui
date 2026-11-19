@@ -163,25 +163,25 @@ test "a file browser draws a row per shown entry, selects on tap, and goes up" {
     try state.open(root);
     state.wait();
 
-    const canvas = try mod.TestCanvas.create(allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const browser = FileBrowser(&state, true);
-    canvas.end();
-    var frame = try canvas.render(browser, 400, 300);
+    window.end();
+    var frame = try window.render(browser, 400, 300);
     defer frame.deinit();
 
     // Below the path bar, the first row is the folder; a tap selects it.
     var tapped = false;
     var y: f32 = 30;
     while (y < 90 and !tapped) : (y += 2) {
-        tapped = canvas.tap(.{ .x = 200, .y = y }) and state.selection != null;
+        tapped = window.tap(.{ .x = 200, .y = y }) and state.selection != null;
     }
     try std.testing.expect(tapped);
     try std.testing.expectEqualStrings("inner", state.selected().?.name);
 
     // The up button opens the enclosing folder, selecting the one left.
-    try std.testing.expect(canvas.tap(.{ .x = 15, .y = 14 }));
+    try std.testing.expect(window.tap(.{ .x = 15, .y = 14 }));
     state.wait();
     try std.testing.expectEqualStrings("root", state.selected().?.name);
 }

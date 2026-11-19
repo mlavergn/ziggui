@@ -104,6 +104,7 @@ pub const AvFoundationPlayer = struct {
 
     /// The backend `Player`s are made with.
     pub const backend: views.PlayerBackend = .{
+        .name = "AVFoundation",
         .create = Self.create,
         .destroy = Self.destroy,
         .load = Self.load,
@@ -114,6 +115,7 @@ pub const AvFoundationPlayer = struct {
         .observe = Self.observe,
         .tracks = Self.tracks,
         .select_track = Self.selectTrack,
+        .set_audio_output = Self.setAudioOutput,
     };
 
     /// It shows pictures behind the window's surface.
@@ -312,6 +314,26 @@ pub const AvFoundationPlayer = struct {
     /// - `muted`: true for no sound.
     fn setMuted(handle: *anyopaque, muted: bool) void {
         mod.ObjectiveC.send(void, Self.nativeOf(handle).player, "setMuted:", .{@as(u8, @intFromBool(muted))});
+    }
+
+    /// Routes the sound to one output (`AVPlayer.audioOutputDeviceUniqueID`:
+    /// a Core Audio device's UID, `CoreAudioOutputs`), or to the system
+    /// default when null. AVFoundation moves a playing item's sound at once.
+    /// An output gone since it was listed leaves the default.
+    ///
+    /// - `handle`: the player.
+    /// - `id`: the output's id, or null for the system default.
+    /// - Returns: false when no output has that id now (the system default
+    ///   plays), else true.
+    fn setAudioOutput(handle: *anyopaque, id: ?[:0]const u8) bool {
+        const native = Self.nativeOf(handle);
+        const pool = mod.ObjectiveC.pushPool();
+        defer mod.ObjectiveC.popPool(pool);
+        const routed = if (id) |wanted| mod.CoreAudioOutputs.hasOutput(wanted) else true;
+        if (!routed) log.warn("audio output {s} not found: the system default plays", .{id.?});
+        const unique_id: mod.Id = if (!routed) null else if (id) |wanted| mod.ObjectiveC.string(wanted) else null;
+        mod.ObjectiveC.send(void, native.player, "setAudioOutputDeviceUniqueID:", .{unique_id});
+        return routed;
     }
 
     /// Samples the player and its item.
@@ -580,6 +602,28 @@ test "av foundation player: a missing file fails with AVFoundation's reason, and
     observation = AvFoundationPlayer.backend.observe(handle);
     try std.testing.expectEqual(views.PlayerStatus.unknown, observation.status);
     try std.testing.expectEqualStrings("", observation.failure);
+}
+
+test "av foundation player: the sound goes to a listed output by its UID, and back to the default" {
+    if (comptime mod.os_tag != .macos) return error.SkipZigTest;
+    const handle = AvFoundationPlayer.backend.create() orelse return error.SkipZigTest;
+    defer AvFoundationPlayer.backend.destroy(handle);
+    const route = AvFoundationPlayer.backend.set_audio_output.?;
+    const player = AvFoundationPlayer.nativeOf(handle).player;
+    const pool = mod.ObjectiveC.pushPool();
+    defer mod.ObjectiveC.popPool(pool);
+    // A Mac with no output device (a headless runner) has nothing to route to.
+    const outputs = try mod.CoreAudioOutputs.backend.list(std.testing.allocator);
+    defer views.AudioOutputs.free(std.testing.allocator, outputs);
+    if (outputs.len == 0) return error.SkipZigTest;
+    const id = try std.testing.allocator.dupeSentinel(u8, outputs[0].id, 0);
+    defer std.testing.allocator.free(id);
+    try std.testing.expect(route(handle, id));
+    try std.testing.expectEqualStrings(id, mod.ObjectiveC.utf8(mod.ObjectiveC.send(mod.Id, player, "audioOutputDeviceUniqueID", .{})));
+    try std.testing.expect(route(handle, null));
+    try std.testing.expect(mod.ObjectiveC.send(mod.Id, player, "audioOutputDeviceUniqueID", .{}) == null);
+    try std.testing.expect(!route(handle, "no such output"));
+    try std.testing.expect(mod.ObjectiveC.send(mod.Id, player, "audioOutputDeviceUniqueID", .{}) == null);
 }
 
 /// Runs the main run loop briefly, for the tests: AVFoundation posts status

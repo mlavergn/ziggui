@@ -46,7 +46,7 @@ pub const BuildScope = @import("../module.zig").BuildScope;
 /// A tap handler (from the views module).
 pub const Callback = @import("../module.zig").Callback;
 /// A view that paints itself through a callback (from the views module).
-pub const Drawing = @import("../module.zig").Drawing;
+pub const Canvas = @import("../module.zig").Canvas;
 /// A view that draws nothing (from the views module).
 pub const Empty = @import("../module.zig").Empty;
 /// An image view of pixels (from the views module).
@@ -67,16 +67,16 @@ pub const MenuBar = @import("../module.zig").MenuBar;
 pub const MenuBarMenu = @import("../module.zig").MenuBarMenu;
 /// A `MenuBar`'s state (from the views module).
 pub const MenuBarState = @import("../module.zig").MenuBarState;
-/// What a `Drawing` paints with (from the views module).
-pub const Pen = @import("../module.zig").Pen;
+/// What a `Canvas` draws with (from the views module).
+pub const GraphicsContext = @import("../module.zig").GraphicsContext;
 /// A filled rectangle (from the views module).
 pub const Rectangle = @import("../module.zig").Rectangle;
 /// Flexible space in a stack (from the views module).
 pub const Spacer = @import("../module.zig").Spacer;
 /// Builds stack views from tuples or slices (from the views module).
 pub const StackBuilder = @import("../module.zig").StackBuilder;
-/// A headless frame for the unit tests (from the views module).
-pub const TestCanvas = @import("../module.zig").TestCanvas;
+/// A headless window for the unit tests (from the views module).
+pub const TestWindow = @import("../module.zig").TestWindow;
 /// One line of text (from the views module).
 pub const Text = @import("../module.zig").Text;
 /// A node of the view tree (from the views module).

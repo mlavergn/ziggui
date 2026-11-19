@@ -1,4 +1,4 @@
-//! Canvas: a retained 2D draw-command list. Components paint into a `Canvas` by
+//! DisplayList: a retained 2D draw-command list. Components paint into a `DisplayList` by
 //! appending high-level commands (filled/stroked rounded rects, gradients,
 //! lines, glyph quads, images, clip push/pop). The command list is the single
 //! interface consumed by *both* backends:
@@ -12,11 +12,11 @@
 //! visual layer be unit-tested without a window or GPU.
 
 const std = @import("std");
-const log = std.log.scoped(.ziggui_canvas);
+const log = std.log.scoped(.ziggui_display_list);
 const mod = @import("module.zig");
 
 /// A retained list of draw commands.
-pub const Canvas = struct {
+pub const DisplayList = struct {
     const Self = @This();
 
     /// The commands, in paint order.
@@ -24,10 +24,10 @@ pub const Canvas = struct {
     /// The allocator the command list grows with.
     allocator: std.mem.Allocator,
 
-    /// An empty canvas.
+    /// An empty display list.
     ///
     /// - `allocator`: allocator for the command list.
-    /// - Returns: the canvas.
+    /// - Returns: the display list.
     pub fn init(allocator: std.mem.Allocator) Self {
         const self = Self{ .allocator = allocator };
         return self;
@@ -35,21 +35,21 @@ pub const Canvas = struct {
 
     /// Free the command list.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     pub fn deinit(self: *Self) void {
         self.commands.deinit(self.allocator);
     }
 
     /// Drop every command, keeping the storage.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     pub fn clearCommands(self: *Self) void {
         self.commands.clearRetainingCapacity();
     }
 
-    /// How many commands the canvas holds.
+    /// How many commands the display list holds.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - Returns: the count.
     pub fn count(self: *const Self) usize {
         return self.commands.items.len;
@@ -57,7 +57,7 @@ pub const Canvas = struct {
 
     /// Append a command.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `command`: the command.
     /// - Returns: nothing; propagates allocation failure.
     pub fn push(self: *Self, command: mod.DrawCommand) !void {
@@ -68,7 +68,7 @@ pub const Canvas = struct {
 
     /// Fill a rect with a solid color.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: the rect.
     /// - `color`: the fill.
     /// - Returns: nothing; propagates allocation failure.
@@ -78,7 +78,7 @@ pub const Canvas = struct {
 
     /// Fill a rounded rect with a solid color.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: the rect.
     /// - `radius`: the corner radius.
     /// - `color`: the fill.
@@ -89,7 +89,7 @@ pub const Canvas = struct {
 
     /// Stroke a rounded rect's outline.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: the rect.
     /// - `radius`: the corner radius.
     /// - `width`: the stroke's width.
@@ -101,7 +101,7 @@ pub const Canvas = struct {
 
     /// Fill a circle.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `center`: the circle's center.
     /// - `radius`: the circle's radius.
     /// - `color`: the fill.
@@ -116,7 +116,7 @@ pub const Canvas = struct {
 
     /// Draw a line segment.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `start`: one end.
     /// - `end`: the other end.
     /// - `width`: the line's width.
@@ -128,7 +128,7 @@ pub const Canvas = struct {
 
     /// Draw a tinted coverage mask.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: where the mask is drawn.
     /// - `color`: the tint.
     /// - `coverage`: the mask.
@@ -141,7 +141,7 @@ pub const Canvas = struct {
     /// `GlyphCommand`). The text path uses this to apply the active
     /// `TextPainter.setGamma`.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: where the mask is drawn.
     /// - `color`: the tint.
     /// - `coverage`: the mask.
@@ -153,7 +153,7 @@ pub const Canvas = struct {
 
     /// Draw an image stretched over a rect.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: where the image is drawn.
     /// - `image`: the pixels.
     /// - Returns: nothing; propagates allocation failure.
@@ -164,7 +164,7 @@ pub const Canvas = struct {
     /// Draw a picture that changes from frame to frame (a video's) stretched
     /// over a rect; the GPU backend uploads it only when `generation` changes.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: where the picture is drawn.
     /// - `image`: the pixels, valid until the frame is drawn.
     /// - `key`: what the pictures come from (a player), stable while it lives.
@@ -176,7 +176,7 @@ pub const Canvas = struct {
 
     /// Frost what is already drawn beneath a rect.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: the region.
     /// - `radius`: the region's corner radius.
     /// - `sigma`: the blur's extent.
@@ -189,7 +189,7 @@ pub const Canvas = struct {
     /// Erase what is already drawn inside a rect back to transparent, the
     /// window's backdrop (a native video layer) showing through.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: the region.
     /// - `radius`: the region's corner radius.
     /// - Returns: nothing; propagates allocation failure.
@@ -199,7 +199,7 @@ pub const Canvas = struct {
 
     /// Push a clip region.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - `rect`: the clip's rect.
     /// - `radius`: the clip's corner radius.
     /// - Returns: nothing; propagates allocation failure.
@@ -209,7 +209,7 @@ pub const Canvas = struct {
 
     /// Pop the innermost clip region.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the display list.
     /// - Returns: nothing; propagates allocation failure.
     pub fn popClip(self: *Self) !void {
         try self.push(.popClip);
@@ -225,39 +225,39 @@ test {
     _ = log;
 }
 
-test "Canvas: records commands in order" {
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.fillRect(.{ .x = 0, .y = 0, .width = 10, .height = 10 }, mod.Color.red);
-    try canvas.strokeRoundedRect(.{ .x = 0, .y = 0, .width = 10, .height = 10 }, 4, 2, mod.Color.blue);
-    try std.testing.expectEqual(@as(usize, 2), canvas.count());
-    try std.testing.expect(canvas.commands.items[0] == .fillRoundedRect);
-    try std.testing.expect(canvas.commands.items[1] == .strokeRoundedRect);
+test "DisplayList: records commands in order" {
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.fillRect(.{ .x = 0, .y = 0, .width = 10, .height = 10 }, mod.Color.red);
+    try display_list.strokeRoundedRect(.{ .x = 0, .y = 0, .width = 10, .height = 10 }, 4, 2, mod.Color.blue);
+    try std.testing.expectEqual(@as(usize, 2), display_list.count());
+    try std.testing.expect(display_list.commands.items[0] == .fillRoundedRect);
+    try std.testing.expect(display_list.commands.items[1] == .strokeRoundedRect);
 }
 
-test "Canvas: clip push/pop and clear" {
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.pushClip(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, 0);
-    try canvas.popClip();
-    try std.testing.expectEqual(@as(usize, 2), canvas.count());
-    canvas.clearCommands();
-    try std.testing.expectEqual(@as(usize, 0), canvas.count());
+test "DisplayList: clip push/pop and clear" {
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.pushClip(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, 0);
+    try display_list.popClip();
+    try std.testing.expectEqual(@as(usize, 2), display_list.count());
+    display_list.clearCommands();
+    try std.testing.expectEqual(@as(usize, 0), display_list.count());
 }
 
-test "Canvas: fillCircle expands to a rounded rect" {
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.fillCircle(.{ .x = 50, .y = 50 }, 10, mod.Color.green);
-    const command = canvas.commands.items[0].fillRoundedRect;
+test "DisplayList: fillCircle expands to a rounded rect" {
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.fillCircle(.{ .x = 50, .y = 50 }, 10, mod.Color.green);
+    const command = display_list.commands.items[0].fillRoundedRect;
     try std.testing.expectEqual(mod.Rect{ .x = 40, .y = 40, .width = 20, .height = 20 }, command.rect);
     try std.testing.expectEqual(@as(f32, 10), command.radius);
 }
 
-test "Canvas: blurRect records a blur command" {
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.blurRect(.{ .x = 0, .y = 0, .width = 10, .height = 10 }, 4, 6, mod.Color.white.withAlpha(0.5));
-    try std.testing.expect(canvas.commands.items[0] == .blurRect);
-    try std.testing.expectEqual(@as(f32, 6), canvas.commands.items[0].blurRect.sigma);
+test "DisplayList: blurRect records a blur command" {
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.blurRect(.{ .x = 0, .y = 0, .width = 10, .height = 10 }, 4, 6, mod.Color.white.withAlpha(0.5));
+    try std.testing.expect(display_list.commands.items[0] == .blurRect);
+    try std.testing.expectEqual(@as(f32, 6), display_list.commands.items[0].blurRect.sigma);
 }

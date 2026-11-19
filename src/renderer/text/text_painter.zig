@@ -1,4 +1,4 @@
-//! Paints text and icon glyphs into a `Canvas` as tinted glyph-coverage quads,
+//! Paints text and icon glyphs into a `DisplayList` as tinted glyph-coverage quads,
 //! with the coverage gamma the app sets per frame.
 
 const std = @import("std");
@@ -43,11 +43,11 @@ pub const TextPainter = struct {
         return self.coverage_gamma;
     }
 
-    /// Paint `text` into `canvas` with its top-left at `origin`, at `pixel_size`,
+    /// Paint `text` into `display_list` with its top-left at `origin`, at `pixel_size`,
     /// tinted `color`, using `cache` for glyph bitmaps.
     ///
     /// - `self`: the painter.
-    /// - `canvas`: the canvas painted into.
+    /// - `display_list`: the display list painted into.
     /// - `cache`: the glyph cache of the text's face.
     /// - `text`: the UTF-8 line.
     /// - `pixel_size`: the em size in pixels.
@@ -56,7 +56,7 @@ pub const TextPainter = struct {
     /// - Returns: nothing; propagates allocation failure.
     pub fn drawText(
         self: *const Self,
-        canvas: *mod.Canvas,
+        display_list: *mod.DisplayList,
         cache: *mod.GlyphCache,
         text: []const u8,
         pixel_size: f32,
@@ -66,8 +66,8 @@ pub const TextPainter = struct {
         const face = cache.face;
         const shaper = mod.TextShaper.init(face);
         const baseline = origin.y + shaper.ascentPixels(pixel_size);
-        const glyphs = try shaper.layoutLine(canvas.allocator, text, pixel_size, origin.x);
-        defer canvas.allocator.free(glyphs);
+        const glyphs = try shaper.layoutLine(display_list.allocator, text, pixel_size, origin.x);
+        defer display_list.allocator.free(glyphs);
         for (glyphs) |placed| {
             const raster = try cache.getFace(placed.face, placed.glyph, pixel_size);
             if (raster.width == 0 or raster.height == 0) continue; // whitespace
@@ -77,7 +77,7 @@ pub const TextPainter = struct {
                 .width = @floatFromInt(raster.width),
                 .height = @floatFromInt(raster.height),
             };
-            try canvas.drawGlyphGamma(rect, color, .{
+            try display_list.drawGlyphGamma(rect, color, .{
                 .width = raster.width,
                 .height = raster.height,
                 .data = raster.data,
@@ -92,7 +92,7 @@ pub const TextPainter = struct {
     /// HiDPI text instead of a stretched low-res glyph. See `view.renderScaled`.
     ///
     /// - `self`: the painter.
-    /// - `canvas`: the canvas painted into.
+    /// - `display_list`: the display list painted into.
     /// - `cache`: the glyph cache of the text's face.
     /// - `text`: the UTF-8 line.
     /// - `pixel_size`: the em size in points.
@@ -102,7 +102,7 @@ pub const TextPainter = struct {
     /// - Returns: nothing; propagates allocation failure.
     pub fn drawTextScaled(
         self: *const Self,
-        canvas: *mod.Canvas,
+        display_list: *mod.DisplayList,
         cache: *mod.GlyphCache,
         text: []const u8,
         pixel_size: f32,
@@ -114,8 +114,8 @@ pub const TextPainter = struct {
         const device_pixel_size = pixel_size * scale;
         const shaper = mod.TextShaper.init(face);
         const baseline = origin.y + shaper.ascentPixels(pixel_size);
-        const glyphs = try shaper.layoutLine(canvas.allocator, text, pixel_size, origin.x);
-        defer canvas.allocator.free(glyphs);
+        const glyphs = try shaper.layoutLine(display_list.allocator, text, pixel_size, origin.x);
+        defer display_list.allocator.free(glyphs);
         for (glyphs) |placed| {
             const raster = try cache.getFace(placed.face, placed.glyph, device_pixel_size);
             if (raster.width == 0 or raster.height == 0) continue; // whitespace
@@ -125,7 +125,7 @@ pub const TextPainter = struct {
                 .width = @as(f32, @floatFromInt(raster.width)) / scale,
                 .height = @as(f32, @floatFromInt(raster.height)) / scale,
             };
-            try canvas.drawGlyphGamma(rect, color, .{
+            try display_list.drawGlyphGamma(rect, color, .{
                 .width = raster.width,
                 .height = raster.height,
                 .data = raster.data,
@@ -141,7 +141,7 @@ pub const TextPainter = struct {
     /// box or scale that leaves no positive size.
     ///
     /// - `self`: the painter.
-    /// - `canvas`: the canvas painted into.
+    /// - `display_list`: the display list painted into.
     /// - `cache`: the icon font's glyph cache.
     /// - `codepoint`: the icon's codepoint.
     /// - `box`: the rect the icon is centered in.
@@ -150,7 +150,7 @@ pub const TextPainter = struct {
     /// - Returns: nothing; propagates allocation failure.
     pub fn drawIcon(
         self: *const Self,
-        canvas: *mod.Canvas,
+        display_list: *mod.DisplayList,
         cache: *mod.GlyphCache,
         codepoint: u21,
         box: mod.Rect,
@@ -173,7 +173,7 @@ pub const TextPainter = struct {
             .width = width,
             .height = height,
         };
-        try canvas.drawGlyphGamma(rect, color, .{
+        try display_list.drawGlyphGamma(rect, color, .{
             .width = raster.width,
             .height = raster.height,
             .data = raster.data,
@@ -194,41 +194,41 @@ test "drawIcon: inks pixels for a real icon and is a no-op for a blank slot" {
     const font = mod.Font.icons();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const box = mod.Rect{ .x = 0, .y = 0, .width = 24, .height = 24 };
-    try TextPainter.shared().drawIcon(&canvas, &cache, 0xE0F2, box, 1, mod.Color.black); // heart
-    try std.testing.expect(canvas.count() == 1);
-    canvas.clearCommands();
+    try TextPainter.shared().drawIcon(&display_list, &cache, 0xE0F2, box, 1, mod.Color.black); // heart
+    try std.testing.expect(display_list.count() == 1);
+    display_list.clearCommands();
     // A codepoint not in the subset maps to .notdef/blank → no command.
-    try TextPainter.shared().drawIcon(&canvas, &cache, 0x0041, box, 1, mod.Color.black); // 'A'
-    try std.testing.expect(canvas.count() == 0);
+    try TextPainter.shared().drawIcon(&display_list, &cache, 0x0041, box, 1, mod.Color.black); // 'A'
+    try std.testing.expect(display_list.count() == 0);
 }
 
 test "drawText: emits one glyph command per visible character" {
     const font = mod.Font.default();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try TextPainter.shared().drawText(&canvas, &cache, "AB", 32, mod.Color.black, .{ .x = 0, .y = 0 });
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try TextPainter.shared().drawText(&display_list, &cache, "AB", 32, mod.Color.black, .{ .x = 0, .y = 0 });
     // two visible glyphs -> two glyph commands
-    try std.testing.expectEqual(@as(usize, 2), canvas.count());
-    try std.testing.expect(canvas.commands.items[0] == .glyph);
+    try std.testing.expectEqual(@as(usize, 2), display_list.count());
+    try std.testing.expect(display_list.commands.items[0] == .glyph);
 }
 
 test "drawText: actually inks pixels when rasterized" {
     const font = mod.Font.default();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try TextPainter.shared().drawText(&canvas, &cache, "A", 48, mod.Color.black, .{ .x = 2, .y = 2 });
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try TextPainter.shared().drawText(&display_list, &cache, "A", 48, mod.Color.black, .{ .x = 2, .y = 2 });
 
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 64, 64);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    try mod.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try mod.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
 
     // count dark pixels — the letter 'A' should ink a meaningful number
     var dark: u32 = 0;
@@ -244,17 +244,17 @@ test "drawText: renders an emoji through the fallback face" {
     font.face.fallback = &emoji_font.face;
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // "A😀" — one Latin glyph from Inter, one emoji from the fallback face.
-    try TextPainter.shared().drawText(&canvas, &cache, "A\u{1F600}", 48, mod.Color.black, .{ .x = 0, .y = 0 });
-    try std.testing.expectEqual(@as(usize, 2), canvas.count());
+    try TextPainter.shared().drawText(&display_list, &cache, "A\u{1F600}", 48, mod.Color.black, .{ .x = 0, .y = 0 });
+    try std.testing.expectEqual(@as(usize, 2), display_list.count());
 
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 128, 64);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    try mod.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
-    // The emoji must ink real pixels (right half of the canvas, past 'A').
+    try mod.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
+    // The emoji must ink real pixels (right half of the image, past 'A').
     var dark: u32 = 0;
     for (0..framebuffer.height) |row| {
         for (64..framebuffer.width) |column| {
@@ -268,26 +268,26 @@ test "drawText: whitespace produces no glyph commands" {
     const font = mod.Font.default();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try TextPainter.shared().drawText(&canvas, &cache, "   ", 32, mod.Color.black, .{ .x = 0, .y = 0 });
-    try std.testing.expectEqual(@as(usize, 0), canvas.count());
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try TextPainter.shared().drawText(&display_list, &cache, "   ", 32, mod.Color.black, .{ .x = 0, .y = 0 });
+    try std.testing.expectEqual(@as(usize, 0), display_list.count());
 }
 
 test "drawIcon and drawText: a negative, zero or NaN size draws nothing and does not panic" {
     const font = mod.Font.icons();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const painter = TextPainter.shared();
-    try painter.drawIcon(&canvas, &cache, 0xE0F2, .{ .x = 0, .y = 0, .width = -4, .height = 10 }, 1, mod.Color.black);
-    try painter.drawIcon(&canvas, &cache, 0xE0F2, .{ .x = 0, .y = 0, .width = 24, .height = 24 }, std.math.nan(f32), mod.Color.black);
-    try painter.drawIcon(&canvas, &cache, 0xE0F2, .{ .x = 0, .y = 0, .width = 24, .height = 24 }, 0, mod.Color.black);
+    try painter.drawIcon(&display_list, &cache, 0xE0F2, .{ .x = 0, .y = 0, .width = -4, .height = 10 }, 1, mod.Color.black);
+    try painter.drawIcon(&display_list, &cache, 0xE0F2, .{ .x = 0, .y = 0, .width = 24, .height = 24 }, std.math.nan(f32), mod.Color.black);
+    try painter.drawIcon(&display_list, &cache, 0xE0F2, .{ .x = 0, .y = 0, .width = 24, .height = 24 }, 0, mod.Color.black);
     const text_font = mod.Font.default();
     var text_cache = mod.GlyphCache.init(std.testing.allocator, &text_font.face);
     defer text_cache.deinit();
-    try painter.drawText(&canvas, &text_cache, "Hi", -12, mod.Color.black, .{ .x = 0, .y = 0 });
-    try painter.drawTextScaled(&canvas, &text_cache, "Hi", 12, std.math.nan(f32), mod.Color.black, .{ .x = 0, .y = 0 });
-    try std.testing.expectEqual(@as(usize, 0), canvas.count());
+    try painter.drawText(&display_list, &text_cache, "Hi", -12, mod.Color.black, .{ .x = 0, .y = 0 });
+    try painter.drawTextScaled(&display_list, &text_cache, "Hi", 12, std.math.nan(f32), mod.Color.black, .{ .x = 0, .y = 0 });
+    try std.testing.expectEqual(@as(usize, 0), display_list.count());
 }

@@ -1,7 +1,7 @@
 //! The ziggui runtime's app: opens an OS window via SDL3, drives an event
 //! loop (`EventLoop`), and presents frames. Rendering prefers the SDL_GPU
 //! backend (`gpu/gpu.zig`: Metal on macOS, Vulkan on Linux/Windows) and falls
-//! back to the pure-Zig software rasterizer (the `Canvas` command list
+//! back to the pure-Zig software rasterizer (the `DisplayList` command list
 //! rasterized on the CPU and uploaded to an SDL streaming texture) when no GPU
 //! is available: same command list, same output, so apps never notice which
 //! backend ran.

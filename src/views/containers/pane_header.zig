@@ -41,17 +41,17 @@ test {
 }
 
 test "a pane header drops an empty description and draws its accessory at the far edge" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const bare = PaneHeader("Servers", "", mod.Empty());
     const full = PaneHeader("Servers", "Every endpoint this workspace knows.", mod.Rectangle(renderer.Color.black).frame(20, 20));
     const pinned = mod.VStack(.{ full, mod.Spacer() });
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(@as(usize, 1), bare.kind.stack.children.len);
     try std.testing.expectEqual(@as(usize, 2), full.kind.stack.children.len);
 
-    var frame = try canvas.render(pinned, 400, 100);
+    var frame = try window.render(pinned, 400, 100);
     defer frame.deinit();
     // The accessory sits inside the trailing padding, beside the title.
     try std.testing.expect(frame.at(370, 33).r < 0.1);

@@ -122,9 +122,9 @@ pub const TextSelection = struct {
     /// - `context`: the paint context.
     /// - `hit`: the selected view's geometry.
     /// - `span`: the selection.
-    /// - `canvas`: where it draws.
+    /// - `display_list`: where it draws.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paint(self: *Self, context: *const mod.Context, hit: *const mod.SelectHit, span: SelectionSpan, canvas: *renderer.Canvas) !void {
+    pub fn paint(self: *Self, context: *const mod.Context, hit: *const mod.SelectHit, span: SelectionSpan, display_list: *renderer.DisplayList) !void {
         const low = @min(span.anchor, span.head);
         const high = @max(span.anchor, span.head);
         if (low == high) return;
@@ -136,7 +136,7 @@ pub const TextSelection = struct {
             if (start >= end) continue;
             const left = hit.origin.x + run.x + hit.runWidth(run, start - base);
             const right = hit.origin.x + run.x + hit.runWidth(run, end - base);
-            try canvas.fillRect(.{ .x = left, .y = hit.origin.y + line.y, .width = right - left, .height = line.height }, color);
+            try display_list.fillRect(.{ .x = left, .y = hit.origin.y + line.y, .width = right - left, .height = line.height }, color);
         };
         // Keep the copyable text current.
         self.selected_text.clearRetainingCapacity();

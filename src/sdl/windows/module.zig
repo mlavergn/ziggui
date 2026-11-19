@@ -14,6 +14,8 @@ pub const Win32 = @import("win32.zig").Win32;
 pub const Com = @import("com.zig").Com;
 /// COM's `HRESULT`, shared by the Windows files: negative is a failure.
 pub const HRESULT = @import("com.zig").HRESULT;
+/// COM's `PROPVARIANT`, as far as a string or GUID value reads it.
+pub const PROPVARIANT = @import("com.zig").PROPVARIANT;
 /// A window handle, shared by the Windows files.
 pub const HWND = @import("win32.zig").HWND;
 /// A message's word parameter, shared by the Windows files.
@@ -28,6 +30,8 @@ pub const RECT = @import("win32.zig").RECT;
 pub const Win32NativeHost = @import("win32_native_host.zig").Win32NativeHost;
 /// The Windows media player (Media Foundation), its frames drawn under ziggui's surface.
 pub const MediaFoundationPlayer = @import("media_foundation_player.zig").MediaFoundationPlayer;
+/// The Windows audio outputs: the active render endpoints, by endpoint id.
+pub const MmDeviceAudioOutputs = @import("mm_device_audio_outputs.zig").MmDeviceAudioOutputs;
 /// The Windows web view (WebView2), placed by `Win32NativeHost`.
 pub const WebView2Backend = @import("web_view2_backend.zig").WebView2Backend;
 

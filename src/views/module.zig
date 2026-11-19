@@ -60,8 +60,8 @@ pub const ScrollStateData = @import("core/module.zig").ScrollStateData;
 pub const GeometryData = @import("core/module.zig").GeometryData;
 /// A picker's payload.
 pub const PickerData = @import("core/module.zig").PickerData;
-/// A `Drawing`'s payload.
-pub const DrawingData = @import("core/module.zig").DrawingData;
+/// A `Canvas`'s payload.
+pub const CanvasData = @import("core/module.zig").CanvasData;
 /// A `VideoPlayer`'s payload.
 pub const VideoPlayerData = @import("core/module.zig").VideoPlayerData;
 /// A `NativeView`'s payload.
@@ -70,6 +70,8 @@ pub const NativeViewData = @import("core/module.zig").NativeViewData;
 pub const Modifiers = @import("core/module.zig").Modifiers;
 /// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
 pub const ToggleStyle = @import("core/module.zig").ToggleStyle;
+/// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
+pub const PickerStyle = @import("core/module.zig").PickerStyle;
 /// A `.sheet`/`.alert`/`.popover` modifier.
 pub const OverlayModifier = @import("core/module.zig").OverlayModifier;
 /// A `.frame(...)` modifier's sizes and alignment.
@@ -142,8 +144,8 @@ pub const AccessibilityTraits = @import("core/module.zig").AccessibilityTraits;
 pub const OverlayRequest = @import("core/module.zig").OverlayRequest;
 /// A selectable paragraph's geometry for one frame.
 pub const SelectHit = @import("core/module.zig").SelectHit;
-/// What a `Drawing` paints with.
-pub const Pen = @import("core/module.zig").Pen;
+/// What a `Canvas` draws with (SwiftUI's `GraphicsContext`).
+pub const GraphicsContext = @import("core/module.zig").GraphicsContext;
 /// The build arena, published theme and tokens, viewport, wrap cache and link handler (`BuildScope.shared()`).
 pub const BuildScope = @import("core/module.zig").BuildScope;
 /// The build-time theme colors, `label`, `separator`, `added` and `removed` included.
@@ -182,14 +184,16 @@ pub const TextSelection = @import("core/module.zig").TextSelection;
 pub const SelectionSpan = @import("core/module.zig").SelectionSpan;
 /// The text-field context menu (`TextContextMenu.shared()`).
 pub const TextContextMenu = @import("core/module.zig").TextContextMenu;
+/// The open menu of a menu-style `Picker`: one at a time, drawn over everything.
+pub const PickerMenu = @import("core/module.zig").PickerMenu;
 /// The hover hint a view's `.help(text)` shows (`HelpTip.shared()`).
 pub const HelpTip = @import("core/module.zig").HelpTip;
 /// The clipboard the context menu copies to and pastes from.
 pub const ClipboardOperations = @import("core/module.zig").ClipboardOperations;
 /// A headless frame for the view engine's unit tests.
 pub const TestEnvironment = @import("core/module.zig").TestEnvironment;
-/// A headless frame for the unit tests.
-pub const TestCanvas = @import("core/module.zig").TestCanvas;
+/// A headless window for the unit tests.
+pub const TestWindow = @import("core/module.zig").TestWindow;
 
 // -----------------------------------------------------------------------------
 // Rich text and editing state (text/)
@@ -256,7 +260,7 @@ pub const Slider = @import("controls/module.zig").Slider;
 pub const Stepper = @import("controls/module.zig").Stepper;
 /// A progress bar.
 pub const ProgressView = @import("controls/module.zig").ProgressView;
-/// A pop-up menu over a selection binding.
+/// A picker over a selection binding: segmented or a pop-up menu (`.pickerStyle()`).
 pub const Picker = @import("controls/module.zig").Picker;
 /// A one-line text field.
 pub const TextField = @import("controls/module.zig").TextField;
@@ -271,7 +275,7 @@ pub const Icon = @import("controls/module.zig").Icon;
 /// A borderless icon button.
 pub const IconButton = @import("controls/module.zig").IconButton;
 /// A view that paints itself through a callback.
-pub const Drawing = @import("controls/module.zig").Drawing;
+pub const Canvas = @import("controls/module.zig").Canvas;
 /// A push button with its keyboard shortcut in a key cap after the label.
 pub const ButtonKeyed = @import("controls/module.zig").ButtonKeyed;
 /// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
@@ -620,6 +624,18 @@ pub const VideoPlayer = @import("media/module.zig").VideoPlayer;
 pub const VideoPlayerControls = @import("media/module.zig").VideoPlayerControls;
 /// What a `VideoPlayerControls` keeps across frames; app-owned.
 pub const VideoPlayerControlsState = @import("media/module.zig").VideoPlayerControlsState;
+/// The standard controls with the app's own among them.
+pub const VideoPlayerControlsWith = @import("media/module.zig").VideoPlayerControlsWith;
+/// The app's views the standard controls place among their own.
+pub const VideoPlayerControlsAccessories = @import("media/module.zig").VideoPlayerControlsAccessories;
+/// A button drawn as the standard controls' are.
+pub const VideoPlayerControlButton = @import("media/module.zig").VideoPlayerControlButton;
+/// A menu among the controls: a control button showing its items in a popover.
+pub const VideoPlayerControlMenu = @import("media/module.zig").VideoPlayerControlMenu;
+/// An audio player's controls in one bar, as a podcast player draws them.
+pub const AudioPlayerControls = @import("media/module.zig").AudioPlayerControls;
+/// What an `AudioPlayerControls` keeps across frames; app-owned.
+pub const AudioPlayerControlsState = @import("media/module.zig").AudioPlayerControlsState;
 /// What a platform web view reports about its page (`WebPage.update`).
 pub const WebPageState = @import("media/module.zig").WebPageState;
 /// A message a page posted to a bridge, borrowed for the call.
@@ -634,6 +650,26 @@ pub const WebPageBackend = @import("media/module.zig").WebPageBackend;
 pub const WebView = @import("media/module.zig").WebView;
 /// A platform view the app owns, placed where layout puts it.
 pub const NativeView = @import("media/module.zig").NativeView;
+/// One device sound can play through (`AudioOutputs.list`, `Player.setAudioOutput`).
+pub const AudioOutput = @import("audio/module.zig").AudioOutput;
+/// A platform's audio device listing, installed by the SDL runtime.
+pub const AudioOutputBackend = @import("audio/module.zig").AudioOutputBackend;
+/// The system's audio outputs, through the installed backend.
+pub const AudioOutputs = @import("audio/module.zig").AudioOutputs;
+/// Builds the list an audio output backend returns: strings copied, each id once.
+pub const AudioOutputCollector = @import("audio/module.zig").AudioOutputCollector;
+/// How the window's frames are drawn: GPU, software, or not yet known.
+pub const GraphicsRenderer = @import("system/module.zig").GraphicsRenderer;
+/// One reading of the system (`SystemInfo.report`).
+pub const SystemReport = @import("system/module.zig").SystemReport;
+/// The system facts the runtime notes, and the report over them.
+pub const SystemInfo = @import("system/module.zig").SystemInfo;
+/// A `SystemReport` as a columned form, an app's "System Info" sheet.
+pub const SystemInfoView = @import("system/module.zig").SystemInfoView;
+/// How the window draws and the media player, as a columned form.
+pub const VideoInfoView = @import("system/module.zig").VideoInfoView;
+/// The audio output in use and the devices, as a columned form.
+pub const AudioInfoView = @import("system/module.zig").AudioInfoView;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -654,6 +690,8 @@ test {
     _ = @import("menu_bar/module.zig");
     _ = @import("status_line/module.zig");
     _ = @import("media/module.zig");
+    _ = @import("audio/module.zig");
+    _ = @import("system/module.zig");
     _ = @import("forms/module.zig");
     _ = @import("view_engine_test.zig");
     _ = @import("integration_test.zig");

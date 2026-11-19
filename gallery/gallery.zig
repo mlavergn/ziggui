@@ -95,6 +95,17 @@ pub const Section = enum {
     /// inset, and a segmented control after the lights.
     topBar,
 
+    /// An audio player's bar over a `Player` with no picture, and the audio
+    /// outputs.
+    audioPlayer,
+
+    /// `Picker` as a pop-up menu in a form and outside one, beside segmented.
+    pickers,
+
+    /// An `Image` at its size and scaled to fit, a chart a `Canvas` draws,
+    /// and a large picture panned and zoomed (`GraphicsContext.picture`).
+    canvas,
+
     /// Every section, as sidebar rows, in the enum's order: a section's index
     /// (`--section`, the screenshots) is its place here.
     pub const items = blk: {
@@ -167,6 +178,9 @@ pub const Section = enum {
             .settings => "Settings",
             .webView => "Web View",
             .topBar => "Top Bar (macOS)",
+            .audioPlayer => "Audio Player",
+            .pickers => "Pickers",
+            .canvas => "Image & Canvas",
         };
     }
 
@@ -204,6 +218,9 @@ pub const Section = enum {
             .settings => .settings,
             .webView => .globe,
             .topBar => .appWindowMac,
+            .audioPlayer => .audioLines,
+            .pickers => .chevronsUpDown,
+            .canvas => .image,
         };
     }
 
@@ -425,6 +442,9 @@ pub const Gallery = struct {
     /// The Video panel and its player.
     media: gallery.Media,
 
+    /// The Pickers panel and its choices.
+    pickers: gallery.Pickers,
+
     /// The Settings panel and its state.
     settings: gallery.SettingsPanel,
 
@@ -504,6 +524,7 @@ pub const Gallery = struct {
             .editor = editor,
             .kit = kit,
             .media = gallery.Media.init(allocator),
+            .pickers = gallery.Pickers.init(allocator),
             .settings = gallery.SettingsPanel.init(allocator),
             .web = web,
         };
@@ -516,6 +537,7 @@ pub const Gallery = struct {
     pub fn deinit(self: *Self) void {
         self.web.deinit();
         self.settings.deinit();
+        self.pickers.deinit();
         self.media.deinit();
         self.kit.deinit();
         self.editor.deinit();
@@ -766,6 +788,9 @@ pub const Gallery = struct {
             .menuBar => self.menuBarPanel(active_theme),
             .titleBar => self.titleBarPanel(active_theme),
             .topBar => self.topBarPanel(active_theme),
+            .audioPlayer => self.media.audioPanel(active_theme),
+            .pickers => self.pickers.panel(active_theme),
+            .canvas => self.showcase.canvasPanel(active_theme),
             .statusLine => Self.statusLinePanel(active_theme),
             .hover => self.hoverPanel(active_theme),
             .controls => self.showcase.controlsPanel(active_theme),
@@ -793,7 +818,8 @@ pub const Gallery = struct {
 
     /// Notes the section this frame shows. On a change, no field keeps the
     /// keyboard (keys must not reach a field not drawn), leaving Navigation
-    /// empties its stack, and the Editor takes the keyboard as it comes in.
+    /// empties its stack, the Editor takes the keyboard as it comes in, and
+    /// the Video and Audio Player panels read the system the first time.
     ///
     /// - `self`: the gallery.
     /// - `section`: the section this frame shows.
@@ -803,6 +829,7 @@ pub const Gallery = struct {
         ziggui.Focus.shared().clear();
         if (section != .navigation) self.showcase.clearNavigation();
         if (section == .editor) self.editor.focus();
+        if (section == .video or section == .audioPlayer) self.media.showPanel();
     }
 
     /// The Chat panel: status marks, chips, and a transcript of blocks.
@@ -1216,8 +1243,8 @@ test "the sidebar lists the sections by label; each keeps its index" {
     // Indices are the enum's: the first section stays the first, the newest
     // is appended, whatever their rows.
     try std.testing.expectEqual(Section.chat, Section.at(0));
-    try std.testing.expectEqual(Section.topBar, Section.at(@intCast(Section.items.len - 1)));
-    try std.testing.expectEqualStrings("Badges & Keys", Section.sidebar_items[0].label);
+    try std.testing.expectEqual(Section.canvas, Section.at(@intCast(Section.items.len - 1)));
+    try std.testing.expectEqualStrings("Audio Player", Section.sidebar_items[0].label);
 }
 
 test "the gallery draws every section, light and dark" {

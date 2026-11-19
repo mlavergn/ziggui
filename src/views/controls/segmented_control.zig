@@ -135,55 +135,55 @@ test {
 }
 
 test "a segmented control sizes to its titles, stretches on request, and selects on tap" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var selection = renderer.State(i64).init(std.testing.allocator, 0);
     defer selection.deinit();
     const options = [_][]const u8{ "Request", "Response", "Headers" };
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const compact = mod.HStack(.{ SegmentedControl(selection.binding(), &options), mod.Spacer() });
-    canvas.end();
-    var frame = try canvas.render(compact, 600, 24);
+    window.end();
+    var frame = try window.render(compact, 600, 24);
     defer frame.deinit();
     // The track ends well short of the row's far edge.
     try std.testing.expect(frame.at(590, 12).r > 0.99);
     try std.testing.expect(frame.at(1, 12).r < 0.99);
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const stretched = SegmentedControl(selection.binding(), &options).frameMaxWidth();
-    canvas.end();
-    var wide = try canvas.render(stretched, 600, 24);
+    window.end();
+    var wide = try window.render(stretched, 600, 24);
     defer wide.deinit();
     // Stretched, the track reaches the far edge, and the last third is the last segment.
     try std.testing.expect(wide.at(597, 12).r < 0.99);
-    try std.testing.expect(canvas.tap(.{ .x = 550, .y = 12 }));
+    try std.testing.expect(window.tap(.{ .x = 550, .y = 12 }));
     try std.testing.expectEqual(@as(i64, 2), selection.get());
 }
 
 test "an icon segmented control draws one square-ish segment per icon, selects on tap, and ignores taps when disabled" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var selection = renderer.State(i64).init(std.testing.allocator, 0);
     defer selection.deinit();
     const segments = [_]mod.IconSegment{ .{ .icon = .gitBranch, .title = "Git" }, .{ .icon = .code, .title = "Files" } };
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const compact = mod.HStack(.{ IconSegmentedControl(selection.binding(), &segments), mod.Spacer() });
-    canvas.end();
-    var frame = try canvas.render(compact, 300, 24);
+    window.end();
+    var frame = try window.render(compact, 300, 24);
     defer frame.deinit();
     // Two 32pt segments and the track: well short of the row's far edge.
     try std.testing.expect(frame.at(1, 12).r < 0.99);
     try std.testing.expect(frame.at(120, 12).r > 0.99);
-    try std.testing.expect(canvas.tap(.{ .x = 52, .y = 12 }));
+    try std.testing.expect(window.tap(.{ .x = 52, .y = 12 }));
     try std.testing.expectEqual(@as(i64, 1), selection.get());
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const off = mod.HStack(.{ IconSegmentedControl(selection.binding(), &segments).disabled(true), mod.Spacer() });
-    canvas.end();
-    var disabled = try canvas.render(off, 300, 24);
+    window.end();
+    var disabled = try window.render(off, 300, 24);
     defer disabled.deinit();
-    _ = canvas.tap(.{ .x = 18, .y = 12 });
+    _ = window.tap(.{ .x = 18, .y = 12 });
     try std.testing.expectEqual(@as(i64, 1), selection.get());
 }

@@ -119,10 +119,10 @@ pub const ScreenshotFrame = struct {
             context.scroll_regions = &scrolls;
             context.fonts = self.fonts;
 
-            var canvas = renderer.Canvas.init(arena);
-            try canvas.fillRect(full, theme.colors.window_background);
-            try mod.ViewRenderer.render(&context, root, full, &canvas);
-            self.commands = canvas.commands.items;
+            var display_list = renderer.DisplayList.init(arena);
+            try display_list.fillRect(full, theme.colors.window_background);
+            try mod.ViewRenderer.render(&context, root, full, &display_list);
+            self.commands = display_list.commands.items;
         }
         return self.commands;
     }

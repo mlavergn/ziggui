@@ -124,9 +124,9 @@ pub const Scrollbar = struct {
     /// - `context`: the paint context.
     /// - `scroll_state`: the scroll position.
     /// - `rect`: the viewport.
-    /// - `canvas`: where it draws.
+    /// - `display_list`: where it draws.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paint(context: *const mod.Context, scroll_state: *const mod.ScrollState, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    pub fn paint(context: *const mod.Context, scroll_state: *const mod.ScrollState, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const found = Self.thumb(scroll_state, rect.y) orelse return; // fits → nothing to show
         // Grabbed, or the pointer over its strip: shown solid and a little wider.
         const dragging = if (mod.PointerInput.shared().area_drag) |armed| armed.context == @as(?*anyopaque, @ptrCast(@constCast(scroll_state))) and armed.function == Self.drag else false;
@@ -139,7 +139,7 @@ pub const Scrollbar = struct {
         const bar = renderer.Rect{ .x = rect.x + rect.width - width - inset, .y = found.start, .width = width, .height = found.length };
         // A muted thumb that reads on both light and dark surfaces.
         const color = context.theme.colors.secondary_label.withAlpha(0.45 * context.opacity * fade);
-        try canvas.fillRoundedRect(bar, width / 2, color);
+        try display_list.fillRoundedRect(bar, width / 2, color);
     }
 
     /// The horizontal overlay bar along the bottom edge: `paint` across.
@@ -147,9 +147,9 @@ pub const Scrollbar = struct {
     /// - `context`: the paint context.
     /// - `scroll_state`: the scroll position.
     /// - `rect`: the viewport.
-    /// - `canvas`: where it draws.
+    /// - `display_list`: where it draws.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paintHorizontal(context: *const mod.Context, scroll_state: *const mod.ScrollState, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    pub fn paintHorizontal(context: *const mod.Context, scroll_state: *const mod.ScrollState, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const found = Self.thumbHorizontal(scroll_state, rect.x) orelse return;
         const dragging = if (mod.PointerInput.shared().area_drag) |armed| armed.context == @as(?*anyopaque, @ptrCast(@constCast(scroll_state))) and armed.function == Self.dragHorizontal else false;
         const hot = dragging or (if (context.hover_point) |point| Self.stripHorizontal(rect).contains(point) else false);
@@ -157,7 +157,7 @@ pub const Scrollbar = struct {
         const height: f32 = if (hot) 7 else 4;
         const bar = renderer.Rect{ .x = found.start, .y = rect.y + rect.height - height - inset, .width = found.length, .height = height };
         const color = context.theme.colors.secondary_label.withAlpha(0.45 * context.opacity * fade);
-        try canvas.fillRoundedRect(bar, height / 2, color);
+        try display_list.fillRoundedRect(bar, height / 2, color);
     }
 
     /// A thumb along one axis, sized by the visible fraction and placed by the offset.

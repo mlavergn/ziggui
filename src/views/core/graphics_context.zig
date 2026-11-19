@@ -1,20 +1,20 @@
-//! What a `Drawing` paints with.
+//! What a `Canvas` draws with (SwiftUI's `GraphicsContext`).
 
 const std = @import("std");
-const log = std.log.scoped(.ziggui_pen);
+const log = std.log.scoped(.ziggui_graphics_context);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 
-/// What a `Drawing` paints with: a few primitives in the view's own
+/// What a `Canvas` draws with, as SwiftUI's `GraphicsContext`: a few primitives in the view's own
 /// coordinates (points), with the view's opacity applied.
-pub const Pen = struct {
+pub const GraphicsContext = struct {
     const Self = @This();
 
     /// The paint context.
     context: *const mod.Context,
 
     /// Where it draws.
-    canvas: *renderer.Canvas,
+    display_list: *renderer.DisplayList,
 
     /// Draws a line.
     ///
@@ -25,7 +25,7 @@ pub const Pen = struct {
     /// - `color`: the color.
     /// - Returns: nothing; propagates allocation failure.
     pub fn line(self: *Self, start: renderer.Point, end: renderer.Point, width: f32, color: renderer.Color) std.mem.Allocator.Error!void {
-        try self.canvas.line(start, end, width, self.tint(color));
+        try self.display_list.line(start, end, width, self.tint(color));
     }
 
     /// Fills a rounded rectangle.
@@ -36,7 +36,7 @@ pub const Pen = struct {
     /// - `color`: the color.
     /// - Returns: nothing; propagates allocation failure.
     pub fn fill(self: *Self, rect: renderer.Rect, radius: f32, color: renderer.Color) std.mem.Allocator.Error!void {
-        try self.canvas.fillRoundedRect(rect, radius, self.tint(color));
+        try self.display_list.fillRoundedRect(rect, radius, self.tint(color));
     }
 
     /// Draws a picture from a texture of its own rather than the shared atlas:
@@ -53,7 +53,7 @@ pub const Pen = struct {
     /// - `generation`: changes whenever the pixels do.
     /// - Returns: nothing; propagates allocation failure.
     pub fn picture(self: *Self, rect: renderer.Rect, image: renderer.Image, key: usize, generation: u64) std.mem.Allocator.Error!void {
-        try self.canvas.drawVideoFrame(rect, image, key, generation);
+        try self.display_list.drawVideoFrame(rect, image, key, generation);
     }
 
     /// Fills `rect` with `top` at its top edge fading to `bottom` at its bottom edge.
@@ -64,7 +64,7 @@ pub const Pen = struct {
     /// - `bottom`: the bottom color.
     /// - Returns: nothing; propagates allocation failure.
     pub fn verticalGradient(self: *Self, rect: renderer.Rect, top: renderer.Color, bottom: renderer.Color) std.mem.Allocator.Error!void {
-        try self.canvas.push(.{ .linearGradient = .{ .rect = rect, .start = rect.origin(), .end = .{ .x = rect.x, .y = rect.maxY() }, .start_color = self.tint(top), .end_color = self.tint(bottom) } });
+        try self.display_list.push(.{ .linearGradient = .{ .rect = rect, .start = rect.origin(), .end = .{ .x = rect.x, .y = rect.maxY() }, .start_color = self.tint(top), .end_color = self.tint(bottom) } });
     }
 
     /// Draws one line of text with its top-left at `origin`.
@@ -76,7 +76,7 @@ pub const Pen = struct {
     /// - `origin`: its top-left.
     /// - Returns: nothing; propagates allocation failure.
     pub fn text(self: *Self, string: []const u8, pixel_size: f32, color: renderer.Color, origin: renderer.Point) std.mem.Allocator.Error!void {
-        try self.context.drawText(self.canvas, string, pixel_size, self.tint(color), origin);
+        try self.context.drawText(self.display_list, string, pixel_size, self.tint(color), origin);
     }
 
     /// Formats text in the frame arena (paint runs after the build arena is gone).

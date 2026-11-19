@@ -4,14 +4,14 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_surface);
 const mod = @import("module.zig");
 
-/// Everything a painter needs to draw chrome: the target `canvas`, the active
+/// Everything a painter needs to draw chrome: the target `display_list`, the active
 /// `palette`/`metrics`, the `scheme` (light/dark), and the inherited `opacity`.
 /// Convenience methods apply `opacity` so painters read declaratively.
 pub const Surface = struct {
     const Self = @This();
 
-    /// The canvas drawn into.
-    canvas: *mod.Canvas,
+    /// The display list drawn into.
+    display_list: *mod.DisplayList,
     /// The active palette.
     palette: *const mod.Palette,
     /// The active metrics.
@@ -44,7 +44,7 @@ pub const Surface = struct {
     /// - `color`: the fill.
     /// - Returns: nothing; propagates allocation failure.
     pub fn fill(self: *const Self, rect: mod.Rect, radius: f32, color: mod.Color) std.mem.Allocator.Error!void {
-        try self.canvas.fillRoundedRect(rect, radius, color.multiplyAlpha(self.opacity));
+        try self.display_list.fillRoundedRect(rect, radius, color.multiplyAlpha(self.opacity));
     }
 
     /// Stroke a rounded rect's outline.
@@ -56,7 +56,7 @@ pub const Surface = struct {
     /// - `color`: the stroke color.
     /// - Returns: nothing; propagates allocation failure.
     pub fn stroke(self: *const Self, rect: mod.Rect, radius: f32, width: f32, color: mod.Color) std.mem.Allocator.Error!void {
-        try self.canvas.strokeRoundedRect(rect, radius, width, color.multiplyAlpha(self.opacity));
+        try self.display_list.strokeRoundedRect(rect, radius, width, color.multiplyAlpha(self.opacity));
     }
 
     /// A left-to-right (horizontal) gradient filling `rect`.
@@ -68,7 +68,7 @@ pub const Surface = struct {
     /// - `right`: the color at the right edge.
     /// - Returns: nothing; propagates allocation failure.
     pub fn horizontalGradient(self: *const Self, rect: mod.Rect, radius: f32, left: mod.Color, right: mod.Color) std.mem.Allocator.Error!void {
-        try self.canvas.push(.{ .linearGradient = .{
+        try self.display_list.push(.{ .linearGradient = .{
             .rect = rect,
             .radius = radius,
             .start = .{ .x = rect.x, .y = rect.y },
@@ -97,7 +97,7 @@ pub const Surface = struct {
     /// - `bottom`: the color at the bottom edge.
     /// - Returns: nothing; propagates allocation failure.
     pub fn verticalGradient(self: *const Self, rect: mod.Rect, radius: f32, top: mod.Color, bottom: mod.Color) std.mem.Allocator.Error!void {
-        try self.canvas.push(.{ .linearGradient = .{
+        try self.display_list.push(.{ .linearGradient = .{
             .rect = rect,
             .radius = radius,
             .start = .{ .x = rect.x, .y = rect.y },
@@ -116,7 +116,7 @@ pub const Surface = struct {
     /// - `color`: the line's color.
     /// - Returns: nothing; propagates allocation failure.
     pub fn lineSegment(self: *const Self, start: mod.Point, end: mod.Point, width: f32, color: mod.Color) std.mem.Allocator.Error!void {
-        try self.canvas.line(start, end, width, color.multiplyAlpha(self.opacity));
+        try self.display_list.line(start, end, width, color.multiplyAlpha(self.opacity));
     }
 
     /// Fill a circle.
@@ -127,7 +127,7 @@ pub const Surface = struct {
     /// - `color`: the fill.
     /// - Returns: nothing; propagates allocation failure.
     pub fn fillCircle(self: *const Self, center: mod.Point, radius: f32, color: mod.Color) std.mem.Allocator.Error!void {
-        try self.canvas.fillCircle(center, radius, color.multiplyAlpha(self.opacity));
+        try self.display_list.fillCircle(center, radius, color.multiplyAlpha(self.opacity));
     }
 
     /// Frost the content already drawn beneath `rect` (a `blurRect`), then lay
@@ -141,7 +141,7 @@ pub const Surface = struct {
     /// - `tint`: the color laid over the blur.
     /// - Returns: nothing; propagates allocation failure.
     pub fn backdropBlur(self: *const Self, rect: mod.Rect, radius: f32, sigma: f32, tint: mod.Color) std.mem.Allocator.Error!void {
-        try self.canvas.blurRect(rect, radius, sigma, tint.multiplyAlpha(self.opacity));
+        try self.display_list.blurRect(rect, radius, sigma, tint.multiplyAlpha(self.opacity));
     }
 
     /// One 1px ring: top and left edges in `top_left`, bottom and right in

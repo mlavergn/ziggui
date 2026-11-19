@@ -270,19 +270,19 @@ pub const GeometryData = struct {
     build: *const fn (context: *const anyopaque, size: renderer.Size) mod.View,
 };
 
-/// A segmented picker.
+/// A picker: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerData = struct {
     const Self = @This();
 
-    /// The selected segment's index.
+    /// The chosen option's index.
     selection: mod.Binding(i64),
 
-    /// The segments' titles.
+    /// The options' titles.
     options: []const []const u8,
 };
 
-/// A view that paints itself through a callback (see `Drawing`).
-pub const DrawingData = struct {
+/// A view that paints itself through a callback (see `Canvas`).
+pub const CanvasData = struct {
     const Self = @This();
 
     /// What `draw` gets back.
@@ -291,10 +291,10 @@ pub const DrawingData = struct {
     /// Paints the view into its frame.
     ///
     /// - `context`: the drawing's context.
-    /// - `pen`: what it draws with.
+    /// - `graphics`: what it draws with.
     /// - `rect`: the view's frame.
     /// - Returns: nothing; propagates allocation failure.
-    draw: *const fn (context: *const anyopaque, pen: *mod.Pen, rect: renderer.Rect) std.mem.Allocator.Error!void,
+    draw: *const fn (context: *const anyopaque, graphics: *mod.GraphicsContext, rect: renderer.Rect) std.mem.Allocator.Error!void,
 };
 
 /// A `VideoPlayer`: a player's picture.
@@ -372,10 +372,10 @@ pub const Kind = union(enum) {
     /// A multi-line editor (see `TextEditorData`). Reuses `TextFieldState`, so it
     /// shares the focus/keyboard plumbing with `textField`.
     textEditor: TextEditorData,
-    /// A segmented picker.
+    /// A picker, segmented or a pop-up menu.
     picker: PickerData,
-    /// A view that paints itself through a callback (see `Drawing`).
-    drawing: DrawingData,
+    /// A view that paints itself through a callback (see `Canvas`).
+    canvas: CanvasData,
     /// A player's picture (see `VideoPlayer`).
     videoPlayer: VideoPlayerData,
     /// A platform view the app owns (see `NativeView`).

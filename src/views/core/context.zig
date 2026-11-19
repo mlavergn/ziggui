@@ -77,11 +77,18 @@ pub const Context = struct {
     disabled: bool = false,
     /// How the subtree's `Toggle`s draw (`.toggleStyle()`).
     toggle_style: mod.ToggleStyle = .automatic,
-    /// The subtree is inside a `Form`: its automatic toggles are checkboxes.
+    /// How the subtree's `Picker`s draw (`.pickerStyle()`).
+    picker_style: mod.PickerStyle = .automatic,
+    /// The subtree is inside a `Form`: its automatic toggles are checkboxes,
+    /// its automatic pickers menus.
     in_form: bool = false,
     /// The width of the enclosing `Form`'s label column (its widest label),
     /// set as layout reaches the form; null outside one.
     form_label_width: ?f32 = null,
+    /// The height of the first row of the content beside a form label (a
+    /// pop-up's or a field's), set as layout reaches a `LabeledContent`; the
+    /// label is centered in it, level with the control's text. 0 elsewhere.
+    form_row_height: f32 = 0,
     /// Optional sink for overlay requests (sheets/alerts/popovers). When null,
     /// overlay modifiers are silently ignored — the 0-overlay fast path.
     overlays: ?*std.ArrayList(mod.OverlayRequest) = null,
@@ -184,16 +191,16 @@ pub const Context = struct {
     }
 
     /// A `Surface` for the theme's painter to draw chrome into — bundling the
-    /// canvas with the active palette/metrics/scheme and the inherited
+    /// display list with the active palette/metrics/scheme and the inherited
     /// opacity. The palette/metrics are borrowed from `self.theme`, valid for
     /// the duration of the painter call.
     ///
     /// - `self`: the context.
-    /// - `canvas`: where the painter draws.
+    /// - `display_list`: where the painter draws.
     /// - Returns: the surface.
-    pub fn surface(self: *const Self, canvas: *renderer.Canvas) renderer.Surface {
+    pub fn surface(self: *const Self, display_list: *renderer.DisplayList) renderer.Surface {
         return .{
-            .canvas = canvas,
+            .display_list = display_list,
             .palette = &self.theme.colors,
             .metrics = &self.theme.metrics,
             .scheme = self.theme.scheme,
@@ -238,12 +245,13 @@ pub const Context = struct {
     }
 
     /// Folds a view's environment modifiers into the inherited context: its
-    /// toggle style, and whether the subtree is inside a `Form`.
+    /// toggle and picker styles, and whether the subtree is inside a `Form`.
     ///
     /// - `self`: the context, changed in place.
     /// - `view`: the view.
     pub fn applyEnvironment(self: *Self, view: mod.View) void {
         if (view.modifiers.toggle_style) |style| self.toggle_style = style;
+        if (view.modifiers.picker_style) |style| self.picker_style = style;
         if (view.modifiers.form_columns) self.in_form = true;
     }
 
@@ -254,6 +262,15 @@ pub const Context = struct {
     /// - Returns: `.switch` or `.checkbox`.
     pub fn resolvedToggleStyle(self: *const Self) mod.ToggleStyle {
         return self.toggle_style.resolved(self.in_form);
+    }
+
+    /// The style a `Picker` here draws in: the inherited one, an automatic
+    /// one a menu inside a `Form` and segmented elsewhere.
+    ///
+    /// - `self`: the context.
+    /// - Returns: `.segmented` or `.menu`.
+    pub fn resolvedPickerStyle(self: *const Self) mod.PickerStyle {
+        return self.picker_style.resolved(self.in_form);
     }
 
     /// The faces rich text is drawn in.
@@ -269,17 +286,17 @@ pub const Context = struct {
     /// command list is uniformly scaled afterward by `ViewRenderer.renderScaled`).
     ///
     /// - `self`: the context.
-    /// - `canvas`: where it draws.
+    /// - `display_list`: where it draws.
     /// - `text`: the line.
     /// - `pixel_size`: its size.
     /// - `color`: its color.
     /// - `origin`: its top-left.
     /// - Returns: nothing; propagates the text painter's failure.
-    pub fn drawText(self: *const Self, canvas: *renderer.Canvas, text: []const u8, pixel_size: f32, color: renderer.Color, origin: renderer.Point) !void {
+    pub fn drawText(self: *const Self, display_list: *renderer.DisplayList, text: []const u8, pixel_size: f32, color: renderer.Color, origin: renderer.Point) !void {
         if (self.scale == 1) {
-            try renderer.TextPainter.shared().drawText(canvas, self.cache, text, pixel_size, color, origin);
+            try renderer.TextPainter.shared().drawText(display_list, self.cache, text, pixel_size, color, origin);
         } else {
-            try renderer.TextPainter.shared().drawTextScaled(canvas, self.cache, text, pixel_size, self.scale, color, origin);
+            try renderer.TextPainter.shared().drawTextScaled(display_list, self.cache, text, pixel_size, self.scale, color, origin);
         }
     }
 

@@ -24,7 +24,7 @@ pub const WrappedLine = @import("wrapped_line.zig").WrappedLine;
 pub const TextShaper = @import("text_shaper.zig").TextShaper;
 /// A font face and its metrics.
 pub const Font = @import("font.zig").Font;
-/// Paints text and icon glyphs into a canvas.
+/// Paints text and icon glyphs into a display list.
 pub const TextPainter = @import("text_painter.zig").TextPainter;
 /// A text style's face selection (weight, italic, monospace).
 pub const FontStyle = @import("font_style.zig").FontStyle;
@@ -42,7 +42,7 @@ pub const Rect = @import("../module.zig").Rect;
 /// An RGBA color (from the renderer).
 pub const Color = @import("../module.zig").Color;
 /// A retained list of draw commands (from the renderer).
-pub const Canvas = @import("../module.zig").Canvas;
+pub const DisplayList = @import("../module.zig").DisplayList;
 /// A CPU pixel buffer (from the renderer).
 pub const Framebuffer = @import("../module.zig").Framebuffer;
 /// The CPU rasterizer (from the renderer).

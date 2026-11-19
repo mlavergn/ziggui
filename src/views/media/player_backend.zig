@@ -25,6 +25,17 @@ pub const PlayerFrame = struct {
 pub const PlayerBackend = struct {
     const Self = @This();
 
+    /// The platform player's name, for a system report ("AVFoundation",
+    /// "Media Foundation", "GStreamer").
+    name: []const u8 = "",
+
+    /// The platform player's version, where it reports one (GStreamer's);
+    /// null where it has none to report.
+    ///
+    /// - `allocator`: owns the text.
+    /// - Returns: the version, or null when there is none; propagates allocation failure.
+    version: ?*const fn (allocator: std.mem.Allocator) std.mem.Allocator.Error!?[]const u8 = null,
+
     /// Why this platform cannot play video yet, or null when it can. A
     /// backend that sets it never has `create` called: its players report
     /// `.failed` with this text.
@@ -108,6 +119,16 @@ pub const PlayerBackend = struct {
     /// - Returns: the newest picture and its generation, or null before the
     ///   first one.
     frame: ?*const fn (handle: *anyopaque) ?mod.PlayerFrame = null,
+
+    /// Routes the player's sound to the output whose `AudioOutput.id` is
+    /// `id`, or to the system default when null; null where the platform
+    /// cannot route one player's sound (the player keeps the default).
+    ///
+    /// - `handle`: the native player.
+    /// - `id`: the output's id, or null for the system default.
+    /// - Returns: false when no output has that id now (the system default
+    ///   plays), else true.
+    set_audio_output: ?*const fn (handle: *anyopaque, id: ?[:0]const u8) bool = null,
 };
 
 // -----------------------------------------------------------------------------

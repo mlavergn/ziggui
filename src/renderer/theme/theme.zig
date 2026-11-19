@@ -13,7 +13,7 @@
 //! Components read tokens and call the painter rather than hard-coding a look,
 //! so the whole UI restyles by swapping one `Theme`.
 //!
-//! A `Painter` depends only on the renderer (`Canvas`, `Color`, geometry) and
+//! A `Painter` depends only on the renderer (`DisplayList`, `Color`, geometry) and
 //! these tokens — never on the view layer — so the two compose without a
 //! dependency cycle: the view layer owns text, layout, and interaction; the
 //! painter owns decoration.
@@ -71,6 +71,8 @@ pub const Theme = struct {
     typography: mod.Typography,
     /// The layout metrics.
     metrics: mod.Metrics = .{},
+    /// How a menu-style picker looks and opens, after the family's platform.
+    menu_picker: mod.MenuPickerLook = .{},
     /// The chrome painter.
     painter: mod.Painter,
 

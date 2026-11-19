@@ -1,6 +1,6 @@
 //! Inline-styled, word-wrapped text: a paragraph made of spans that differ in
 //! weight/italic/mono/colour/background/underline/link. Pure layout (no
-//! Canvas/Context): `RichLayout.layOut` places runs into lines; the view layer
+//! DisplayList/Context): `RichLayout.layOut` places runs into lines; the view layer
 //! paints them.
 
 const std = @import("std");

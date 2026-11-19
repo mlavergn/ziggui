@@ -1,4 +1,4 @@
-//! Drawing: colors, the canvas command list, and the two backends' CPU sides
+//! Drawing: colors, the display list, and the two backends' CPU sides
 //! (the software rasterizer and the GPU scene translation).
 
 const std = @import("std");
@@ -35,7 +35,7 @@ pub const EraseRectCommand = @import("draw_command.zig").EraseRectCommand;
 /// A `DrawCommand.pushClip` payload.
 pub const PushClipCommand = @import("draw_command.zig").PushClipCommand;
 /// A retained list of draw commands.
-pub const Canvas = @import("canvas.zig").Canvas;
+pub const DisplayList = @import("display_list.zig").DisplayList;
 /// A CPU pixel buffer.
 pub const Framebuffer = @import("framebuffer.zig").Framebuffer;
 /// Paints draw commands into a framebuffer on the CPU.
@@ -56,7 +56,7 @@ pub const FrameStep = @import("step.zig").FrameStep;
 pub const AtlasUpload = @import("atlas_upload.zig").AtlasUpload;
 /// The GPU scene's texture atlas bookkeeping.
 pub const TextureAtlas = @import("texture_atlas.zig").TextureAtlas;
-/// A canvas translated for the GPU.
+/// A display list translated for the GPU.
 pub const GpuScene = @import("gpu_scene.zig").GpuScene;
 
 /// A 2D point (from the renderer).
@@ -76,7 +76,7 @@ test {
     _ = @import("coverage.zig");
     _ = @import("image.zig");
     _ = @import("draw_command.zig");
-    _ = @import("canvas.zig");
+    _ = @import("display_list.zig");
     _ = @import("framebuffer.zig");
     _ = @import("rasterizer.zig");
     _ = @import("instance.zig");

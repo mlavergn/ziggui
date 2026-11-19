@@ -212,9 +212,9 @@ pub const TextContextMenu = struct {
     /// - `self`: the menu.
     /// - `context`: the paint context.
     /// - `root`: the frame.
-    /// - `canvas`: where it draws.
+    /// - `display_list`: where it draws.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn draw(self: *const Self, context: *const mod.Context, root: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    pub fn draw(self: *const Self, context: *const mod.Context, root: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const menu = self.open_menu orelse return;
         // Dismiss region beneath the menu: a tap anywhere not on an item closes it.
         // Appended before the items (added by renderInto below), so back-to-front
@@ -243,8 +243,8 @@ pub const TextContextMenu = struct {
         const target = renderer.Rect{ .x = x, .y = y, .width = size.width, .height = size.height };
 
         const radius = context.theme.metrics.corner_radius;
-        try context.theme.painter.panel(context.surface(canvas), target, radius, .popover);
-        try mod.ViewRenderer.renderInto(context, content, target, canvas);
+        try context.theme.painter.panel(context.surface(display_list), target, radius, .popover);
+        try mod.ViewRenderer.renderInto(context, content, target, display_list);
     }
 
     /// One menu row: a label and its shortcut, highlighted while hovered.
@@ -352,9 +352,9 @@ test "view: text context menu — fieldAt, render, actions, clipboard hook" {
 
     // fieldAt finds the single-line TextField under a point (it registers a
     // `textClick` region).
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.TextField("ph", &field), .{ .x = 0, .y = 0, .width = 400, .height = 300 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.TextField("ph", &field), .{ .x = 0, .y = 0, .width = 400, .height = 300 }, &display_list);
     try std.testing.expect(menu.fieldAt(environment.hits.items, .{ .x = 20, .y = 15 }) == &field);
 
     // Open the menu and re-render. Crucially, build the arg view, then end the
@@ -367,7 +367,7 @@ test "view: text context menu — fieldAt, render, actions, clipboard hook" {
     const menu_argument = mod.TextField("ph", &field);
     mod.BuildScope.shared().end();
     defer mod.BuildScope.shared().begin(environment.arena_state.allocator()); // restore for environment.deinit()'s end()
-    try mod.ViewRenderer.render(&context, menu_argument, .{ .x = 0, .y = 0, .width = 400, .height = 300 }, &canvas);
+    try mod.ViewRenderer.render(&context, menu_argument, .{ .x = 0, .y = 0, .width = 400, .height = 300 }, &display_list);
     try std.testing.expect(environment.hits.items.len >= 4); // field + dismiss + enabled items
 
     // Hover: pointing at the Copy item's region sets the menu's hovered action.

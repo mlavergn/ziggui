@@ -43,18 +43,18 @@ test {
 }
 
 test "a key cap is mono text on the neutral ground, with a border" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const tokens = mod.BuildScope.shared().tokens();
     const cap = KeyCap("esc");
     const row = mod.HStack(.{ cap, mod.Spacer() });
-    canvas.end();
+    window.end();
     try std.testing.expect(cap.modifiers.mono);
     try std.testing.expectEqual(tokens.neutral_soft, cap.modifiers.background.?.color);
     try std.testing.expect(cap.modifiers.border_color != null);
 
-    var frame = try canvas.render(row, 120, 20);
+    var frame = try window.render(row, 120, 20);
     defer frame.deinit();
     // Grey ground at the leading edge, white beyond the cap.
     try std.testing.expect(frame.at(3, 10).r < 0.99);

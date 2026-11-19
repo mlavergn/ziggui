@@ -119,41 +119,41 @@ test {
 }
 
 test "an HSplitView paints both panes and drags its divider" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     // A failed expect must not leave a drag armed on this stack's `split`.
     defer mod.PointerInput.shared().endDrag();
     var split: mod.SplitState = .{ .initial_ratio = 0.4, .min_first = 20, .min_second = 20 };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const view = HSplitView(&split, mod.Rectangle(renderer.Color.red), mod.Rectangle(renderer.Color.blue));
-    canvas.end();
-    var frame = try canvas.render(view, 100, 40);
+    window.end();
+    var frame = try window.render(view, 100, 40);
     defer frame.deinit();
     try std.testing.expectEqual(@as(f32, 40), split.resolved(split.total));
     try std.testing.expect(frame.at(10, 20).r > frame.at(10, 20).b);
     try std.testing.expect(frame.at(80, 20).b > frame.at(80, 20).r);
     // A press on the divider arms a drag that moves it, clamped to the minimums.
-    try std.testing.expect(canvas.tap(.{ .x = 40, .y = 20 }));
-    mod.PointerInput.shared().drag(canvas.hits.items, .{ .x = 65, .y = 20 });
+    try std.testing.expect(window.tap(.{ .x = 40, .y = 20 }));
+    mod.PointerInput.shared().drag(window.hits.items, .{ .x = 65, .y = 20 });
     try std.testing.expectEqual(@as(f32, 65), split.size);
-    mod.PointerInput.shared().drag(canvas.hits.items, .{ .x = 540, .y = 20 });
+    mod.PointerInput.shared().drag(window.hits.items, .{ .x = 540, .y = 20 });
     try std.testing.expectEqual(@as(f32, 80), split.size);
     // Coming back, the divider waits until the pointer reaches it.
-    mod.PointerInput.shared().drag(canvas.hits.items, .{ .x = 530, .y = 20 });
+    mod.PointerInput.shared().drag(window.hits.items, .{ .x = 530, .y = 20 });
     try std.testing.expectEqual(@as(f32, 80), split.size);
-    mod.PointerInput.shared().drag(canvas.hits.items, .{ .x = 50, .y = 20 });
+    mod.PointerInput.shared().drag(window.hits.items, .{ .x = 50, .y = 20 });
     try std.testing.expectEqual(@as(f32, 50), split.size);
 }
 
 test "a VSplitView stacks its panes, and a pane's content stays inside it" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var split: mod.SplitState = .{ .initial_size = 30, .min_first = 10, .min_second = 10 };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     // The top pane's red is taller than its pane: it must not spill below.
     const view = VSplitView(&split, mod.Rectangle(renderer.Color.red).frame(100, 90), mod.Empty());
-    canvas.end();
-    var frame = try canvas.render(view, 100, 100);
+    window.end();
+    var frame = try window.render(view, 100, 100);
     defer frame.deinit();
     try std.testing.expectEqual(@as(f32, 30), split.resolved(split.total));
     try std.testing.expectEqual(renderer.Axis.vertical, split.axis);

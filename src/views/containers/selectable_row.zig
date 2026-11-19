@@ -43,8 +43,8 @@ test {
 }
 
 test "a selectable row fills by selection and focus, and taps" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const Probe = struct {
         const Self = @This();
         taps: usize = 0,
@@ -57,21 +57,21 @@ test "a selectable row fills by selection and focus, and taps" {
     };
     var probe: Probe = .{};
     const callback = mod.Callback.init(Probe, &probe, Probe.onTap);
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const tokens = mod.BuildScope.shared().tokens();
     const focused = SelectableRow(mod.Text("a"), true, true, callback);
     const unfocused = SelectableRow(mod.Text("b"), true, false, callback);
     const plain = SelectableRow(mod.Text("c"), false, true, callback);
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(tokens.accent, focused.modifiers.background.?.color);
     try std.testing.expectEqual(tokens.quaternary_fill, unfocused.modifiers.background.?.color);
     try std.testing.expect(plain.modifiers.background == null and plain.modifiers.hover_fill != null);
 
-    var frame = try canvas.render(focused, 300, 28);
+    var frame = try window.render(focused, 300, 28);
     defer frame.deinit();
     // The accent fills the row to its far end.
     const far = frame.at(290, 14);
     try std.testing.expect(far.b > far.r + 0.3);
-    try std.testing.expect(canvas.tap(.{ .x = 200, .y = 14 }));
+    try std.testing.expect(window.tap(.{ .x = 200, .y = 14 }));
     try std.testing.expectEqual(@as(usize, 1), probe.taps);
 }

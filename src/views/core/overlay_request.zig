@@ -22,6 +22,11 @@ pub const OverlayRequest = struct {
 
     /// Binding flipped to false when the scrim is tapped (tap-to-dismiss).
     dismiss: ?mod.Binding(bool) = null,
+
+    /// A popover laid over its anchor rather than beside it: the point in
+    /// the content placed on the anchor's origin (a pop-up menu's chosen row
+    /// over its button, `PickerMenu`); null places it below or above.
+    content_anchor: ?renderer.Point = null,
 };
 
 // -----------------------------------------------------------------------------

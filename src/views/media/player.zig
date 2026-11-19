@@ -51,6 +51,15 @@ pub const Player = struct {
     /// The sound is off.
     muted: bool = false,
 
+    /// The output the sound plays through (an `AudioOutput.id`), or null for
+    /// the system default.
+    audio_output: ?[:0]u8 = null,
+
+    /// The platform found no output with `audio_output`'s id at the last
+    /// route (unplugged since it was listed), or cannot route one player's
+    /// sound at all, so the system default plays.
+    audio_output_missing: bool = false,
+
     /// Where the last seek is headed, until the playhead gets there.
     seek_target: ?f64 = null,
 
@@ -96,6 +105,7 @@ pub const Player = struct {
     pub fn deinit(self: *Self) void {
         if (self.handle) |handle| self.backend.?.destroy(handle);
         if (self.item_url) |url| self.allocator.free(url);
+        if (self.audio_output) |id| self.allocator.free(id);
         self.* = .{ .allocator = self.allocator };
     }
 
@@ -106,6 +116,25 @@ pub const Player = struct {
     /// - `backend`: the platform player; null for none.
     pub fn setBackend(backend: ?*const mod.PlayerBackend) void {
         installed_backend = backend;
+    }
+
+    /// The installed platform player's name, for a system report.
+    ///
+    /// - Returns: the name, empty with none installed (headless, tests).
+    pub fn backendName() []const u8 {
+        const backend = installed_backend orelse return "";
+        return backend.name;
+    }
+
+    /// The installed platform player's version, where it reports one.
+    ///
+    /// - `allocator`: owns the text.
+    /// - Returns: the version, or null with none installed or none to report;
+    ///   propagates allocation failure.
+    pub fn backendVersion(allocator: std.mem.Allocator) std.mem.Allocator.Error!?[]const u8 {
+        const backend = installed_backend orelse return null;
+        const version = backend.version orelse return null;
+        return version(allocator);
     }
 
     /// Replaces the current item (`AVPlayer.replaceCurrentItem(with:)`): the
@@ -121,7 +150,38 @@ pub const Player = struct {
         self.item_url = copy;
         self.seek_target = null;
         self.sample = null;
-        if (self.nativeHandle()) |handle| self.backend.?.load(handle, self.item_url);
+        if (self.handleForChange()) |handle| self.backend.?.load(handle, self.item_url);
+    }
+
+    /// Routes the sound to one output (`AVPlayer.audioOutputDeviceUniqueID`):
+    /// an `AudioOutput.id` from `AudioOutputs.list`, or null for the system
+    /// default, which follows the system's choice. Kept for a platform player
+    /// made later; a platform that cannot route one player's sound keeps the
+    /// default. A playing item keeps playing (on Linux it restarts where it
+    /// was), so asking for the output already in use does nothing.
+    ///
+    /// - `self`: the player.
+    /// - `id`: the output's id, or null for the system default.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn setAudioOutput(self: *Self, id: ?[]const u8) std.mem.Allocator.Error!void {
+        // One that went missing is asked for again: it may be back.
+        if (!self.audio_output_missing and Self.sameOutput(self.audio_output, id)) return;
+        const copy: ?[:0]u8 = if (id) |text| try self.allocator.dupeSentinel(u8, text, 0) else null;
+        if (self.audio_output) |old| self.allocator.free(old);
+        self.audio_output = copy;
+        self.audio_output_missing = false;
+        self.sample = null;
+        if (self.handleForChange()) |handle| self.routeAudio(self.backend.?, handle);
+    }
+
+    /// The output the sound plays through.
+    ///
+    /// - `self`: the player.
+    /// - Returns: its id, or null for the system default, which also plays
+    ///   when the output asked for was not found.
+    pub fn audioOutput(self: *const Self) ?[]const u8 {
+        if (self.audio_output_missing) return null;
+        return self.audio_output;
     }
 
     /// The current item's URL.
@@ -153,7 +213,7 @@ pub const Player = struct {
     pub fn setRate(self: *Self, rate: f32) void {
         self.rate = if (std.math.isFinite(rate) and rate > 0) rate else 0;
         self.sample = null;
-        if (self.nativeHandle()) |handle| self.backend.?.set_rate(handle, self.rate);
+        if (self.handleForChange()) |handle| self.backend.?.set_rate(handle, self.rate);
     }
 
     /// Moves the playhead to `seconds` from the item's start; `observe`
@@ -168,7 +228,7 @@ pub const Player = struct {
         self.seek_started_ms = mod.FrameClock.shared().time();
         self.seek_target = target;
         self.sample = null;
-        if (self.nativeHandle()) |handle| self.backend.?.seek(handle, target);
+        if (self.handleForChange()) |handle| self.backend.?.seek(handle, target);
     }
 
     /// Sets the volume.
@@ -178,7 +238,7 @@ pub const Player = struct {
     pub fn setVolume(self: *Self, volume: f32) void {
         if (!std.math.isFinite(volume)) return;
         self.volume = std.math.clamp(volume, 0, 1);
-        if (self.nativeHandle()) |handle| self.backend.?.set_volume(handle, self.volume);
+        if (self.handleForChange()) |handle| self.backend.?.set_volume(handle, self.volume);
     }
 
     /// Mutes or unmutes, keeping the volume.
@@ -187,7 +247,7 @@ pub const Player = struct {
     /// - `muted`: true for no sound.
     pub fn setMuted(self: *Self, muted: bool) void {
         self.muted = muted;
-        if (self.nativeHandle()) |handle| self.backend.?.set_muted(handle, muted);
+        if (self.handleForChange()) |handle| self.backend.?.set_muted(handle, muted);
     }
 
     /// The volume as a binding, for a `Slider(player.volumeBinding(), 0, 1)`:
@@ -289,10 +349,54 @@ pub const Player = struct {
         self.backend = backend;
         backend.set_volume(handle, self.volume);
         backend.set_muted(handle, self.muted);
+        // Routed before the item loads, so a platform that reroutes by
+        // restarting has nothing to restart.
+        if (self.audio_output != null) self.routeAudio(backend, handle);
         if (self.item_url != null) backend.load(handle, self.item_url);
         if (self.seek_target) |target| backend.seek(handle, target);
         if (self.rate > 0) backend.set_rate(handle, self.rate);
         return handle;
+    }
+
+    /// The native player a change is sent to: the one that exists. Where
+    /// there is none yet it is made now if it can be, and making it hands it
+    /// everything asked for so far (`nativeHandle`), the change included, so
+    /// the caller sends nothing; sending it as well would load an item or
+    /// route the sound twice.
+    ///
+    /// - `self`: the player, its state already changed.
+    /// - Returns: the native player to send the change to, or null when there
+    ///   is nothing to send.
+    fn handleForChange(self: *Self) ?*anyopaque {
+        if (self.handle) |handle| return handle;
+        _ = self.nativeHandle();
+        return null;
+    }
+
+    /// Routes the sound to `audio_output` through `backend`, noting whether
+    /// the platform found it; a backend that cannot route keeps the default,
+    /// so an output asked of it is noted missing.
+    ///
+    /// - `self`: the player.
+    /// - `backend`: the backend the native player was made with.
+    /// - `handle`: the native player.
+    fn routeAudio(self: *Self, backend: *const mod.PlayerBackend, handle: *anyopaque) void {
+        const route = backend.set_audio_output orelse {
+            self.audio_output_missing = self.audio_output != null;
+            return;
+        };
+        self.audio_output_missing = !route(handle, self.audio_output);
+    }
+
+    /// Whether two outputs are the same: both the system default, or one id.
+    ///
+    /// - `current`: the output in use.
+    /// - `wanted`: the output asked for.
+    /// - Returns: true when they are the same.
+    fn sameOutput(current: ?[]const u8, wanted: ?[]const u8) bool {
+        const current_id = current orelse return wanted == null;
+        const wanted_id = wanted orelse return false;
+        return std.mem.eql(u8, current_id, wanted_id);
     }
 
     /// `volumeBinding`'s reader.
@@ -361,6 +465,8 @@ const FakeBackend = struct {
     var loads: usize = 0;
     /// The last rate set.
     var rate: f32 = -1;
+    /// How many rates, seeks, volumes and mutes were sent.
+    var sends: usize = 0;
     /// The last seek.
     var seeked: f64 = -1;
     /// The playhead `observe` reports.
@@ -377,6 +483,14 @@ const FakeBackend = struct {
     var selected: ?usize = 99;
     /// How many pictures were taken.
     var frames: usize = 0;
+    /// The last output routed to, or empty for the system default.
+    var routed: [32]u8 = undefined;
+    /// How many bytes of `routed` are the output's id.
+    var routed_length: usize = 0;
+    /// How many routes there were.
+    var routes: usize = 0;
+    /// How many loads had happened when the last route came.
+    var loads_at_route: usize = 0;
     /// The picture `frame` hands out.
     const pixels: [4]u8 = @splat(255);
 
@@ -393,6 +507,7 @@ const FakeBackend = struct {
         .tracks = Self.tracks,
         .select_track = Self.selectTrack,
         .frame = Self.frame,
+        .set_audio_output = Self.setAudioOutput,
     };
 
     /// A backend that cannot play.
@@ -417,6 +532,7 @@ const FakeBackend = struct {
         loaded_length = 0;
         loads = 0;
         rate = -1;
+        sends = 0;
         seeked = -1;
         playhead = 0;
         duration = null;
@@ -425,6 +541,9 @@ const FakeBackend = struct {
         muted = false;
         selected = 99;
         frames = 0;
+        routed_length = 0;
+        routes = 0;
+        loads_at_route = 0;
     }
 
     /// The last URL loaded.
@@ -461,6 +580,7 @@ const FakeBackend = struct {
     ///
     /// - `value`: the rate.
     fn setRate(_: *anyopaque, value: f32) void {
+        sends += 1;
         rate = value;
     }
 
@@ -468,6 +588,7 @@ const FakeBackend = struct {
     ///
     /// - `seconds`: where to.
     fn seek(_: *anyopaque, seconds: f64) void {
+        sends += 1;
         seeked = seconds;
     }
 
@@ -475,6 +596,7 @@ const FakeBackend = struct {
     ///
     /// - `value`: the volume.
     fn setVolume(_: *anyopaque, value: f32) void {
+        sends += 1;
         volume = value;
     }
 
@@ -482,7 +604,21 @@ const FakeBackend = struct {
     ///
     /// - `value`: true for no sound.
     fn setMuted(_: *anyopaque, value: bool) void {
+        sends += 1;
         muted = value;
+    }
+
+    /// Records the output routed to; "unplugged" is not found.
+    ///
+    /// - `id`: the output's id, or null for the system default.
+    /// - Returns: false for "unplugged", else true.
+    fn setAudioOutput(_: *anyopaque, id: ?[:0]const u8) bool {
+        routes += 1;
+        loads_at_route = loads;
+        const text: []const u8 = if (id) |value| value else "";
+        @memcpy(routed[0..text.len], text);
+        routed_length = text.len;
+        return !std.mem.eql(u8, text, "unplugged");
     }
 
     /// Takes a picture: one white pixel, its generation the count taken.
@@ -579,6 +715,112 @@ test "player: the native player is made on first need and given what was asked b
     player.deinit();
     try std.testing.expectEqual(@as(usize, 1), FakeBackend.destroyed);
     try std.testing.expectEqual(@as(usize, 1), FakeBackend.created);
+}
+
+test "player: an item that makes the native player is loaded once" {
+    FakeBackend.reset();
+    Player.setBackend(&FakeBackend.backend);
+    defer Player.setBackend(null);
+    var player = Player.init(std.testing.allocator);
+    defer player.deinit();
+    try player.replaceCurrentItem("file:///movie.mp4");
+    try std.testing.expectEqual(@as(usize, 1), FakeBackend.created);
+    try std.testing.expectEqual(@as(usize, 1), FakeBackend.loads);
+    try std.testing.expectEqualStrings("file:///movie.mp4", FakeBackend.lastUrl());
+    try player.replaceCurrentItem("file:///other.mp4");
+    try std.testing.expectEqual(@as(usize, 2), FakeBackend.loads);
+    try std.testing.expectEqualStrings("file:///other.mp4", FakeBackend.lastUrl());
+}
+
+test "player: a change that makes the native player is sent once" {
+    FakeBackend.reset();
+    Player.setBackend(&FakeBackend.backend);
+    defer Player.setBackend(null);
+    var player = Player.init(std.testing.allocator);
+    defer player.deinit();
+    // Made by `play`: given the volume, the mute and the rate, each once.
+    player.play();
+    try std.testing.expectEqual(@as(usize, 1), FakeBackend.created);
+    try std.testing.expectEqual(@as(usize, 3), FakeBackend.sends);
+    try std.testing.expectEqual(@as(f32, 1), FakeBackend.rate);
+    // Made already: each change is one send.
+    player.setVolume(0.5);
+    player.setMuted(true);
+    player.setRate(2);
+    try std.testing.expectEqual(@as(usize, 6), FakeBackend.sends);
+    try std.testing.expectEqual(@as(f32, 0.5), FakeBackend.volume);
+    try std.testing.expect(FakeBackend.muted);
+    try std.testing.expectEqual(@as(f32, 2), FakeBackend.rate);
+}
+
+test "player: an audio output asked for before the native player exists is routed before the item loads" {
+    FakeBackend.reset();
+    Player.setBackend(null);
+    var player = Player.init(std.testing.allocator);
+    defer player.deinit();
+    try player.replaceCurrentItem("file:///movie.mp4");
+    try player.setAudioOutput("headphones");
+    try std.testing.expectEqualStrings("headphones", player.audioOutput().?);
+
+    Player.setBackend(&FakeBackend.backend);
+    defer Player.setBackend(null);
+    try std.testing.expect(player.nativeHandle() != null);
+    try std.testing.expectEqual(@as(usize, 1), FakeBackend.routes);
+    try std.testing.expectEqual(@as(usize, 0), FakeBackend.loads_at_route);
+    try std.testing.expectEqualStrings("headphones", FakeBackend.routed[0..FakeBackend.routed_length]);
+
+    try player.setAudioOutput(null);
+    try std.testing.expectEqual(@as(usize, 2), FakeBackend.routes);
+    try std.testing.expectEqual(@as(usize, 0), FakeBackend.routed_length);
+    try std.testing.expect(player.audioOutput() == null);
+}
+
+test "player: asking for the output in use routes nothing, and a missing one reports the default until asked again" {
+    FakeBackend.reset();
+    Player.setBackend(&FakeBackend.backend);
+    defer Player.setBackend(null);
+    var player = Player.init(std.testing.allocator);
+    defer player.deinit();
+    try player.setAudioOutput("headphones");
+    try player.setAudioOutput("headphones");
+    try std.testing.expectEqual(@as(usize, 1), FakeBackend.routes);
+    try player.setAudioOutput(null);
+    try player.setAudioOutput(null);
+    try std.testing.expectEqual(@as(usize, 2), FakeBackend.routes);
+
+    // Not found: the default plays, so that is what the player reports;
+    // asking for it again tries again (it may be plugged back in).
+    try player.setAudioOutput("unplugged");
+    try std.testing.expect(player.audioOutput() == null);
+    try player.setAudioOutput("unplugged");
+    try std.testing.expectEqual(@as(usize, 4), FakeBackend.routes);
+    try player.setAudioOutput("headphones");
+    try std.testing.expectEqualStrings("headphones", player.audioOutput().?);
+}
+
+test "player: a native player that cannot route sound reports the default it plays through" {
+    FakeBackend.reset();
+    var unrouted = FakeBackend.backend;
+    unrouted.set_audio_output = null;
+    Player.setBackend(&unrouted);
+    defer Player.setBackend(null);
+    var player = Player.init(std.testing.allocator);
+    defer player.deinit();
+    try player.setAudioOutput("headphones");
+    try std.testing.expectEqual(@as(usize, 1), FakeBackend.created);
+    try std.testing.expect(player.audioOutput() == null);
+    try std.testing.expectEqual(@as(usize, 0), FakeBackend.routes);
+}
+
+test "player: a backend that cannot route sound keeps the output asked for, and is never called" {
+    FakeBackend.reset();
+    Player.setBackend(&FakeBackend.unsupported);
+    defer Player.setBackend(null);
+    var player = Player.init(std.testing.allocator);
+    defer player.deinit();
+    try player.setAudioOutput("headphones");
+    try std.testing.expectEqualStrings("headphones", player.audioOutput().?);
+    try std.testing.expectEqual(@as(usize, 0), FakeBackend.routes);
 }
 
 test "player: a seek reports seeking until the playhead lands near its target" {

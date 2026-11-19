@@ -1,4 +1,4 @@
-//! Pure-Zig software rasterizer. Consumes a `Canvas` command list and paints
+//! Pure-Zig software rasterizer. Consumes a `DisplayList` command list and paints
 //! into a `Framebuffer` of `Color` pixels. Shapes use a signed-distance field
 //! for crisp 1px anti-aliasing, so rounded rects, circles, strokes, and lines
 //! all share one coverage path. This backend exists so the entire visual layer
@@ -723,17 +723,17 @@ pub const Rasterizer = struct {
 // -----------------------------------------------------------------------------
 // Unit Tests
 
-/// Renders a canvas the way the tests need it.
+/// Renders a display list the way the tests need it.
 const TestRender = struct {
     const Self = @This();
 
-    /// Render `canvas` into `framebuffer` with the testing allocator.
+    /// Render `display_list` into `framebuffer` with the testing allocator.
     ///
     /// - `framebuffer`: the framebuffer painted into.
-    /// - `canvas`: the commands.
+    /// - `display_list`: the commands.
     /// - Returns: nothing; propagates allocation failure.
-    fn canvasInto(framebuffer: *mod.Framebuffer, canvas: *const mod.Canvas) !void {
-        try Rasterizer.init(std.testing.allocator, framebuffer).render(canvas.commands.items);
+    fn canvasInto(framebuffer: *mod.Framebuffer, display_list: *const mod.DisplayList) !void {
+        try Rasterizer.init(std.testing.allocator, framebuffer).render(display_list.commands.items);
     }
 };
 
@@ -747,10 +747,10 @@ test "raster: fill rect paints interior, leaves outside untouched" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 20, 20);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.fillRect(.{ .x = 5, .y = 5, .width = 10, .height = 10 }, mod.Color.red);
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.fillRect(.{ .x = 5, .y = 5, .width = 10, .height = 10 }, mod.Color.red);
+    try TestRender.canvasInto(&framebuffer, &display_list);
 
     try std.testing.expect(framebuffer.at(10, 10).approxEql(mod.Color.red, 0.02)); // inside
     try std.testing.expect(framebuffer.at(0, 0).approxEql(mod.Color.white, 0.02)); // outside
@@ -760,10 +760,10 @@ test "raster: rounded rect clips its corners" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 40, 40);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.fillRoundedRect(.{ .x = 0, .y = 0, .width = 40, .height = 40 }, 12, mod.Color.red);
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.fillRoundedRect(.{ .x = 0, .y = 0, .width = 40, .height = 40 }, 12, mod.Color.red);
+    try TestRender.canvasInto(&framebuffer, &display_list);
 
     try std.testing.expect(framebuffer.at(20, 20).approxEql(mod.Color.red, 0.02)); // center filled
     // extreme corner is outside the rounded shape -> still background
@@ -774,10 +774,10 @@ test "raster: alpha compositing blends translucent over opaque" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 10, 10);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.black);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.fillRect(.{ .x = 0, .y = 0, .width = 10, .height = 10 }, mod.Color.white.withAlpha(0.5));
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.fillRect(.{ .x = 0, .y = 0, .width = 10, .height = 10 }, mod.Color.white.withAlpha(0.5));
+    try TestRender.canvasInto(&framebuffer, &display_list);
     try std.testing.expect(framebuffer.at(5, 5).approxEql(mod.Color{ .r = 0.5, .g = 0.5, .b = 0.5, .a = 1 }, 0.02));
 }
 
@@ -785,12 +785,12 @@ test "raster: clip masks drawing to the clip rect" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 20, 20);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.pushClip(.{ .x = 0, .y = 0, .width = 10, .height = 20 }, 0);
-    try canvas.fillRect(.{ .x = 0, .y = 0, .width = 20, .height = 20 }, mod.Color.red); // wider than clip
-    try canvas.popClip();
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.pushClip(.{ .x = 0, .y = 0, .width = 10, .height = 20 }, 0);
+    try display_list.fillRect(.{ .x = 0, .y = 0, .width = 20, .height = 20 }, mod.Color.red); // wider than clip
+    try display_list.popClip();
+    try TestRender.canvasInto(&framebuffer, &display_list);
 
     try std.testing.expect(framebuffer.at(5, 10).approxEql(mod.Color.red, 0.02)); // inside clip
     try std.testing.expect(framebuffer.at(15, 10).approxEql(mod.Color.white, 0.02)); // clipped away
@@ -800,11 +800,11 @@ test "raster: eraseRect cuts a transparent hole and later draws composite over i
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 40, 40);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.eraseRect(.{ .x = 10, .y = 10, .width = 20, .height = 20 }, 0);
-    try canvas.fillRect(.{ .x = 10, .y = 25, .width = 20, .height = 5 }, mod.Color.black.withAlpha(0.5));
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.eraseRect(.{ .x = 10, .y = 10, .width = 20, .height = 20 }, 0);
+    try display_list.fillRect(.{ .x = 10, .y = 25, .width = 20, .height = 5 }, mod.Color.black.withAlpha(0.5));
+    try TestRender.canvasInto(&framebuffer, &display_list);
 
     try std.testing.expectEqual(@as(f32, 0), framebuffer.at(15, 15).a); // the hole
     try std.testing.expect(framebuffer.at(5, 5).approxEql(mod.Color.white, 0.02)); // outside it
@@ -815,12 +815,12 @@ test "raster: eraseRect respects the clip and its corner radius" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 40, 40);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.pushClip(.{ .x = 0, .y = 0, .width = 20, .height = 40 }, 0);
-    try canvas.eraseRect(.{ .x = 0, .y = 0, .width = 40, .height = 40 }, 12);
-    try canvas.popClip();
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.pushClip(.{ .x = 0, .y = 0, .width = 20, .height = 40 }, 0);
+    try display_list.eraseRect(.{ .x = 0, .y = 0, .width = 40, .height = 40 }, 12);
+    try display_list.popClip();
+    try TestRender.canvasInto(&framebuffer, &display_list);
 
     try std.testing.expectEqual(@as(f32, 0), framebuffer.at(10, 20).a); // erased inside the clip
     try std.testing.expectEqual(@as(f32, 1), framebuffer.at(30, 20).a); // clipped away
@@ -831,16 +831,16 @@ test "raster: linear gradient interpolates left-to-right" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 100, 10);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.black);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.push(.{ .linearGradient = .{
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.push(.{ .linearGradient = .{
         .rect = .{ .x = 0, .y = 0, .width = 100, .height = 10 },
         .start = .{ .x = 0, .y = 0 },
         .end = .{ .x = 100, .y = 0 },
         .start_color = mod.Color.red,
         .end_color = mod.Color.blue,
     } });
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    try TestRender.canvasInto(&framebuffer, &display_list);
 
     try std.testing.expect(framebuffer.at(1, 5).r > 0.9); // left ~ red
     try std.testing.expect(framebuffer.at(98, 5).b > 0.9); // right ~ blue
@@ -852,10 +852,10 @@ test "raster: stroke paints border but not center" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 40, 40);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.strokeRoundedRect(.{ .x = 5, .y = 5, .width = 30, .height = 30 }, 0, 2, mod.Color.black);
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.strokeRoundedRect(.{ .x = 5, .y = 5, .width = 30, .height = 30 }, 0, 2, mod.Color.black);
+    try TestRender.canvasInto(&framebuffer, &display_list);
 
     try std.testing.expect(framebuffer.at(20, 20).approxEql(mod.Color.white, 0.05)); // hollow center
     try std.testing.expect(framebuffer.at(20, 5).isDark()); // top border drawn
@@ -865,16 +865,16 @@ test "raster: glyph coverage is tinted and blitted" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 4, 4);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // 2x2 coverage: top-left fully opaque, rest transparent
     const data = [_]u8{ 255, 0, 0, 0 };
-    try canvas.drawGlyph(
+    try display_list.drawGlyph(
         .{ .x = 0, .y = 0, .width = 2, .height = 2 },
         mod.Color.red,
         .{ .width = 2, .height = 2, .data = &data },
     );
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    try TestRender.canvasInto(&framebuffer, &display_list);
     try std.testing.expect(framebuffer.at(0, 0).approxEql(mod.Color.red, 0.02)); // covered texel
     try std.testing.expect(framebuffer.at(1, 1).approxEql(mod.Color.white, 0.02)); // uncovered
 }
@@ -889,18 +889,18 @@ test "raster: glyph coverage gamma thickens the anti-aliased edge" {
     var plain = try mod.Framebuffer.init(std.testing.allocator, 1, 1);
     defer plain.deinit();
     plain.clear(mod.Color.black);
-    var plain_canvas = mod.Canvas.init(std.testing.allocator);
-    defer plain_canvas.deinit();
-    try plain_canvas.drawGlyph(.{ .x = 0, .y = 0, .width = 1, .height = 1 }, mod.Color.white, coverage);
-    try TestRender.canvasInto(&plain, &plain_canvas);
+    var plain_display_list = mod.DisplayList.init(std.testing.allocator);
+    defer plain_display_list.deinit();
+    try plain_display_list.drawGlyph(.{ .x = 0, .y = 0, .width = 1, .height = 1 }, mod.Color.white, coverage);
+    try TestRender.canvasInto(&plain, &plain_display_list);
 
     var corrected = try mod.Framebuffer.init(std.testing.allocator, 1, 1);
     defer corrected.deinit();
     corrected.clear(mod.Color.black);
-    var corrected_canvas = mod.Canvas.init(std.testing.allocator);
-    defer corrected_canvas.deinit();
-    try corrected_canvas.drawGlyphGamma(.{ .x = 0, .y = 0, .width = 1, .height = 1 }, mod.Color.white, coverage, 0.5);
-    try TestRender.canvasInto(&corrected, &corrected_canvas);
+    var corrected_display_list = mod.DisplayList.init(std.testing.allocator);
+    defer corrected_display_list.deinit();
+    try corrected_display_list.drawGlyphGamma(.{ .x = 0, .y = 0, .width = 1, .height = 1 }, mod.Color.white, coverage, 0.5);
+    try TestRender.canvasInto(&corrected, &corrected_display_list);
 
     // gamma 0.5 raises ~0.502 coverage to ~0.709, so the pixel is brighter.
     try std.testing.expect(corrected.at(0, 0).r > plain.at(0, 0).r + 0.15);
@@ -912,12 +912,12 @@ test "raster: image blit copies pixels" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 2, 2);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // a single green opaque pixel image, stretched over the 2x2 framebuffer
     const pixels = [_]u8{ 0, 255, 0, 255 };
-    try canvas.drawImage(.{ .x = 0, .y = 0, .width = 2, .height = 2 }, .{ .width = 1, .height = 1, .pixels = &pixels });
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    try display_list.drawImage(.{ .x = 0, .y = 0, .width = 2, .height = 2 }, .{ .width = 1, .height = 1, .pixels = &pixels });
+    try TestRender.canvasInto(&framebuffer, &display_list);
     try std.testing.expect(framebuffer.at(0, 0).approxEql(mod.Color.green, 0.02));
     try std.testing.expect(framebuffer.at(1, 1).approxEql(mod.Color.green, 0.02));
 }
@@ -926,13 +926,13 @@ test "raster: an image with fewer pixels than its size draws nothing" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 2, 2);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // Says 2x2 (16 bytes) but holds one pixel: never read past it.
     const pixels = [_]u8{ 0, 255, 0, 255 };
-    try canvas.drawImage(.{ .x = 0, .y = 0, .width = 2, .height = 2 }, .{ .width = 2, .height = 2, .pixels = &pixels });
-    try canvas.drawVideoFrame(.{ .x = 0, .y = 0, .width = 2, .height = 2 }, .{ .width = 2, .height = 2, .pixels = &pixels }, 1, 1);
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    try display_list.drawImage(.{ .x = 0, .y = 0, .width = 2, .height = 2 }, .{ .width = 2, .height = 2, .pixels = &pixels });
+    try display_list.drawVideoFrame(.{ .x = 0, .y = 0, .width = 2, .height = 2 }, .{ .width = 2, .height = 2, .pixels = &pixels }, 1, 1);
+    try TestRender.canvasInto(&framebuffer, &display_list);
     try std.testing.expect(framebuffer.at(1, 1).approxEql(mod.Color.white, 0.001));
 }
 
@@ -947,10 +947,10 @@ test "raster: blurRect averages its region and leaves the outside untouched" {
             framebuffer.pixels[y * 20 + x] = if (x % 2 == 0) mod.Color.black else mod.Color.white;
         }
     }
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.blurRect(.{ .x = 5, .y = 5, .width = 10, .height = 10 }, 0, 3, mod.Color.transparent);
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.blurRect(.{ .x = 5, .y = 5, .width = 10, .height = 10 }, 0, 3, mod.Color.transparent);
+    try TestRender.canvasInto(&framebuffer, &display_list);
 
     // inside the blurred region the stripes smear toward the mid grey mean
     const center = framebuffer.at(10, 10);
@@ -964,10 +964,10 @@ test "raster: blurRect tint shifts the region toward the tint color" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 20, 20);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.fromRgb8(128, 128, 128)); // mid grey
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.blurRect(.{ .x = 5, .y = 5, .width = 10, .height = 10 }, 0, 2, mod.Color.white.withAlpha(0.5));
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.blurRect(.{ .x = 5, .y = 5, .width = 10, .height = 10 }, 0, 2, mod.Color.white.withAlpha(0.5));
+    try TestRender.canvasInto(&framebuffer, &display_list);
     // tinted region is clearly lighter than the untouched grey background
     try std.testing.expect(framebuffer.at(10, 10).luminance() > framebuffer.at(0, 0).luminance() + 0.1);
     try std.testing.expect(framebuffer.at(0, 0).approxEql(mod.Color.fromRgb8(128, 128, 128), 0.02));
@@ -998,14 +998,14 @@ test "raster: a rect far larger than the framebuffer fills it without trapping" 
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 20, 20);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try canvas.fillRect(.{ .x = 0, .y = 0, .width = 1e10, .height = 1e10 }, mod.Color.red);
-    try canvas.fillRoundedRect(.{ .x = -5e9, .y = -5e9, .width = 1e10, .height = 1e10 }, 1e10, mod.Color.red);
-    try canvas.fillRect(.{ .x = 5, .y = 5, .width = 1e10, .height = 10 }, mod.Color.blue.withAlpha(0.5));
-    try canvas.strokeRoundedRect(.{ .x = -1e10, .y = -1e10, .width = 3e10, .height = 3e10 }, 0, 1e10, mod.Color.red);
-    try canvas.line(.{ .x = -1e10, .y = 10 }, .{ .x = 1e10, .y = 10 }, 2, mod.Color.red);
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try display_list.fillRect(.{ .x = 0, .y = 0, .width = 1e10, .height = 1e10 }, mod.Color.red);
+    try display_list.fillRoundedRect(.{ .x = -5e9, .y = -5e9, .width = 1e10, .height = 1e10 }, 1e10, mod.Color.red);
+    try display_list.fillRect(.{ .x = 5, .y = 5, .width = 1e10, .height = 10 }, mod.Color.blue.withAlpha(0.5));
+    try display_list.strokeRoundedRect(.{ .x = -1e10, .y = -1e10, .width = 3e10, .height = 3e10 }, 0, 1e10, mod.Color.red);
+    try display_list.line(.{ .x = -1e10, .y = 10 }, .{ .x = 1e10, .y = 10 }, 2, mod.Color.red);
+    try TestRender.canvasInto(&framebuffer, &display_list);
 
     try std.testing.expect(framebuffer.at(0, 0).approxEql(mod.Color.red, 0.02));
     try std.testing.expect(framebuffer.at(19, 19).approxEql(mod.Color.red, 0.02));
@@ -1015,8 +1015,8 @@ test "raster: non-finite rects draw nothing and do not trap" {
     var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 20, 20);
     defer framebuffer.deinit();
     framebuffer.clear(mod.Color.white);
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const nan = std.math.nan(f32);
     const inf = std.math.inf(f32);
     const rects = [_]mod.Rect{
@@ -1029,17 +1029,17 @@ test "raster: non-finite rects draw nothing and do not trap" {
     const data = [_]u8{255};
     const pixels = [_]u8{ 0, 255, 0, 255 };
     for (rects) |rect| {
-        try canvas.fillRect(rect, mod.Color.red);
-        try canvas.fillRoundedRect(rect, nan, mod.Color.red);
-        try canvas.fillRoundedRect(rect, inf, mod.Color.red);
-        try canvas.strokeRoundedRect(rect, inf, nan, mod.Color.red);
-        try canvas.drawGlyph(rect, mod.Color.red, .{ .width = 1, .height = 1, .data = &data });
-        try canvas.drawImage(rect, .{ .width = 1, .height = 1, .pixels = &pixels });
-        try canvas.blurRect(rect, nan, nan, mod.Color.red);
-        try canvas.blurRect(rect, inf, inf, mod.Color.red);
-        try canvas.line(.{ .x = rect.x, .y = rect.y }, .{ .x = rect.width, .y = rect.height }, nan, mod.Color.red);
+        try display_list.fillRect(rect, mod.Color.red);
+        try display_list.fillRoundedRect(rect, nan, mod.Color.red);
+        try display_list.fillRoundedRect(rect, inf, mod.Color.red);
+        try display_list.strokeRoundedRect(rect, inf, nan, mod.Color.red);
+        try display_list.drawGlyph(rect, mod.Color.red, .{ .width = 1, .height = 1, .data = &data });
+        try display_list.drawImage(rect, .{ .width = 1, .height = 1, .pixels = &pixels });
+        try display_list.blurRect(rect, nan, nan, mod.Color.red);
+        try display_list.blurRect(rect, inf, inf, mod.Color.red);
+        try display_list.line(.{ .x = rect.x, .y = rect.y }, .{ .x = rect.width, .y = rect.height }, nan, mod.Color.red);
     }
-    try TestRender.canvasInto(&framebuffer, &canvas);
+    try TestRender.canvasInto(&framebuffer, &display_list);
 }
 
 test "raster: a huge or non-finite blur sigma blurs the region without trapping" {
@@ -1053,11 +1053,11 @@ test "raster: a huge or non-finite blur sigma blurs the region without trapping"
                 framebuffer.pixels[y * 20 + x] = if (x % 2 == 0) mod.Color.black else mod.Color.white;
             }
         }
-        var canvas = mod.Canvas.init(std.testing.allocator);
-        defer canvas.deinit();
-        try canvas.blurRect(.{ .x = 5, .y = 5, .width = 10, .height = 10 }, 0, sigma, mod.Color.transparent);
-        try canvas.blurRect(.{ .x = 0, .y = 0, .width = 1e10, .height = 1e10 }, 0, sigma, mod.Color.transparent);
-        try TestRender.canvasInto(&framebuffer, &canvas);
+        var display_list = mod.DisplayList.init(std.testing.allocator);
+        defer display_list.deinit();
+        try display_list.blurRect(.{ .x = 5, .y = 5, .width = 10, .height = 10 }, 0, sigma, mod.Color.transparent);
+        try display_list.blurRect(.{ .x = 0, .y = 0, .width = 1e10, .height = 1e10 }, 0, sigma, mod.Color.transparent);
+        try TestRender.canvasInto(&framebuffer, &display_list);
 
         const center = framebuffer.at(10, 10);
         try std.testing.expect(center.r > 0.3 and center.r < 0.7);

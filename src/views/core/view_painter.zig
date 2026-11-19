@@ -6,7 +6,7 @@ const log = std.log.scoped(.ziggui_view_painter);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 
-/// Paints views into a canvas, registering their input regions, overlay
+/// Paints views into a display list, registering their input regions, overlay
 /// requests and accessibility nodes in the context's sinks.
 pub const ViewPainter = struct {
     const Self = @This();
@@ -16,9 +16,9 @@ pub const ViewPainter = struct {
     /// - `context`: the context the view inherits.
     /// - `view`: the view.
     /// - `layout`: its arranged frames.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paint(context: *const mod.Context, view: mod.View, layout: renderer.LayoutResult, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    pub fn paint(context: *const mod.Context, view: mod.View, layout: renderer.LayoutResult, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const outer = layout.frame;
         if (view.modifiers.reveal_on_hover and !context.in_hover_scope) return;
         // Scrolled out of view: nothing of it can show (a long transcript paints
@@ -51,7 +51,7 @@ pub const ViewPainter = struct {
         // back to a translucent track fill with a hairline ring.
         if (view.modifiers.glass_effect) {
             const glass_radius = if (view.modifiers.corner_radius > 0) view.modifiers.corner_radius else outer.height / 2;
-            const surface = child_context.surface(canvas);
+            const surface = child_context.surface(display_list);
             if (child_context.theme.painter.glass_surface) |glass_surface| {
                 try glass_surface(surface, outer, glass_radius);
             } else {
@@ -61,7 +61,7 @@ pub const ViewPainter = struct {
         }
 
         // Background fill (behind content, spanning the padded frame).
-        if (view.modifiers.background) |fill| try Self.paintFill(canvas, outer, child_context.theme.metrics.radius(view.modifiers.corner_radius), fill, opacity, &child_context.theme.colors);
+        if (view.modifiers.background) |fill| try Self.paintFill(display_list, outer, child_context.theme.metrics.radius(view.modifiers.corner_radius), fill, opacity, &child_context.theme.colors);
 
         // Hover highlight: painted over the background while the cursor is inside
         // this view (and it isn't disabled). Cheap point-in-rect test per frame.
@@ -69,7 +69,7 @@ pub const ViewPainter = struct {
             if (!child_context.disabled) {
                 if (context.hover_point) |point| {
                     if (outer.contains(point))
-                        try Self.paintFill(canvas, outer, child_context.theme.metrics.radius(view.modifiers.corner_radius), .{ .color = hover_color }, opacity, &child_context.theme.colors);
+                        try Self.paintFill(display_list, outer, child_context.theme.metrics.radius(view.modifiers.corner_radius), .{ .color = hover_color }, opacity, &child_context.theme.colors);
                 }
             }
         }
@@ -109,20 +109,20 @@ pub const ViewPainter = struct {
         // are cut to the frame too.
         const marks = context.markInput();
         if (view.modifiers.clipped) {
-            try canvas.pushClip(outer, view.modifiers.corner_radius);
+            try display_list.pushClip(outer, view.modifiers.corner_radius);
             child_context.visible = if (context.visible) |visible| (visible.intersection(outer) orelse renderer.Rect{}) else outer;
         }
-        try Self.paintContent(&child_context, view, content_layout, canvas);
+        try Self.paintContent(&child_context, view, content_layout, display_list);
         if (view.modifiers.clipped) {
-            try canvas.popClip();
+            try display_list.popClip();
             context.clipInput(marks, outer);
         }
 
         // Border (in front of content).
         if (view.modifiers.border_color) |border_color| {
             if (child_context.theme.metrics.chiseled) {
-                try child_context.surface(canvas).bevel(outer, false);
-            } else try canvas.strokeRoundedRect(outer, view.modifiers.corner_radius, view.modifiers.border_width, border_color.multiplyAlpha(opacity));
+                try child_context.surface(display_list).bevel(outer, false);
+            } else try display_list.strokeRoundedRect(outer, view.modifiers.corner_radius, view.modifiers.border_width, border_color.multiplyAlpha(opacity));
         }
 
         // A presented overlay is not drawn inline — it is enqueued for the drain
@@ -148,73 +148,73 @@ pub const ViewPainter = struct {
     /// - `context`: the context, the view's environment applied.
     /// - `view`: the view.
     /// - `content_layout`: its content's arranged frames.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paintContent(context: *const mod.Context, view: mod.View, content_layout: renderer.LayoutResult, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    pub fn paintContent(context: *const mod.Context, view: mod.View, content_layout: renderer.LayoutResult, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const opacity = context.opacity;
         const rect = content_layout.frame;
         switch (view.kind) {
             .empty, .spacer => {},
-            .divider, .verticalDivider => try canvas.fillRect(rect, context.theme.colors.separator.multiplyAlpha(opacity)),
+            .divider, .verticalDivider => try display_list.fillRect(rect, context.theme.colors.separator.multiplyAlpha(opacity)),
             .text => |text| {
                 const pixel_size = context.resolvedFontSize(view);
                 const string = if (view.modifiers.truncate) try context.truncateToWidth(text.string, pixel_size, rect.width) else text.string;
-                context.drawText(canvas, string, pixel_size, context.foreground.multiplyAlpha(opacity), rect.origin()) catch |err| log.debug("text not drawn [{t}]", .{err});
+                context.drawText(display_list, string, pixel_size, context.foreground.multiplyAlpha(opacity), rect.origin()) catch |err| log.debug("text not drawn [{t}]", .{err});
                 // Accessibility always exposes the full, untruncated string.
                 try context.emitAccessibility(view, rect, .staticText, text.string, "");
             },
-            .richText => |rich| mod.TextViewPainter.paintRichText(context, view, rich, rect, canvas) catch |err| log.debug("rich text not drawn [{t}]", .{err}),
+            .richText => |rich| mod.TextViewPainter.paintRichText(context, view, rich, rect, display_list) catch |err| log.debug("rich text not drawn [{t}]", .{err}),
             .wrappedText => |wrapped| {
-                mod.TextViewPainter.paintWrappedText(context, view, wrapped, rect, canvas) catch |err| log.debug("wrapped text not drawn [{t}]", .{err});
+                mod.TextViewPainter.paintWrappedText(context, view, wrapped, rect, display_list) catch |err| log.debug("wrapped text not drawn [{t}]", .{err});
                 try context.emitAccessibility(view, rect, .staticText, wrapped.string, "");
             },
-            .shape => |shape| try Self.paintShape(context, shape, rect, opacity, canvas),
-            .drawing => |drawing| {
-                var pen = mod.Pen{ .context = context, .canvas = canvas };
-                try drawing.draw(drawing.context, &pen, rect);
+            .shape => |shape| try Self.paintShape(context, shape, rect, opacity, display_list),
+            .canvas => |drawn| {
+                var graphics = mod.GraphicsContext{ .context = context, .display_list = display_list };
+                try drawn.draw(drawn.context, &graphics, rect);
             },
             .button => |button| {
-                try mod.ControlPainter.paintButton(context, button, rect, canvas);
+                try mod.ControlPainter.paintButton(context, button, rect, display_list);
                 try context.emitAccessibility(view, rect, .button, button.label, "");
             },
             .toggle => |toggle| {
-                try mod.ControlPainter.paintToggle(context, toggle, rect, canvas);
+                try mod.ControlPainter.paintToggle(context, toggle, rect, display_list);
                 try context.emitAccessibility(view, rect, .toggle, toggle.label, if (toggle.value.get()) "on" else "off");
             },
             .slider => |slider| {
-                try mod.ControlPainter.paintSlider(context, slider, rect, canvas);
+                try mod.ControlPainter.paintSlider(context, slider, rect, display_list);
                 // The value is formatted only for an accessibility pass, not every paint.
                 if (context.a11y != null) {
                     const value = try context.arena.print("{d:.2}", .{slider.value.get()});
                     try context.emitAccessibility(view, rect, .slider, "", value);
                 }
             },
-            .stepper => |stepper| try mod.ControlPainter.paintStepper(context, stepper, rect, canvas),
-            .progress => |progress| try mod.ControlPainter.paintProgress(context, progress, rect, canvas),
+            .stepper => |stepper| try mod.ControlPainter.paintStepper(context, stepper, rect, display_list),
+            .progress => |progress| try mod.ControlPainter.paintProgress(context, progress, rect, display_list),
             .image => |image| {
                 const target = if (view.modifiers.scaled_to_fit) rect.aspectFit(image.image.width, image.image.height) else rect;
-                try canvas.drawImage(target, image.image);
+                try display_list.drawImage(target, image.image);
                 try context.emitAccessibility(view, rect, .image, "", "");
             },
             .icon => |icon| {
-                try mod.ControlPainter.paintIcon(context, icon, rect, canvas);
+                try mod.ControlPainter.paintIcon(context, icon, rect, display_list);
                 try context.emitAccessibility(view, rect, .image, "", "");
             },
             .iconButton => |icon_button| {
-                try mod.ControlPainter.paintIconButton(context, icon_button, rect, canvas);
+                try mod.ControlPainter.paintIconButton(context, icon_button, rect, display_list);
                 try context.emitAccessibility(view, rect, .button, "", "");
             },
             .label => |label| {
-                try mod.ControlPainter.paintLabel(context, label, view, rect, canvas);
+                try mod.ControlPainter.paintLabel(context, label, view, rect, display_list);
                 try context.emitAccessibility(view, rect, .staticText, label.title, "");
             },
-            .scroll => |scroll| try Self.paintScroll(context, scroll, rect, canvas),
-            .scrollState => |scroll| try Self.paintScrollState(context, scroll, rect, canvas),
-            .geometry => |geometry| try Self.paintGeometry(context, geometry, rect, canvas),
-            .videoPlayer => |video| try Self.paintVideoPlayer(context, view, video, rect, canvas),
-            .nativeView => |native| try Self.paintNativeView(context, view, native, rect, canvas),
+            .scroll => |scroll| try Self.paintScroll(context, scroll, rect, display_list),
+            .scrollState => |scroll| try Self.paintScrollState(context, scroll, rect, display_list),
+            .geometry => |geometry| try Self.paintGeometry(context, geometry, rect, display_list),
+            .videoPlayer => |video| try Self.paintVideoPlayer(context, view, video, rect, display_list),
+            .nativeView => |native| try Self.paintNativeView(context, view, native, rect, display_list),
             .textField => |field| {
-                try mod.TextViewPainter.paintTextField(context, view, field, rect, canvas);
+                try mod.TextViewPainter.paintTextField(context, view, field, rect, display_list);
                 // The buffer is copied only for an accessibility pass, not every paint.
                 if (context.a11y != null) {
                     // A secure field's value is never exposed.
@@ -223,21 +223,24 @@ pub const ViewPainter = struct {
                 }
             },
             .textEditor => |editor| {
-                try mod.TextViewPainter.paintTextEditor(context, view, editor, rect, canvas);
+                try mod.TextViewPainter.paintTextEditor(context, view, editor, rect, display_list);
                 if (context.a11y != null) {
                     const value = try context.arena.dupe(u8, editor.state.text());
                     try context.emitAccessibility(view, rect, .textField, "", value);
                 }
             },
-            .picker => |picker| try mod.ControlPainter.paintPicker(context, picker, rect, canvas),
+            .picker => |picker| switch (context.resolvedPickerStyle()) {
+                .menu => try mod.ControlPainter.paintMenuPicker(context, picker, rect, display_list),
+                else => try mod.ControlPainter.paintPicker(context, picker, rect, display_list),
+            },
             .stack => |stack| {
                 for (stack.children, 0..) |child, index| {
-                    try Self.paint(context, child, content_layout.children[index], canvas);
+                    try Self.paint(context, child, content_layout.children[index], display_list);
                 }
             },
             .group => |group| {
                 for (group, 0..) |child, index| {
-                    try Self.paint(context, child, content_layout.children[index], canvas);
+                    try Self.paint(context, child, content_layout.children[index], display_list);
                 }
             },
         }
@@ -245,21 +248,21 @@ pub const ViewPainter = struct {
 
     /// Fills a rounded rect with a color, a gradient or a material.
     ///
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - `rect`: the rect.
     /// - `radius`: its corner radius.
     /// - `fill`: what fills it.
     /// - `opacity`: the inherited opacity.
     /// - `palette`: the theme's colors (a material's glass tint).
     /// - Returns: nothing; propagates allocation failure.
-    pub fn paintFill(canvas: *renderer.Canvas, rect: renderer.Rect, radius: f32, fill: mod.Fill, opacity: f32, palette: *const renderer.Palette) !void {
+    pub fn paintFill(display_list: *renderer.DisplayList, rect: renderer.Rect, radius: f32, fill: mod.Fill, opacity: f32, palette: *const renderer.Palette) !void {
         switch (fill) {
-            .color => |color| try canvas.fillRoundedRect(rect, radius, color.multiplyAlpha(opacity)),
+            .color => |color| try display_list.fillRoundedRect(rect, radius, color.multiplyAlpha(opacity)),
             .linearGradient => |gradient| {
                 // gradient.start/end are unit points (0..1); resolve to the rect.
                 const start = renderer.Point{ .x = rect.x + gradient.start.x * rect.width, .y = rect.y + gradient.start.y * rect.height };
                 const end = renderer.Point{ .x = rect.x + gradient.end.x * rect.width, .y = rect.y + gradient.end.y * rect.height };
-                try canvas.push(.{ .linearGradient = .{
+                try display_list.push(.{ .linearGradient = .{
                     .rect = rect,
                     .radius = radius,
                     .start = start,
@@ -273,7 +276,7 @@ pub const ViewPainter = struct {
                 // The frost tint comes from the active theme's (scheme-correct) glass
                 // role, scaled per material level.
                 const tint = palette.glass.multiplyAlpha(specification.alpha_scale);
-                try canvas.blurRect(rect, radius, specification.sigma, tint.multiplyAlpha(opacity));
+                try display_list.blurRect(rect, radius, specification.sigma, tint.multiplyAlpha(opacity));
             },
         }
     }
@@ -284,19 +287,19 @@ pub const ViewPainter = struct {
     /// - `shape`: the shape.
     /// - `rect`: its frame.
     /// - `opacity`: the inherited opacity.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    fn paintShape(context: *const mod.Context, shape: mod.ShapeData, rect: renderer.Rect, opacity: f32, canvas: *renderer.Canvas) !void {
+    fn paintShape(context: *const mod.Context, shape: mod.ShapeData, rect: renderer.Rect, opacity: f32, display_list: *renderer.DisplayList) !void {
         const palette = &context.theme.colors;
         switch (shape.shape) {
-            .rect => try Self.paintFill(canvas, rect, 0, shape.fill, opacity, palette),
-            .roundedRect => try Self.paintFill(canvas, rect, context.theme.metrics.radius(shape.corner_radius), shape.fill, opacity, palette),
-            .capsule => try Self.paintFill(canvas, rect, @min(rect.width, rect.height) / 2, shape.fill, opacity, palette),
-            .ellipse => try Self.paintFill(canvas, rect, @min(rect.width, rect.height) / 2, shape.fill, opacity, palette),
+            .rect => try Self.paintFill(display_list, rect, 0, shape.fill, opacity, palette),
+            .roundedRect => try Self.paintFill(display_list, rect, context.theme.metrics.radius(shape.corner_radius), shape.fill, opacity, palette),
+            .capsule => try Self.paintFill(display_list, rect, @min(rect.width, rect.height) / 2, shape.fill, opacity, palette),
+            .ellipse => try Self.paintFill(display_list, rect, @min(rect.width, rect.height) / 2, shape.fill, opacity, palette),
             .circle => {
                 const radius = @min(rect.width, rect.height) / 2;
                 const square = renderer.Rect{ .x = rect.midX() - radius, .y = rect.midY() - radius, .width = 2 * radius, .height = 2 * radius };
-                try Self.paintFill(canvas, square, radius, shape.fill, opacity, palette);
+                try Self.paintFill(display_list, square, radius, shape.fill, opacity, palette);
             },
         }
     }
@@ -306,11 +309,11 @@ pub const ViewPainter = struct {
     /// - `context`: the context.
     /// - `scroll`: the scroll view.
     /// - `rect`: its viewport.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    fn paintScroll(context: *const mod.Context, scroll: mod.ScrollData, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
-        try canvas.pushClip(rect, 0);
-        defer canvas.popClip() catch |err| log.debug("clip not popped [{t}]", .{err});
+    fn paintScroll(context: *const mod.Context, scroll: mod.ScrollData, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
+        try display_list.pushClip(rect, 0);
+        defer display_list.popClip() catch |err| log.debug("clip not popped [{t}]", .{err});
         const content_proposal: renderer.Proposal = if (scroll.axis == .vertical)
             .{ .width = rect.width, .height = null }
         else
@@ -322,7 +325,7 @@ pub const ViewPainter = struct {
             renderer.Rect{ .x = rect.x - scroll.offset, .y = rect.y, .width = content_size.width, .height = rect.height };
         // renderInto (not render): overlays are drained once, by the top-level render.
         const marks = context.markInput();
-        try mod.ViewRenderer.renderInto(context, scroll.content.*, content_rect, canvas);
+        try mod.ViewRenderer.renderInto(context, scroll.content.*, content_rect, display_list);
         context.clipInput(marks, rect);
     }
 
@@ -335,11 +338,11 @@ pub const ViewPainter = struct {
     /// - `context`: the context.
     /// - `scroll`: the scroll view.
     /// - `rect`: its viewport.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    fn paintScrollState(context: *const mod.Context, scroll: mod.ScrollStateData, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
-        try canvas.pushClip(rect, 0);
-        defer canvas.popClip() catch |err| log.debug("clip not popped [{t}]", .{err});
+    fn paintScrollState(context: *const mod.Context, scroll: mod.ScrollStateData, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
+        try display_list.pushClip(rect, 0);
+        defer display_list.popClip() catch |err| log.debug("clip not popped [{t}]", .{err});
         // Lower once: measuring and arranging the same nodes lets the frame's
         // measure memo serve both.
         const node = try mod.ViewLowering.buildNode(context, scroll.content.*);
@@ -362,7 +365,7 @@ pub const ViewPainter = struct {
         var inner = context.*;
         inner.visible = if (context.visible) |visible| (visible.intersection(rect) orelse renderer.Rect{}) else rect;
         const marks = context.markInput();
-        try Self.paint(&inner, scroll.content.*, try renderer.LayoutEngine.shared().arrange(context.arena, node, content_rect), canvas);
+        try Self.paint(&inner, scroll.content.*, try renderer.LayoutEngine.shared().arrange(context.arena, node, content_rect), display_list);
         context.clipInput(marks, rect);
         if (context.scroll_regions) |regions| {
             try regions.append(context.arena, .{ .rect = rect, .state = state, .horizontal = scroll.horizontal });
@@ -383,8 +386,8 @@ pub const ViewPainter = struct {
             .action = .{ .callback = .{ .context = state, .function = mod.Scrollbar.pressHorizontal } },
             .disabled = false,
         });
-        try mod.Scrollbar.paint(context, state, rect, canvas);
-        if (scroll.horizontal) try mod.Scrollbar.paintHorizontal(context, state, rect, canvas);
+        try mod.Scrollbar.paint(context, state, rect, display_list);
+        if (scroll.horizontal) try mod.Scrollbar.paintHorizontal(context, state, rect, display_list);
     }
 
     /// Builds a `GeometryReader`'s content for `rect`'s size, then lays it out and
@@ -394,15 +397,15 @@ pub const ViewPainter = struct {
     /// - `context`: the context.
     /// - `geometry`: the reader.
     /// - `rect`: its frame.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    fn paintGeometry(context: *const mod.Context, geometry: mod.GeometryData, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    fn paintGeometry(context: *const mod.Context, geometry: mod.GeometryData, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const scope = mod.BuildScope.shared();
         const saved = scope.swapAllocator(context.arena);
         defer _ = scope.swapAllocator(saved);
         const content = geometry.build(geometry.context, rect.size());
         const node = try mod.ViewLowering.buildNode(context, content);
-        try Self.paint(context, content, try renderer.LayoutEngine.shared().arrange(context.arena, node, rect), canvas);
+        try Self.paint(context, content, try renderer.LayoutEngine.shared().arrange(context.arena, node, rect), display_list);
     }
 
     /// Paints a `VideoPlayer`. Where the runtime collects video regions it
@@ -418,26 +421,26 @@ pub const ViewPainter = struct {
     /// - `view`: the view (its corner radius).
     /// - `video`: the player shown.
     /// - `rect`: its frame.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    fn paintVideoPlayer(context: *const mod.Context, view: mod.View, video: mod.VideoPlayerData, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    fn paintVideoPlayer(context: *const mod.Context, view: mod.View, video: mod.VideoPlayerData, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const radius = view.modifiers.corner_radius;
         if (context.video_regions) |regions| {
-            try canvas.eraseRect(rect, radius);
+            try display_list.eraseRect(rect, radius);
             const visible = if (context.visible) |shown| (shown.intersection(rect) orelse renderer.Rect{}) else rect;
             try regions.append(context.arena, .{ .player = video.player, .rect = rect, .visible = visible, .corner_radius = radius });
         } else if (video.player.currentFrame()) |picture| {
             // The platform hands its frames over: drawn here, in the surface,
             // so what is stacked over the player still draws on top.
-            try canvas.fillRoundedRect(rect, radius, renderer.Color.black.multiplyAlpha(context.opacity));
-            try canvas.pushClip(rect, radius);
-            try canvas.drawVideoFrame(rect.aspectFit(picture.image.width, picture.image.height), picture.image, @intFromPtr(video.player), picture.generation);
-            try canvas.popClip();
+            try display_list.fillRoundedRect(rect, radius, renderer.Color.black.multiplyAlpha(context.opacity));
+            try display_list.pushClip(rect, radius);
+            try display_list.drawVideoFrame(rect.aspectFit(picture.image.width, picture.image.height), picture.image, @intFromPtr(video.player), picture.generation);
+            try display_list.popClip();
         } else {
-            try canvas.fillRoundedRect(rect, radius, renderer.Color.black.multiplyAlpha(context.opacity));
+            try display_list.fillRoundedRect(rect, radius, renderer.Color.black.multiplyAlpha(context.opacity));
             const side = @min(32, @min(rect.width, rect.height));
             const glyph = renderer.Rect{ .x = rect.midX() - side / 2, .y = rect.midY() - side / 2, .width = side, .height = side };
-            try mod.ControlPainter.paintIcon(context, .{ .icon = .video, .size = side, .color = renderer.Color.white.withAlpha(0.35) }, glyph, canvas);
+            try mod.ControlPainter.paintIcon(context, .{ .icon = .video, .size = side, .color = renderer.Color.white.withAlpha(0.35) }, glyph, display_list);
         }
         // The frame's sample: the app's own `observe` this frame took it.
         const observation = video.player.observe();
@@ -458,9 +461,9 @@ pub const ViewPainter = struct {
     /// - `view`: the view (its corner radius).
     /// - `native`: the platform view shown.
     /// - `rect`: its frame.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    fn paintNativeView(context: *const mod.Context, view: mod.View, native: mod.NativeViewData, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    fn paintNativeView(context: *const mod.Context, view: mod.View, native: mod.NativeViewData, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const radius = view.modifiers.corner_radius;
         if (context.native_regions) |regions| if (native.handle) |handle| {
             const visible = if (context.visible) |shown| (shown.intersection(rect) orelse renderer.Rect{}) else rect;
@@ -468,11 +471,11 @@ pub const ViewPainter = struct {
             return;
         };
         const colors = context.theme.colors;
-        try canvas.fillRoundedRect(rect, radius, colors.control_background.multiplyAlpha(context.opacity));
-        try canvas.strokeRoundedRect(rect, radius, 1, colors.control_border.multiplyAlpha(context.opacity));
+        try display_list.fillRoundedRect(rect, radius, colors.control_background.multiplyAlpha(context.opacity));
+        try display_list.strokeRoundedRect(rect, radius, 1, colors.control_border.multiplyAlpha(context.opacity));
         const side = @min(32, @min(rect.width, rect.height));
         const glyph = renderer.Rect{ .x = rect.midX() - side / 2, .y = rect.midY() - side / 2, .width = side, .height = side };
-        try mod.ControlPainter.paintIcon(context, .{ .icon = native.placeholder, .size = side, .color = colors.tertiary_label }, glyph, canvas);
+        try mod.ControlPainter.paintIcon(context, .{ .icon = native.placeholder, .size = side, .color = colors.tertiary_label }, glyph, display_list);
     }
 };
 

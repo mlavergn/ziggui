@@ -17,8 +17,8 @@ pub const BuildScope = @import("../module.zig").BuildScope;
 pub const Empty = @import("../module.zig").Empty;
 /// The app's millisecond clock and scrollbar fade timing (`FrameClock.shared()`), from the views module.
 pub const FrameClock = @import("../module.zig").FrameClock;
-/// A headless frame for the unit tests (from the views module).
-pub const TestCanvas = @import("../module.zig").TestCanvas;
+/// A headless window for the unit tests (from the views module).
+pub const TestWindow = @import("../module.zig").TestWindow;
 /// One line of text (from the views module).
 pub const Text = @import("../module.zig").Text;
 /// A node of the view tree (from the views module).

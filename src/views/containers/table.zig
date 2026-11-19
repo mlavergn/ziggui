@@ -200,28 +200,28 @@ test {
 }
 
 test "a resizable table's header edge drags width from one column to the next" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     // A failed expect must not leave a drag armed on this stack's state.
     defer mod.PointerInput.shared().endDrag();
     var customization: mod.TableColumnCustomization = .{};
     const columns = [_]mod.TableColumn{ .{ .title = "Name" }, .{ .title = "Role" }, .{ .title = "Age", .width = 60 } };
     const rows = [_][]const []const u8{&.{ "Ada", "Mathematician", "36" }};
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const view = TableResizable(&columns, &rows, null, &customization);
-    canvas.end();
-    var frame = try canvas.render(view, 316, 120);
+    window.end();
+    var frame = try window.render(view, 316, 120);
     defer frame.deinit();
     // 300 points of columns inside the insets: two shares of 120 and the fixed 60.
     try std.testing.expectEqual(@as(f32, 120), customization.laid_out[0]);
     try std.testing.expectEqual(@as(f32, 60), customization.laid_out[2]);
     // The first column's edge ends at 8 + 120; a press just inside it arms the drag.
-    try std.testing.expect(canvas.tap(.{ .x = 125, .y = 12 }));
-    mod.PointerInput.shared().drag(canvas.hits.items, .{ .x = 165, .y = 12 });
+    try std.testing.expect(window.tap(.{ .x = 125, .y = 12 }));
+    mod.PointerInput.shared().drag(window.hits.items, .{ .x = 165, .y = 12 });
     try std.testing.expectEqual(@as(f32, 160), customization.widths[0]);
     try std.testing.expectEqual(@as(f32, 80), customization.widths[1]);
     // Never past the next column's minimum.
-    mod.PointerInput.shared().drag(canvas.hits.items, .{ .x = 400, .y = 12 });
+    mod.PointerInput.shared().drag(window.hits.items, .{ .x = 400, .y = 12 });
     try std.testing.expectEqual(@as(f32, 200), customization.widths[0]);
     try std.testing.expectEqual(@as(f32, 40), customization.widths[1]);
 }

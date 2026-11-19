@@ -31,7 +31,7 @@ pub const ViewRenderer = struct {
         return renderer.LayoutEngine.shared().measure(node, proposal);
     }
 
-    /// Lays out `view` into `rect` and paints it into `canvas`, *collecting*
+    /// Lays out `view` into `rect` and paints it into `display_list`, *collecting*
     /// overlay requests and accessibility nodes into `context`'s sinks but NOT
     /// drawing overlays. This is the recursion-safe entry point: `ScrollView`
     /// content and overlay content call `renderInto` (never `render`) so overlays
@@ -40,12 +40,12 @@ pub const ViewRenderer = struct {
     /// - `context`: the context.
     /// - `view`: the view.
     /// - `rect`: where it is laid out.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn renderInto(context: *const mod.Context, view: mod.View, rect: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    pub fn renderInto(context: *const mod.Context, view: mod.View, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const node = try mod.ViewLowering.buildNode(context, view);
         const layout = try renderer.LayoutEngine.shared().arrange(context.arena, node, rect);
-        try mod.ViewPainter.paint(context, view, layout, canvas);
+        try mod.ViewPainter.paint(context, view, layout, display_list);
     }
 
     /// The top-level render orchestrator: paints `view` into `rect`, then drains
@@ -57,12 +57,14 @@ pub const ViewRenderer = struct {
     /// - `context`: the context.
     /// - `view`: the root view.
     /// - `rect`: the frame.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn render(context: *const mod.Context, view: mod.View, rect: renderer.Rect, canvas: *renderer.Canvas) !void {
+    pub fn render(context: *const mod.Context, view: mod.View, rect: renderer.Rect, display_list: *renderer.DisplayList) !void {
         // Memoize layout measurement for this frame (see `LayoutEngine.beginMeasureCache`).
         const owns_cache = renderer.LayoutEngine.shared().beginMeasureCache();
         defer if (owns_cache) renderer.LayoutEngine.shared().endMeasureCache();
+        // Menu-style pickers are told apart by their place in this render.
+        mod.PickerMenu.shared().beginRender();
         // Popover dismiss regions leave out `popoverPassthrough` frames: collect
         // them here unless the caller already does.
         var passthrough: std.ArrayList(renderer.Rect) = .empty;
@@ -74,7 +76,7 @@ pub const ViewRenderer = struct {
         // pointer is over touches it, so another (a tray panel) cannot reset its rest.
         const hints = render_context.hover_point != null;
         if (hints) mod.HelpTip.shared().begin();
-        try Self.renderInto(&render_context, view, rect, canvas);
+        try Self.renderInto(&render_context, view, rect, display_list);
         if (render_context.overlays) |overlays| {
             // A view under an overlay is covered: its hint goes; the overlay's own views may offer theirs.
             if (hints and overlays.items.len > 0) mod.HelpTip.shared().discard();
@@ -84,15 +86,17 @@ pub const ViewRenderer = struct {
             var index: usize = 0;
             while (index < overlays.items.len) : (index += 1) {
                 const request = overlays.items[index]; // copy: drawing may reallocate the list
-                try Self.drawOverlay(&render_context, request, rect, canvas);
+                try Self.drawOverlay(&render_context, request, rect, display_list);
             }
         }
+        // A picker menu whose picker this window no longer draws closes.
+        mod.PickerMenu.shared().endRender(hints);
         // The text-field context menu sits above everything, including app overlays.
-        try mod.TextContextMenu.shared().draw(&render_context, rect, canvas);
+        try mod.TextContextMenu.shared().draw(&render_context, rect, display_list);
         // The hover hint goes over everything; a view under the open context menu offers none.
         if (hints) {
             if (mod.TextContextMenu.shared().isOpen()) mod.HelpTip.shared().discard();
-            try mod.HelpTip.shared().draw(&render_context, rect, canvas);
+            try mod.HelpTip.shared().draw(&render_context, rect, display_list);
         }
     }
 
@@ -110,14 +114,14 @@ pub const ViewRenderer = struct {
     /// - `view`: the root view.
     /// - `point_rect`: the frame, in points.
     /// - `scale`: device pixels per point.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn renderScaled(context: *const mod.Context, view: mod.View, point_rect: renderer.Rect, scale: f32, canvas: *renderer.Canvas) !void {
+    pub fn renderScaled(context: *const mod.Context, view: mod.View, point_rect: renderer.Rect, scale: f32, display_list: *renderer.DisplayList) !void {
         var scaled_context = context.*;
         scaled_context.scale = scale;
-        const start = canvas.commands.items.len;
-        try Self.render(&scaled_context, view, point_rect, canvas);
-        if (scale != 1) Self.scaleCommands(canvas.commands.items[start..], scale);
+        const start = display_list.commands.items.len;
+        try Self.render(&scaled_context, view, point_rect, display_list);
+        if (scale != 1) Self.scaleCommands(display_list.commands.items[start..], scale);
     }
 
     /// A rect scaled by `factor`.
@@ -194,14 +198,14 @@ pub const ViewRenderer = struct {
     /// - `context`: the context.
     /// - `request`: the overlay.
     /// - `root`: the frame.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    fn drawOverlay(context: *const mod.Context, request: mod.OverlayRequest, root: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    fn drawOverlay(context: *const mod.Context, request: mod.OverlayRequest, root: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         // 1. Dimming scrim over the whole frame (theme-tinted; native macOS dims
         //    by ~20% black under modals). Popovers are light-dismiss but do NOT
         //    dim the window behind them.
         if (request.style != .popover) {
-            try canvas.fillRect(root, context.theme.colors.scrim);
+            try display_list.fillRect(root, context.theme.colors.scrim);
         }
         // 2. Tap-to-dismiss region beneath the content (appended before content's
         //    own regions, so a tap on the content hits the content first). A
@@ -235,7 +239,7 @@ pub const ViewRenderer = struct {
         if (request.style == .popover and size.width > max_width) size = renderer.LayoutEngine.shared().measure(node, .{ .width = max_width, .height = null });
         const target = switch (request.style) {
             .sheet, .alert => Self.centerRect(root, size),
-            .popover => Self.anchoredRect(root, request.anchor, size),
+            .popover => if (request.content_anchor) |point| Self.overlaidRect(root, request.anchor, point, size) else Self.anchoredRect(root, request.anchor, size),
         };
 
         // 4. Panel frame (theme-drawn), then the content on top, clipped to the
@@ -250,8 +254,8 @@ pub const ViewRenderer = struct {
             .modal => context.theme.metrics.panel_corner_radius,
             .popover => context.theme.metrics.corner_radius,
         };
-        try context.theme.painter.panel(context.surface(canvas), target, radius, kind);
-        try canvas.pushClip(target, radius);
+        try context.theme.painter.panel(context.surface(display_list), target, radius, kind);
+        try display_list.pushClip(target, radius);
         if (request.style == .popover and target.height + 0.5 < size.height) {
             // Cut to fit the window: the content scrolls inside the panel. One
             // popover is open at a time; a new anchor starts it at the top.
@@ -263,13 +267,13 @@ pub const ViewRenderer = struct {
             const content = try context.arena.create(mod.View);
             content.* = request.content;
             const scroller = mod.View{ .kind = .{ .scrollState = .{ .state = &popover_scroll, .content = content } } };
-            try Self.renderInto(context, scroller, target, canvas);
+            try Self.renderInto(context, scroller, target, display_list);
         } else {
             // Lay out the node measured above: building it again would miss the
             // frame's measure memo.
-            try mod.ViewPainter.paint(context, request.content, try renderer.LayoutEngine.shared().arrange(context.arena, node, target), canvas);
+            try mod.ViewPainter.paint(context, request.content, try renderer.LayoutEngine.shared().arrange(context.arena, node, target), display_list);
         }
-        try canvas.popClip();
+        try display_list.popClip();
     }
 
     /// Appends tap-to-dismiss regions covering `area` minus every rect in `holes`:
@@ -308,6 +312,28 @@ pub const ViewRenderer = struct {
             .width = size.width,
             .height = size.height,
         };
+    }
+
+    /// Positions an overlay over its `anchor`: the content's `content_anchor`
+    /// on the anchor's origin (a pop-up menu's chosen row over its picker),
+    /// moved and cut as little as keeps it inside `root` (the caller scrolls
+    /// it when cut).
+    ///
+    /// - `root`: the frame.
+    /// - `anchor`: the presenting view's frame.
+    /// - `content_anchor`: the point in the content placed on the anchor's origin.
+    /// - `size`: the overlay's size.
+    /// - Returns: where it goes.
+    fn overlaidRect(root: renderer.Rect, anchor: renderer.Rect, content_anchor: renderer.Point, size: renderer.Size) renderer.Rect {
+        const margin = popover_margin;
+        const height = @min(size.height, @max(0, root.height - 2 * margin));
+        var x = anchor.x - content_anchor.x;
+        if (x + size.width > root.maxX() - margin) x = root.maxX() - margin - size.width;
+        if (x < root.x + margin) x = root.x + margin;
+        var y = anchor.y - content_anchor.y;
+        if (y + height > root.maxY() - margin) y = root.maxY() - margin - height;
+        if (y < root.y + margin) y = root.y + margin;
+        return .{ .x = x, .y = y, .width = size.width, .height = height };
     }
 
     /// Positions an overlay just below its `anchor`, or above it when it fits

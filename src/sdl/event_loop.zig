@@ -262,7 +262,7 @@ fn WindowFrame(comptime AppState: type) type {
             const dark_ui = theme.colors.window_background.luminance() < 0.5;
             renderer.TextPainter.shared().setGamma(if (dark_ui) 0.6 else 1.0);
 
-            var canvas = renderer.Canvas.init(arena);
+            var display_list = renderer.DisplayList.init(arena);
             if (self.transparent) {
                 // The frosted NSVisualEffectView behind the SDL content view is
                 // the panel's own chrome (Swift's MenuBarExtra popover). Painting
@@ -272,14 +272,14 @@ fn WindowFrame(comptime AppState: type) type {
                 // material show through.
                 // Appended before renderScaled, which scales only the view's commands, so scale it here.
                 // Only macOS has glass behind the window; elsewhere the panel is a solid card.
-                if (mod.os_tag != .macos) canvas.fillRoundedRect(.{ .x = 0, .y = 0, .width = point_width * scale, .height = point_height * scale }, 12 * scale, theme.colors.window_background) catch |err| log.debug("panel card not drawn [{t}]", .{err});
-                canvas.strokeRoundedRect(.{ .x = 0.5 * scale, .y = 0.5 * scale, .width = (point_width - 1) * scale, .height = (point_height - 1) * scale }, 12 * scale, scale, theme.colors.separator) catch |err| log.debug("panel rim not drawn [{t}]", .{err});
+                if (mod.os_tag != .macos) display_list.fillRoundedRect(.{ .x = 0, .y = 0, .width = point_width * scale, .height = point_height * scale }, 12 * scale, theme.colors.window_background) catch |err| log.debug("panel card not drawn [{t}]", .{err});
+                display_list.strokeRoundedRect(.{ .x = 0.5 * scale, .y = 0.5 * scale, .width = (point_width - 1) * scale, .height = (point_height - 1) * scale }, 12 * scale, scale, theme.colors.separator) catch |err| log.debug("panel rim not drawn [{t}]", .{err});
             } else {
                 // No background fill command here: the framebuffer's `clear` below paints
                 // the window background with a fast @memset, so emitting a full-window
                 // fillRoundedRect would just re-rasterize every pixel through the SDF path.
             }
-            views.ViewRenderer.renderScaled(&context, root, .{ .x = 0, .y = 0, .width = point_width, .height = point_height }, scale, &canvas) catch |err| log.debug("view tree not drawn [{t}]", .{err});
+            views.ViewRenderer.renderScaled(&context, root, .{ .x = 0, .y = 0, .width = point_width, .height = point_height }, scale, &display_list) catch |err| log.debug("view tree not drawn [{t}]", .{err});
             // The pictures move with the frame that erased their holes.
             if (self.presents_video) mod.VideoBackend.present(self.window, video_regions.items);
             // Frames the renderer draws under those holes (Windows), where the
@@ -297,7 +297,7 @@ fn WindowFrame(comptime AppState: type) type {
                 // downscale on the final blit (SSAA), mirroring the software
                 // texture path below.
                 const clear = if (self.transparent) renderer.Color.transparent else theme.colors.window_background;
-                if (!gpu.frame(arena, canvas.commands.items, clear, supersample, underlays, scale)) return false;
+                if (!gpu.frame(arena, display_list.commands.items, clear, supersample, underlays, scale)) return false;
             } else {
                 // Software backend. Persistent framebuffer + RGBA buffer:
                 // reallocated only when the pixel size changes, so a
@@ -305,7 +305,7 @@ fn WindowFrame(comptime AppState: type) type {
                 const sdl_renderer = self.sdl_renderer.?;
                 self.framebuffer.ensureSize(self.allocator, scaled_width, scaled_height) catch return false;
                 self.framebuffer.clear(if (self.transparent) renderer.Color.transparent else theme.colors.window_background);
-                renderer.Rasterizer.init(arena, self.framebuffer).render(canvas.commands.items) catch return false;
+                renderer.Rasterizer.init(arena, self.framebuffer).render(display_list.commands.items) catch return false;
                 const byte_count: usize = @as(usize, scaled_width) * @as(usize, scaled_height) * 4;
                 if (self.rgba.*.len != byte_count) {
                     if (self.rgba.*.len > 0) self.allocator.free(self.rgba.*);
@@ -658,6 +658,8 @@ const EventRouter = struct {
                 _ = views.PointerInput.shared().scrollBoth(target_scrolls, app.eventPoint(event.wheel.mouse_x, event.wheel.mouse_y), delta.x, delta.y);
             },
             sdl_c.SDL_EVENT_TEXT_INPUT => {
+                // Text a key the picker menu took would type goes nowhere.
+                if (views.PickerMenu.shared().takesText()) return;
                 const typed = std.mem.span(event.text.text);
                 if (app.text_handler) |handler| if (handler(typed)) return;
                 if (views.Focus.shared().focused()) |field| {
@@ -665,9 +667,31 @@ const EventRouter = struct {
                 }
             },
             sdl_c.SDL_EVENT_KEY_DOWN => {
+                // A text event follows its key-down: the menu notes each key it takes.
+                views.PickerMenu.shared().noteKey(false);
                 // Escape dismisses the popover before anything else sees the key.
                 if (on_panel and event.key.key == sdl_c.SDLK_ESCAPE) {
                     panel.hide();
+                    return;
+                }
+                // An open picker menu takes the keys, as a platform menu does while
+                // it is up: arrows move its highlight, a letter or digit moves it
+                // to the next option starting with it, Return or Space chooses,
+                // Escape closes it, and any other key closes it unused; a
+                // modifier pressed alone leaves it up. The text a taken key
+                // types is dropped.
+                if (views.PickerMenu.shared().isOpen()) {
+                    const menu = views.PickerMenu.shared();
+                    if (event.key.key >= sdl_c.SDLK_LCTRL and event.key.key <= sdl_c.SDLK_RGUI) return;
+                    menu.noteKey(true);
+                    switch (event.key.key) {
+                        sdl_c.SDLK_UP => menu.moveHighlight(-1),
+                        sdl_c.SDLK_DOWN => menu.moveHighlight(1),
+                        sdl_c.SDLK_RETURN, sdl_c.SDLK_KP_ENTER, sdl_c.SDLK_SPACE => menu.chooseHighlighted(),
+                        // A letter key's keycode is its lowercase character.
+                        'a'...'z', '0'...'9' => menu.typeSelect(@intCast(event.key.key)),
+                        else => menu.close(),
+                    }
                     return;
                 }
                 // App shortcuts/clipboard get first refusal; a true return consumes
@@ -928,6 +952,11 @@ pub fn EventLoop(comptime AppState: type) type {
                 return mod.AppError.SdlInit;
             };
             errdefer if (self.sdl_renderer) |sdl_renderer| sdl_c.SDL_DestroyRenderer(sdl_renderer);
+            // What a system report says about drawing.
+            if (self.gpu_backend) |*gpu| gpu.noteSystem() else if (self.sdl_renderer) |sdl_renderer| {
+                const presenter: [*:0]const u8 = sdl_c.SDL_GetRendererName(sdl_renderer) orelse "";
+                views.SystemInfo.shared().noteGraphics(.software, std.mem.span(presenter), "", "");
+            }
 
             self.panel_arena = std.heap.ArenaAllocator.init(allocator);
             errdefer self.closePanel();
@@ -977,6 +1006,8 @@ pub fn EventLoop(comptime AppState: type) type {
             views.FrameClock.shared().setWakeHandler(Self.wakeApp);
             // `Player`s are made with this OS's media player from here on.
             mod.VideoBackend.install();
+            // `AudioOutputs` lists its sound outputs.
+            mod.AudioBackend.install();
             // And `WebPage`s with its web view.
             mod.WebBackend.install();
             app.hide_on_close = config.hide_on_close;
@@ -1047,6 +1078,7 @@ pub fn EventLoop(comptime AppState: type) type {
             sdl_c.SDL_RemoveEventWatch(WindowFrame(AppState).resizeWatch, &self.frame);
             // Before the window goes: the pictures leave it, players live on.
             mod.VideoBackend.uninstall();
+            mod.AudioBackend.uninstall();
             mod.WebBackend.uninstall();
             // And the app's platform views leave it; the app still owns them.
             mod.NativeBackend.detachAll();

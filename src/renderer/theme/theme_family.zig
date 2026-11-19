@@ -88,14 +88,14 @@ test "registry: each family draws its own title bar, with text that reads on it"
     for (ThemeFamily.all) |family| {
         for ([_]mod.ColorScheme{ .light, .dark }) |scheme| {
             const theme = family.forScheme(scheme);
-            var canvas = mod.Canvas.init(std.testing.allocator);
-            defer canvas.deinit();
+            var display_list = mod.DisplayList.init(std.testing.allocator);
+            defer display_list.deinit();
             const rect = mod.Rect{ .x = 0, .y = 0, .width = 100, .height = 32 };
-            try theme.drawTitleBar(.{ .canvas = &canvas, .palette = &theme.colors, .metrics = &theme.metrics, .scheme = theme.scheme }, rect);
+            try theme.drawTitleBar(.{ .display_list = &display_list, .palette = &theme.colors, .metrics = &theme.metrics, .scheme = theme.scheme }, rect);
             var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 100, 32);
             defer framebuffer.deinit();
             framebuffer.clear(mod.Color.fromRgb8(255, 0, 255));
-            try mod.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+            try mod.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
             // The whole bar is painted (no magenta left), and its text contrasts with it.
             const bar = framebuffer.at(10, 10);
             try std.testing.expect(!bar.approxEql(mod.Color.fromRgb8(255, 0, 255), 0.05));

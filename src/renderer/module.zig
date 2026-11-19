@@ -1,4 +1,4 @@
-//! The renderer: geometry, layout, color, the canvas and its rasterizers,
+//! The renderer: geometry, layout, color, the display list and its rasterizers,
 //! text, themes, state and animation. Pure Zig, no C, no views.
 
 const std = @import("std");
@@ -58,7 +58,7 @@ pub const EraseRectCommand = @import("render/module.zig").EraseRectCommand;
 /// A `DrawCommand.pushClip` payload.
 pub const PushClipCommand = @import("render/module.zig").PushClipCommand;
 /// A retained list of draw commands.
-pub const Canvas = @import("render/module.zig").Canvas;
+pub const DisplayList = @import("render/module.zig").DisplayList;
 /// A CPU pixel buffer.
 pub const Framebuffer = @import("render/module.zig").Framebuffer;
 /// Paints draw commands into a framebuffer on the CPU.
@@ -79,7 +79,7 @@ pub const FrameStep = @import("render/module.zig").FrameStep;
 pub const AtlasUpload = @import("render/module.zig").AtlasUpload;
 /// The GPU scene's texture atlas bookkeeping.
 pub const TextureAtlas = @import("render/module.zig").TextureAtlas;
-/// A canvas translated for the GPU.
+/// A display list translated for the GPU.
 pub const GpuScene = @import("render/module.zig").GpuScene;
 
 // -----------------------------------------------------------------------------
@@ -153,7 +153,7 @@ pub const WrappedLine = @import("text/module.zig").WrappedLine;
 pub const TextShaper = @import("text/module.zig").TextShaper;
 /// A font face and its metrics.
 pub const Font = @import("text/module.zig").Font;
-/// Paints text and icon glyphs into a canvas (`TextPainter.shared()`).
+/// Paints text and icon glyphs into a display list (`TextPainter.shared()`).
 pub const TextPainter = @import("text/module.zig").TextPainter;
 /// A text style's face selection (weight, italic, monospace).
 pub const FontStyle = @import("text/module.zig").FontStyle;
@@ -183,6 +183,12 @@ pub const Palette = @import("theme/module.zig").Palette;
 pub const Typography = @import("theme/module.zig").Typography;
 /// A theme's spacing, sizing, and radius metrics.
 pub const Metrics = @import("theme/module.zig").Metrics;
+/// How a theme family draws a menu-style picker and opens its menu.
+pub const MenuPickerLook = @import("theme/module.zig").MenuPickerLook;
+/// What a menu-style picker is drawn as: a button or a field.
+pub const MenuPickerChrome = @import("theme/module.zig").MenuPickerChrome;
+/// The mark at a menu-style picker's trailing edge.
+pub const MenuPickerIndicator = @import("theme/module.zig").MenuPickerIndicator;
 /// Everything a painter needs to draw chrome.
 pub const Surface = @import("theme/module.zig").Surface;
 /// A theme's vtable of chrome-drawing functions.

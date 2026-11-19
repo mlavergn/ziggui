@@ -37,10 +37,10 @@ test {
 }
 
 test "pane title sets its title row over a divider" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const view = PaneTitle("Files", true, mod.Empty());
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(@as(usize, 2), view.kind.stack.children.len);
 }

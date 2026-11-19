@@ -1,4 +1,4 @@
-//! GPU scene translation: turns a `Canvas` command list into the flat,
+//! GPU scene translation: turns a `DisplayList` command list into the flat,
 //! GPU-friendly form the SDL_GPU backend (`sdl/gpu/gpu.zig`) consumes —
 //! a packed per-instance array (one `Instance` per draw command, rendered as an
 //! instanced quad whose fragment shader evaluates the same rounded-box /
@@ -62,7 +62,7 @@ const ClipState = struct {
     }
 };
 
-/// A canvas translated for the GPU: instances and the steps that draw them.
+/// A display list translated for the GPU: instances and the steps that draw them.
 pub const GpuScene = struct {
     const Self = @This();
 

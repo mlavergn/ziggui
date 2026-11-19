@@ -36,12 +36,12 @@ test {
 }
 
 test "empty state centers its title over its detail, and drops an empty detail" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const full = EmptyState("Nothing here.", "Drop files to add some.");
     const bare = EmptyState("Nothing here.", "");
-    canvas.end();
+    window.end();
     // Spacer, title, detail, spacer; an empty detail is an `Empty`, which takes no room.
     try std.testing.expectEqual(@as(usize, 4), full.kind.stack.children.len);
     try std.testing.expect(bare.kind.stack.children[2].kind == .empty);

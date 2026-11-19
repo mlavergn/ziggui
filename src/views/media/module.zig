@@ -29,6 +29,20 @@ pub const VideoPlayer = @import("video_player.zig").VideoPlayer;
 pub const VideoPlayerControls = @import("video_player_controls.zig").VideoPlayerControls;
 /// What a `VideoPlayerControls` keeps across frames; app-owned.
 pub const VideoPlayerControlsState = @import("video_player_controls_state.zig").VideoPlayerControlsState;
+/// The standard controls with the app's own among them.
+pub const VideoPlayerControlsWith = @import("video_player_controls.zig").VideoPlayerControlsWith;
+/// The app's views the standard controls place among their own.
+pub const VideoPlayerControlsAccessories = @import("video_player_controls_accessories.zig").VideoPlayerControlsAccessories;
+/// A button drawn as the standard controls' are.
+pub const VideoPlayerControlButton = @import("video_player_controls.zig").VideoPlayerControlButton;
+/// A menu among the controls: a control button showing its items in a popover.
+pub const VideoPlayerControlMenu = @import("video_player_controls.zig").VideoPlayerControlMenu;
+/// An audio player's controls in one bar, as a podcast player draws them.
+pub const AudioPlayerControls = @import("audio_player_controls.zig").AudioPlayerControls;
+/// What an `AudioPlayerControls` keeps across frames; app-owned.
+pub const AudioPlayerControlsState = @import("audio_player_controls_state.zig").AudioPlayerControlsState;
+/// The look the media controls share: symbols, labels and pills, times.
+pub const MediaControlStyle = @import("media_control_style.zig").MediaControlStyle;
 /// A platform view the app owns, placed where layout puts it.
 pub const NativeView = @import("native_view.zig").NativeView;
 /// What a platform web view reports about its page (`WebPage.update`).
@@ -89,8 +103,11 @@ pub const Text = @import("../module.zig").Text;
 /// A value picked along a track, from the views module.
 pub const Slider = @import("../module.zig").Slider;
 
-/// Draws and taps views in tests, from the views module.
-pub const TestCanvas = @import("../module.zig").TestCanvas;
+/// A headless window for the unit tests (from the views module).
+pub const TestWindow = @import("../module.zig").TestWindow;
+
+/// Text made safe to draw (a title from a feed), from the views module.
+pub const DisplayText = @import("../module.zig").DisplayText;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -107,6 +124,10 @@ test {
     _ = @import("native_view.zig");
     _ = @import("video_player_controls_state.zig");
     _ = @import("video_player_controls.zig");
+    _ = @import("video_player_controls_accessories.zig");
+    _ = @import("media_control_style.zig");
+    _ = @import("audio_player_controls.zig");
+    _ = @import("audio_player_controls_state.zig");
     _ = @import("web_page.zig");
     _ = @import("web_page_backend.zig");
     _ = @import("web_view.zig");

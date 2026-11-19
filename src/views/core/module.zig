@@ -55,8 +55,8 @@ pub const ScrollStateData = @import("kind.zig").ScrollStateData;
 pub const GeometryData = @import("kind.zig").GeometryData;
 /// A picker's payload.
 pub const PickerData = @import("kind.zig").PickerData;
-/// A `Drawing`'s payload.
-pub const DrawingData = @import("kind.zig").DrawingData;
+/// A `Canvas`'s payload.
+pub const CanvasData = @import("kind.zig").CanvasData;
 /// A `VideoPlayer`'s payload.
 pub const VideoPlayerData = @import("kind.zig").VideoPlayerData;
 /// A `NativeView`'s payload.
@@ -65,6 +65,8 @@ pub const NativeViewData = @import("kind.zig").NativeViewData;
 pub const Modifiers = @import("modifiers.zig").Modifiers;
 /// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
 pub const ToggleStyle = @import("toggle_style.zig").ToggleStyle;
+/// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
+pub const PickerStyle = @import("picker_style.zig").PickerStyle;
 /// A `.sheet`/`.alert`/`.popover` modifier.
 pub const OverlayModifier = @import("modifiers.zig").OverlayModifier;
 /// A `.frame(...)` modifier's sizes and alignment.
@@ -149,8 +151,8 @@ pub const AccessibilityTraits = @import("accessibility_traits.zig").Accessibilit
 pub const OverlayRequest = @import("overlay_request.zig").OverlayRequest;
 /// A selectable paragraph's geometry for one frame.
 pub const SelectHit = @import("select_hit.zig").SelectHit;
-/// What a `Drawing` paints with.
-pub const Pen = @import("pen.zig").Pen;
+/// What a `Canvas` draws with (SwiftUI's `GraphicsContext`).
+pub const GraphicsContext = @import("graphics_context.zig").GraphicsContext;
 
 // -----------------------------------------------------------------------------
 // Building, lowering, painting, rendering
@@ -197,6 +199,8 @@ pub const TextSelection = @import("text_selection.zig").TextSelection;
 pub const SelectionSpan = @import("text_selection.zig").SelectionSpan;
 /// The text-field context menu (`TextContextMenu.shared()`).
 pub const TextContextMenu = @import("text_context_menu.zig").TextContextMenu;
+/// The open menu of a menu-style `Picker`: one at a time, drawn over everything.
+pub const PickerMenu = @import("picker_menu.zig").PickerMenu;
 /// The hover hint a view's `.help(text)` shows (`HelpTip.shared()`).
 pub const HelpTip = @import("help_tip.zig").HelpTip;
 /// The clipboard the context menu copies to and pastes from.
@@ -237,6 +241,10 @@ pub const VStack = @import("../module.zig").VStack;
 pub const Spacer = @import("../module.zig").Spacer;
 /// A hairline across a stack (from the views module).
 pub const Divider = @import("../module.zig").Divider;
+/// A Lucide icon (from the views module).
+pub const Icon = @import("../module.zig").Icon;
+/// A view of no size (from the views module).
+pub const Empty = @import("../module.zig").Empty;
 /// A filled rectangle (from the views module).
 pub const Rectangle = @import("../module.zig").Rectangle;
 
@@ -245,8 +253,8 @@ pub const Rectangle = @import("../module.zig").Rectangle;
 
 /// A headless frame for the view engine's unit tests.
 pub const TestEnvironment = @import("test_environment.zig").TestEnvironment;
-/// A headless frame for the unit tests: draws a view, collects its overlays and `onHover` regions, replays taps and pointer moves.
-pub const TestCanvas = @import("test_canvas.zig").TestCanvas;
+/// A headless window for the unit tests: draws a view, collects its overlays and `onHover` regions, replays taps and pointer moves.
+pub const TestWindow = @import("test_window.zig").TestWindow;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -259,6 +267,8 @@ test {
     _ = @import("kind.zig");
     _ = @import("modifiers.zig");
     _ = @import("toggle_style.zig");
+    _ = @import("picker_style.zig");
+    _ = @import("picker_menu.zig");
     _ = @import("frame_specification.zig");
     _ = @import("fill.zig");
     _ = @import("material.zig");
@@ -282,7 +292,7 @@ test {
     _ = @import("a11y_node.zig");
     _ = @import("overlay_request.zig");
     _ = @import("select_hit.zig");
-    _ = @import("pen.zig");
+    _ = @import("graphics_context.zig");
     _ = @import("build_scope.zig");
     _ = @import("build_tokens.zig");
     _ = @import("wrap_cache.zig");
@@ -304,5 +314,5 @@ test {
     _ = @import("help_tip.zig");
     _ = @import("test_environment.zig");
     _ = @import("accent.zig");
-    _ = @import("test_canvas.zig");
+    _ = @import("test_window.zig");
 }

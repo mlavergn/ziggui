@@ -81,26 +81,26 @@ test {
 }
 
 test "settings shows the selected tab's page, and a tap on another tab selects it" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var selection = renderer.State(i64).init(std.testing.allocator, 0);
     defer selection.deinit();
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const tabs = [_]mod.Tab{
         .{ .label = "General", .icon = .settings, .content = mod.Text("general page") },
         .{ .label = "Advanced", .icon = .slidersHorizontal, .content = mod.Text("advanced page") },
     };
     const view = Settings(selection.binding(), &tabs);
-    canvas.end();
+    window.end();
     // Title, toolbar, divider, then the first tab's page.
     try std.testing.expectEqualStrings("general page", view.kind.stack.children[2].kind.stack.children[0].kind.text.string);
-    var frame = try canvas.render(view, 400, 200);
+    var frame = try window.render(view, 400, 200);
     defer frame.deinit();
     // The tab buttons are the only tap regions; the second is the rightmost.
     var second: ?renderer.Rect = null;
-    for (canvas.hits.items) |hit| {
+    for (window.hits.items) |hit| {
         if (second == null or hit.rect.x > second.?.x) second = hit.rect;
     }
-    try std.testing.expect(canvas.tap(.{ .x = second.?.midX(), .y = second.?.midY() }));
+    try std.testing.expect(window.tap(.{ .x = second.?.midX(), .y = second.?.midY() }));
     try std.testing.expectEqual(@as(i64, 1), selection.get());
 }

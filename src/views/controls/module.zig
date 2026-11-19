@@ -46,7 +46,7 @@ pub const Slider = @import("slider.zig").Slider;
 pub const Stepper = @import("stepper.zig").Stepper;
 /// A progress bar.
 pub const ProgressView = @import("progress_view.zig").ProgressView;
-/// A segmented picker over a selection binding.
+/// A picker over a selection binding: segmented or a pop-up menu.
 pub const Picker = @import("picker.zig").Picker;
 /// A one-line text field.
 pub const TextField = @import("text_field.zig").TextField;
@@ -61,7 +61,7 @@ pub const Icon = @import("icon.zig").Icon;
 /// A borderless tappable glyph.
 pub const IconButton = @import("icon.zig").IconButton;
 /// A view that paints itself through a callback.
-pub const Drawing = @import("drawing.zig").Drawing;
+pub const Canvas = @import("canvas.zig").Canvas;
 /// A push button with its keyboard shortcut in a key cap after the label.
 pub const ButtonKeyed = @import("button.zig").ButtonKeyed;
 /// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
@@ -91,8 +91,8 @@ pub const ButtonRole = @import("../module.zig").ButtonRole;
 pub const TextFieldState = @import("../module.zig").TextFieldState;
 /// A scroll view's app-owned offsets (from the views module).
 pub const ScrollState = @import("../module.zig").ScrollState;
-/// What a `Drawing` paints with (from the views module).
-pub const Pen = @import("../module.zig").Pen;
+/// What a `Canvas` draws with (from the views module).
+pub const GraphicsContext = @import("../module.zig").GraphicsContext;
 /// One styled run of a `RichText` (from the views module).
 pub const Span = @import("../module.zig").Span;
 /// Children side by side (from the views module).
@@ -105,8 +105,8 @@ pub const StackBuilder = @import("../module.zig").StackBuilder;
 pub const BuildTokens = @import("../module.zig").BuildTokens;
 /// The built-in controls' geometry (from the views module).
 pub const ControlMetrics = @import("../module.zig").ControlMetrics;
-/// A headless frame for the unit tests (from the views module).
-pub const TestCanvas = @import("../module.zig").TestCanvas;
+/// A headless window for the unit tests (from the views module).
+pub const TestWindow = @import("../module.zig").TestWindow;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -130,7 +130,7 @@ test {
     _ = @import("label.zig");
     _ = @import("image.zig");
     _ = @import("icon.zig");
-    _ = @import("drawing.zig");
+    _ = @import("canvas.zig");
     _ = @import("badge.zig");
     _ = @import("key_cap.zig");
     _ = @import("segmented_control.zig");

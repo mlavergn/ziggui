@@ -52,24 +52,24 @@ test {
 }
 
 test "a token field draws a capsule per token, removes on ×, commits on submit" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var state = mod.TokenFieldState.init(std.testing.allocator);
     defer state.deinit();
     defer mod.Focus.shared().clear();
     try state.setTokens(&.{ "repos", "issues" });
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const field = TokenField(&state, "Add a toolset");
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(@as(usize, 3), field.kind.stack.children.len);
-    var frame = try canvas.render(field, 400, 30);
+    var frame = try window.render(field, 400, 30);
     defer frame.deinit();
     // The first capsule's × is the first tap target from the left that removes.
     var removed = false;
     var x: f32 = 4;
     while (x < 120 and !removed) : (x += 2) {
-        removed = canvas.tap(.{ .x = x, .y = 15 }) and state.tokens().len == 1;
+        removed = window.tap(.{ .x = x, .y = 15 }) and state.tokens().len == 1;
     }
     try std.testing.expect(removed);
     try std.testing.expectEqualStrings("issues", state.tokens()[0]);
@@ -77,10 +77,10 @@ test "a token field draws a capsule per token, removes on ×, commits on submit"
     // Enter in the focused input commits it.
     mod.Focus.shared().set(&state.input);
     try state.input.setText("actions, issues");
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const again = TokenField(&state, "Add a toolset");
-    canvas.end();
-    var second = try canvas.render(again, 400, 30);
+    window.end();
+    var second = try window.render(again, 400, 30);
     defer second.deinit();
     mod.Focus.shared().submit();
     try std.testing.expectEqual(@as(usize, 2), state.tokens().len);

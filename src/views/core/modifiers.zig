@@ -133,6 +133,8 @@ pub const Modifiers = struct {
     soft_wrap: bool = false,
     /// How the `Toggle`s in this subtree draw, or null to inherit. See `.toggleStyle()`.
     toggle_style: ?mod.ToggleStyle = null,
+    /// How the `Picker`s in this subtree draw, or null to inherit. See `.pickerStyle()`.
+    picker_style: ?mod.PickerStyle = null,
     /// A `Form`: its subtree's form labels share a column as wide as the
     /// widest of them, and its toggles default to checkboxes.
     form_columns: bool = false,

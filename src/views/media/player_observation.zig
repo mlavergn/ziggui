@@ -86,6 +86,15 @@ pub const PlayerObservation = struct {
     pub fn isPlaying(self: *const Self) bool {
         return self.status == .readyToPlay and self.time_control == .playing;
     }
+
+    /// Reports whether the item is live: one with no end (a live stream),
+    /// which the controls show without skips, speed or a scrubber.
+    ///
+    /// - `self`: the observation.
+    /// - Returns: true for an item with no length.
+    pub fn isLive(self: *const Self) bool {
+        return self.has_item and self.duration_seconds == null;
+    }
 };
 
 // -----------------------------------------------------------------------------
@@ -101,4 +110,10 @@ test "player observation: playing needs both a ready item and the playing time c
     try std.testing.expect(!(PlayerObservation{}).isPlaying());
     try std.testing.expect(!(PlayerObservation{ .status = .readyToPlay, .time_control = .waitingToPlay }).isPlaying());
     try std.testing.expect((PlayerObservation{ .status = .readyToPlay, .time_control = .playing }).isPlaying());
+}
+
+test "player observation: an item with no length is live, and no item is not" {
+    try std.testing.expect(!(PlayerObservation{}).isLive());
+    try std.testing.expect((PlayerObservation{ .has_item = true }).isLive());
+    try std.testing.expect(!(PlayerObservation{ .has_item = true, .duration_seconds = 60 }).isLive());
 }

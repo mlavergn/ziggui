@@ -47,8 +47,8 @@ test {
 }
 
 test "a key hint bar shows at most six hints, on the bar ground" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const hints = [_]mod.KeyHint{
         .{ .key = "↑↓", .action = "move" },
         .{ .key = "↩", .action = "open" },
@@ -58,17 +58,17 @@ test "a key hint bar shows at most six hints, on the bar ground" {
         .{ .key = "/", .action = "find" },
         .{ .key = "q", .action = "quit" },
     };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const tokens = mod.BuildScope.shared().tokens();
     const bar = KeyHintBar(&hints);
     const empty = KeyHintBar(&.{});
-    canvas.end();
+    window.end();
     // Six hints and the trailing spacer.
     try std.testing.expectEqual(@as(usize, key_hint_bar_limit + 1), bar.kind.stack.children.len);
     try std.testing.expectEqual(@as(usize, 1), empty.kind.stack.children.len);
     try std.testing.expectEqual(tokens.bar_background, bar.modifiers.background.?.color);
 
-    var frame = try canvas.render(bar, 600, 24);
+    var frame = try window.render(bar, 600, 24);
     defer frame.deinit();
     try std.testing.expect(frame.at(598, 12).approxEql(tokens.bar_background, 0.01));
 }

@@ -85,17 +85,17 @@ test {
 }
 
 test "a hover popover opens on its row after the delay and a dismissal closes it" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const saved = mod.FrameClock.shared().time();
     defer mod.FrameClock.shared().setTime(saved);
     var state: mod.HoverState = .{};
 
     // Not yet hovered: a plain row with a hover handler and no popover.
     mod.FrameClock.shared().setTime(1000);
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     var view = HoverPopover(mod.Text("row").frame(100, 20), &state, 4, mod.Text("details"));
-    canvas.end();
+    window.end();
     try std.testing.expect(view.modifiers.on_hover != null);
     try std.testing.expectEqual(@as(usize, 0), view.modifiers.overlay.len);
 
@@ -105,15 +105,15 @@ test "a hover popover opens on its row after the delay and a dismissal closes it
     view.modifiers.on_hover.?.call(true);
     try std.testing.expectEqual(@as(?usize, 4), state.over);
     mod.FrameClock.shared().setTime(5000);
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     view = HoverPopover(mod.Text("row").frame(100, 20), &state, 4, mod.Text("details"));
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(@as(usize, 0), view.modifiers.overlay.len);
     try std.testing.expect(state.waiting(5000));
     mod.FrameClock.shared().setTime(5000 + mod.HoverState.delay_ms);
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     view = HoverPopover(mod.Text("row").frame(100, 20), &state, 4, mod.Text("details"));
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(@as(usize, 1), view.modifiers.overlay.len);
     try std.testing.expect(view.modifiers.overlay[0].presented.get());
 

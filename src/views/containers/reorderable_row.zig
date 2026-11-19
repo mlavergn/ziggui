@@ -92,39 +92,39 @@ const TestList = struct {
 };
 
 test "a reorderable row taps through to its content, and a drag reorders" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var list = TestList{ .selection = renderer.State(i64).init(std.testing.allocator, -1) };
     defer list.selection.deinit();
     const input = mod.PointerInput.shared();
     defer input.endDrag();
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     var view = list.body();
-    canvas.end();
-    var frame = try canvas.render(view, 200, 84);
+    window.end();
+    var frame = try window.render(view, 200, 84);
     frame.deinit();
 
     // A press without movement taps the row and makes no move.
-    try std.testing.expect(canvas.tap(.{ .x = 50, .y = 42 }));
+    try std.testing.expect(window.tap(.{ .x = 50, .y = 42 }));
     try std.testing.expectEqual(@as(i64, 1), list.selection.get());
     input.endDrag();
     try std.testing.expectEqual(@as(?mod.ReorderMove, null), list.state.takeMove());
     // The content's right-click still reaches it.
-    try std.testing.expect(input.secondaryTap(canvas.hits.items, .{ .x = 50, .y = 42 }));
+    try std.testing.expect(input.secondaryTap(window.hits.items, .{ .x = 50, .y = 42 }));
     try std.testing.expectEqual(@as(u32, 1), list.secondary);
 
     // Press row 0 and drag it down past row 1: the row dims, the line marks gap 2.
-    try std.testing.expect(canvas.tap(.{ .x = 50, .y = 14 }));
+    try std.testing.expect(window.tap(.{ .x = 50, .y = 14 }));
     try std.testing.expectEqual(@as(i64, 0), list.selection.get());
-    input.drag(canvas.hits.items, .{ .x = 50, .y = 30 });
+    input.drag(window.hits.items, .{ .x = 50, .y = 30 });
     try std.testing.expect(list.state.isDragging(0));
     try std.testing.expectEqual(@as(?usize, 2), list.state.dropIndex());
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     view = list.body();
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(dragged_opacity, view.kind.stack.children[0].modifiers.opacity);
-    frame = try canvas.render(view, 200, 84);
+    frame = try window.render(view, 200, 84);
     defer frame.deinit();
     // The accent line sits on row 2's top edge.
     const line = frame.at(150, 57);

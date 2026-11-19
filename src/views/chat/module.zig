@@ -38,8 +38,8 @@ pub const IconName = @import("../module.zig").IconName;
 pub const Rectangle = @import("../module.zig").Rectangle;
 /// Flexible space in a stack (from the views module).
 pub const Spacer = @import("../module.zig").Spacer;
-/// A headless frame for the unit tests (from the views module).
-pub const TestCanvas = @import("../module.zig").TestCanvas;
+/// A headless window for the unit tests (from the views module).
+pub const TestWindow = @import("../module.zig").TestWindow;
 /// One line of text (from the views module).
 pub const Text = @import("../module.zig").Text;
 /// Children stacked vertically (from the views module).

@@ -203,97 +203,97 @@ const TestBar = struct {
 
     /// Draws a bar of `mod.TestMenus` over an empty window.
     ///
-    /// - `canvas`: draws the frame and keeps its tap and hover regions.
+    /// - `window`: draws the frame and keeps its tap and hover regions.
     /// - `state`: the bar's state.
     /// - Returns: the frame, owned by the caller; propagates allocation failure.
-    fn draw(canvas: *mod.TestCanvas, state: *mod.MenuBarState) !renderer.Framebuffer {
-        canvas.begin(renderer.MacosTheme.light);
+    fn draw(window: *mod.TestWindow, state: *mod.MenuBarState) !renderer.Framebuffer {
+        window.begin(renderer.MacosTheme.light);
         const view = mod.VStack(.{ MenuBar(state, &mod.TestMenus.menus, .{}), mod.Spacer() }).frameMaxWidth().frameMaxHeight();
-        canvas.end();
-        return canvas.render(view, 400, 300);
+        window.end();
+        return window.render(view, 400, 300);
     }
 };
 
 test "a tap on a title opens its menu; with one open, a tap on another switches" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var state: mod.MenuBarState = .{};
 
-    var frame = try TestBar.draw(canvas, &state);
+    var frame = try TestBar.draw(window, &state);
     frame.deinit();
     // "File" is the first title, "Edit" right after it, both in the bar's row.
-    try std.testing.expect(canvas.tap(.{ .x = 20, .y = menu_bar_height / 2 }));
+    try std.testing.expect(window.tap(.{ .x = 20, .y = menu_bar_height / 2 }));
     try std.testing.expectEqual(@as(?usize, 0), state.menu);
 
-    frame = try TestBar.draw(canvas, &state);
+    frame = try TestBar.draw(window, &state);
     frame.deinit();
-    try std.testing.expect(canvas.tap(.{ .x = 70, .y = menu_bar_height / 2 }));
+    try std.testing.expect(window.tap(.{ .x = 70, .y = menu_bar_height / 2 }));
     try std.testing.expectEqual(@as(?usize, 1), state.menu);
 
     // A tap elsewhere closes it.
-    frame = try TestBar.draw(canvas, &state);
+    frame = try TestBar.draw(window, &state);
     frame.deinit();
-    try std.testing.expect(canvas.tap(.{ .x = 390, .y = 290 }));
+    try std.testing.expect(window.tap(.{ .x = 390, .y = 290 }));
     try std.testing.expect(!state.isOpen());
 }
 
 test "pointing at another title while a menu is open switches to it" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var state: mod.MenuBarState = .{};
 
-    var frame = try TestBar.draw(canvas, &state);
+    var frame = try TestBar.draw(window, &state);
     frame.deinit();
     // Closed, pointing opens nothing.
-    _ = canvas.hover(.{ .x = 390, .y = 290 }, .{ .x = 70, .y = menu_bar_height / 2 });
+    _ = window.hover(.{ .x = 390, .y = 290 }, .{ .x = 70, .y = menu_bar_height / 2 });
     try std.testing.expect(!state.isOpen());
     state.open(0);
-    frame = try TestBar.draw(canvas, &state);
+    frame = try TestBar.draw(window, &state);
     frame.deinit();
-    try std.testing.expect(canvas.hover(.{ .x = 20, .y = menu_bar_height / 2 }, .{ .x = 70, .y = menu_bar_height / 2 }));
+    try std.testing.expect(window.hover(.{ .x = 20, .y = menu_bar_height / 2 }, .{ .x = 70, .y = menu_bar_height / 2 }));
     try std.testing.expectEqual(@as(?usize, 1), state.menu);
 }
 
 test "an entry runs and closes the menu; a disabled one does nothing" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var state: mod.MenuBarState = .{};
     mod.TestMenus.chosen = 0;
 
     state.open(0);
-    var frame = try TestBar.draw(canvas, &state);
+    var frame = try TestBar.draw(window, &state);
     frame.deinit();
     // The popover sits below the bar: Open, a separator, Save (disabled), Quit.
     const top = menu_bar_height + 4 + 4;
-    try std.testing.expect(canvas.tap(.{ .x = 40, .y = top + 12 }));
+    try std.testing.expect(window.tap(.{ .x = 40, .y = top + 12 }));
     try std.testing.expectEqual(@as(u32, 1), mod.TestMenus.chosen);
     try std.testing.expect(!state.isOpen());
 
     state.open(0);
-    frame = try TestBar.draw(canvas, &state);
+    frame = try TestBar.draw(window, &state);
     frame.deinit();
-    const save = canvas.hits.items[canvas.hits.items.len - 2];
+    const save = window.hits.items[window.hits.items.len - 2];
     try std.testing.expect(save.disabled);
-    _ = canvas.tap(.{ .x = save.rect.x + 10, .y = save.rect.y + save.rect.height / 2 });
+    _ = window.tap(.{ .x = save.rect.x + 10, .y = save.rect.y + save.rect.height / 2 });
     try std.testing.expectEqual(@as(u32, 1), mod.TestMenus.chosen);
 }
 
 test "the keys highlight and choose an entry, and the highlight is drawn" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var state: mod.MenuBarState = .{};
     mod.TestMenus.chosen = 0;
 
     state.open(0);
-    var plain = try TestBar.draw(canvas, &state);
+    var plain = try TestBar.draw(window, &state);
     defer plain.deinit();
     try std.testing.expect(state.key(&mod.TestMenus.menus, .down));
     try std.testing.expect(state.key(&mod.TestMenus.menus, .down));
     try std.testing.expectEqual(@as(?usize, 3), state.item);
-    var lit = try TestBar.draw(canvas, &state);
+    var lit = try TestBar.draw(window, &state);
     defer lit.deinit();
     // Quit's row is shaded once highlighted.
-    const quit = canvas.hits.items[canvas.hits.items.len - 1].rect;
+    const quit = window.hits.items[window.hits.items.len - 1].rect;
     const x: u32 = @intFromFloat(quit.x + quit.width - 4);
     const y: u32 = @intFromFloat(quit.y + quit.height / 2);
     try std.testing.expect(lit.at(x, y).luminance() < plain.at(x, y).luminance());
@@ -303,37 +303,37 @@ test "the keys highlight and choose an entry, and the highlight is drawn" {
 }
 
 test "a disabled bar takes no taps and no hovers" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var state: mod.MenuBarState = .{};
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const view = mod.VStack(.{ MenuBar(&state, &mod.TestMenus.menus, .{}).disabled(true), mod.Spacer() }).frameMaxWidth().frameMaxHeight();
-    canvas.end();
-    var frame = try canvas.render(view, 400, 300);
+    window.end();
+    var frame = try window.render(view, 400, 300);
     frame.deinit();
-    try std.testing.expect(!canvas.tap(.{ .x = 20, .y = menu_bar_height / 2 }));
+    try std.testing.expect(!window.tap(.{ .x = 20, .y = menu_bar_height / 2 }));
     try std.testing.expect(!state.isOpen());
     state.open(0);
-    try std.testing.expect(!canvas.hover(.{ .x = 20, .y = menu_bar_height / 2 }, .{ .x = 70, .y = menu_bar_height / 2 }));
+    try std.testing.expect(!window.hover(.{ .x = 20, .y = menu_bar_height / 2 }, .{ .x = 70, .y = menu_bar_height / 2 }));
     try std.testing.expectEqual(@as(?usize, 0), state.menu);
 }
 
 test "a folded bar is one ☰ title whose menu lists every entry under headings" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
     const folded = try mod.MenuBarMenu.fold(arena.allocator(), &mod.TestMenus.menus);
     var state: mod.MenuBarState = .{};
     mod.TestMenus.chosen = 0;
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     var view = mod.VStack(.{ MenuBar(&state, folded, .{}), mod.Spacer() }).frameMaxWidth().frameMaxHeight();
-    canvas.end();
-    var frame = try canvas.render(view, 400, 400);
+    window.end();
+    var frame = try window.render(view, 400, 400);
     frame.deinit();
-    try std.testing.expect(canvas.tap(.{ .x = 15, .y = menu_bar_height / 2 }));
+    try std.testing.expect(window.tap(.{ .x = 15, .y = menu_bar_height / 2 }));
     try std.testing.expectEqual(@as(?usize, 0), state.menu);
     // The keys skip the headings: down lands on Open, ←→ stay put.
     try std.testing.expect(state.key(folded, .down));
@@ -341,15 +341,15 @@ test "a folded bar is one ☰ title whose menu lists every entry under headings"
     try std.testing.expect(state.key(folded, .right));
     try std.testing.expectEqual(@as(?usize, 1), state.item);
 
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     view = mod.VStack(.{ MenuBar(&state, folded, .{}), mod.Spacer() }).frameMaxWidth().frameMaxHeight();
-    canvas.end();
-    frame = try canvas.render(view, 400, 400);
+    window.end();
+    frame = try window.render(view, 400, 400);
     frame.deinit();
     // Headings take no taps: the regions are the title, the dismiss pieces,
     // then Open, Save (disabled), Quit, Undo (disabled) and Copy.
-    const last = canvas.hits.items[canvas.hits.items.len - 1].rect;
-    try std.testing.expect(canvas.tap(.{ .x = last.x + 10, .y = last.y + last.height / 2 }));
+    const last = window.hits.items[window.hits.items.len - 1].rect;
+    try std.testing.expect(window.tap(.{ .x = last.x + 10, .y = last.y + last.height / 2 }));
     try std.testing.expectEqual(@as(u32, 1), mod.TestMenus.chosen);
     try std.testing.expect(!state.isOpen());
 }

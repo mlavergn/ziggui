@@ -381,33 +381,33 @@ test "the kit's buttons say what they did" {
 test "the Reorder panel's list reorders on a drag and selects on a tap" {
     var kit = try Kit.init(std.testing.allocator);
     defer kit.deinit();
-    const canvas = try ziggui.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try ziggui.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const input = ziggui.PointerInput.shared();
     defer input.endDrag();
 
-    canvas.begin(ziggui.MacosTheme.light);
+    window.begin(ziggui.MacosTheme.light);
     var list = Kit.sampleList(&kit.reorder_order, &kit.reorder_selection, true, &kit.reorder);
-    canvas.end();
-    var frame = try canvas.render(list, 300, 150);
+    window.end();
+    var frame = try window.render(list, 300, 150);
     frame.deinit();
     // A tap selects the third row's item.
-    try std.testing.expect(canvas.tap(.{ .x = 100, .y = 2 * reorder_pitch + 10 }));
+    try std.testing.expect(window.tap(.{ .x = 100, .y = 2 * reorder_pitch + 10 }));
     input.endDrag();
     try std.testing.expectEqual(@as(i64, 2), kit.reorder_selection.get());
     // Drag the first row three rows down: it lands fourth.
-    try std.testing.expect(canvas.tap(.{ .x = 100, .y = 10 }));
-    input.drag(canvas.hits.items, .{ .x = 100, .y = 10 + 3 * reorder_pitch });
+    try std.testing.expect(window.tap(.{ .x = 100, .y = 10 }));
+    input.drag(window.hits.items, .{ .x = 100, .y = 10 + 3 * reorder_pitch });
     input.endDrag();
 
-    canvas.begin(ziggui.MacosTheme.light);
+    window.begin(ziggui.MacosTheme.light);
     _ = kit.reorderPanel(ziggui.MacosTheme.light);
     list = Kit.sampleList(&kit.reorder_order, &kit.reorder_selection, true, &kit.reorder);
-    canvas.end();
+    window.end();
     try std.testing.expectEqualSlices(usize, &.{ 1, 2, 3, 0, 4 }, &kit.reorder_order);
     // The selection follows its item, not its place.
     try std.testing.expectEqual(@as(i64, 0), kit.reorder_selection.get());
-    frame = try canvas.render(list, 300, 150);
+    frame = try window.render(list, 300, 150);
     frame.deinit();
 }
 

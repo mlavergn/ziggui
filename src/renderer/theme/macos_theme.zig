@@ -81,6 +81,7 @@ pub const MacosTheme = struct {
         .typography = Self.typography,
         .painter = Self.painter,
         .metrics = Self.metrics,
+        .menu_picker = mod.MenuPickerLook.macos,
         .colors = .{
             .accent = mod.Color.fromRgb8(1, 121, 254), // systemBlue (glassProminent fill)
             .label = mod.Color.black.withAlpha(0.85), // labelColor
@@ -113,6 +114,7 @@ pub const MacosTheme = struct {
         .typography = Self.typography,
         .painter = Self.painter,
         .metrics = Self.metrics,
+        .menu_picker = mod.MenuPickerLook.macos,
         .colors = .{
             .accent = mod.Color.fromRgb8(0, 121, 255),
             .label = mod.Color.white.withAlpha(0.85),
@@ -469,37 +471,37 @@ test "macos: default is light" {
 }
 
 test "macos: liquid glass buttons frost their backdrop" {
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    const surface = mod.Surface{ .canvas = &canvas, .palette = &MacosTheme.light.colors, .metrics = &MacosTheme.light.metrics, .scheme = .light };
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const surface = mod.Surface{ .display_list = &display_list, .palette = &MacosTheme.light.colors, .metrics = &MacosTheme.light.metrics, .scheme = .light };
     const rect = mod.Rect{ .x = 0, .y = 0, .width = 80, .height = 28 };
     const label_color = try MacosTheme.painter.button(surface, rect, .normal, .{});
     // Neutral glass keeps the ordinary label color…
     try std.testing.expect(label_color.approxEql(MacosTheme.light.colors.label, 0.001));
     // …and draws a backdrop frost (after the drop shadow).
     var saw_blur = false;
-    for (canvas.commands.items) |command| {
+    for (display_list.commands.items) |command| {
         if (command == .blurRect) saw_blur = true;
     }
     try std.testing.expect(saw_blur);
 }
 
 test "macos: prominent and destructive buttons are tinted glass" {
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    const surface = mod.Surface{ .canvas = &canvas, .palette = &MacosTheme.light.colors, .metrics = &MacosTheme.light.metrics, .scheme = .light };
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const surface = mod.Surface{ .display_list = &display_list, .palette = &MacosTheme.light.colors, .metrics = &MacosTheme.light.metrics, .scheme = .light };
     const rect = mod.Rect{ .x = 0, .y = 0, .width = 80, .height = 28 };
     try std.testing.expect((try MacosTheme.painter.button(surface, rect, .prominent, .{})).approxEql(MacosTheme.light.colors.on_accent, 0.001));
     try std.testing.expect((try MacosTheme.painter.button(surface, rect, .destructive, .{})).approxEql(MacosTheme.light.colors.on_accent, 0.001));
 }
 
 test "macos: popover panels are deep-frosted glass; modals are opaque" {
-    var canvas = mod.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    const surface = mod.Surface{ .canvas = &canvas, .palette = &MacosTheme.dark.colors, .metrics = &MacosTheme.dark.metrics, .scheme = .dark };
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const surface = mod.Surface{ .display_list = &display_list, .palette = &MacosTheme.dark.colors, .metrics = &MacosTheme.dark.metrics, .scheme = .dark };
     try MacosTheme.painter.panel(surface, .{ .x = 10, .y = 10, .width = 200, .height = 120 }, 16, .popover);
     var saw_blur = false;
-    for (canvas.commands.items) |command| {
+    for (display_list.commands.items) |command| {
         if (command == .blurRect) {
             saw_blur = true;
             try std.testing.expect(command.blurRect.sigma > MacosTheme.control_sigma);
@@ -507,7 +509,7 @@ test "macos: popover panels are deep-frosted glass; modals are opaque" {
     }
     try std.testing.expect(saw_blur);
     // A modal sheet/alert is an opaque elevated panel — no backdrop sampling.
-    canvas.clearCommands();
+    display_list.clearCommands();
     try MacosTheme.painter.panel(surface, .{ .x = 10, .y = 10, .width = 200, .height = 120 }, 16, .modal);
-    for (canvas.commands.items) |command| try std.testing.expect(command != .blurRect);
+    for (display_list.commands.items) |command| try std.testing.expect(command != .blurRect);
 }

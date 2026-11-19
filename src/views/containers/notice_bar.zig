@@ -41,12 +41,12 @@ test {
 }
 
 test "notice bar lays out its mark, words and action in a row, the action only when given" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const plain = NoticeBar(true, "Uploaded a.txt.", false, null, "");
     const acting = NoticeBar(false, "Archived.", false, .{ .function = TestNotice.nothing }, "Show in Finder");
-    canvas.end();
+    window.end();
     try std.testing.expect(plain.kind.stack.children[2].kind == .empty);
     try std.testing.expect(acting.kind.stack.children[2].kind == .button);
 }

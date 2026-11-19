@@ -1,5 +1,5 @@
 //! High-level font façade. Wraps the low-level `TtfFont` parser and the
-//! `TextShaper` metrics; `TextPainter` paints a string into a `Canvas` as a
+//! `TextShaper` metrics; `TextPainter` paints a string into a `DisplayList` as a
 //! sequence of tinted glyph-coverage quads. The default font is the bundled
 //! Inter (OFL).
 

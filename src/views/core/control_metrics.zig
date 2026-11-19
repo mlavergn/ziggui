@@ -18,6 +18,24 @@ pub const ControlMetrics = struct {
     pub const checkbox_size: f32 = 14;
     /// The gap between a checkbox and its label.
     pub const checkbox_gap: f32 = 6;
+    /// A pop-up button's (`.pickerStyle(.menu)`) up-and-down chevron side.
+    pub const popup_chevron_size: f32 = 12;
+    /// The gap between a pop-up button's title and its chevron.
+    pub const popup_chevron_gap: f32 = 8;
+    /// A pop-up button's inset from its trailing edge to its chevron.
+    pub const popup_chevron_inset: f32 = 7;
+    /// The width of a sunken drop-down list's own button (Windows 2000).
+    pub const popup_field_button_width: f32 = 16;
+    /// A solid down triangle's width (Windows 2000, Material).
+    pub const popup_triangle_width: f32 = 8;
+    /// A pop-up menu's check-mark column, before each option's title.
+    pub const popup_check_width: f32 = 16;
+    /// A pop-up menu's inset around its rows.
+    pub const popup_menu_inset: f32 = 5;
+    /// A pop-up menu row's padding above and below its title.
+    pub const popup_row_padding_y: f32 = 3;
+    /// A pop-up menu row's padding before its check column and after its title.
+    pub const popup_row_padding_x: f32 = 6;
     /// A checkbox's corner radius, before the theme scales it.
     pub const checkbox_radius: f32 = 4;
     /// A segmented control's track inset around its segments (and between

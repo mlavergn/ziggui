@@ -34,10 +34,10 @@ test {
 }
 
 test "labeled field drops empty help" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const view = LabeledField("Bucket", mod.Empty(), "");
-    canvas.end();
+    window.end();
     try std.testing.expect(view.kind.stack.children[2].kind == .empty);
 }

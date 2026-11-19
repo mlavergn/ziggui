@@ -10,7 +10,7 @@ pub const std_options: std.Options = .{
 
 /// The command line: `ziggui-gallery [--section <n>] [--theme <n>] [--accent <n>]
 /// [--dark] [--menu <n>] [--sheet] [--alert] [--popover] [--passthrough]
-/// [--options-menu] [--find] [--dialog] [--select] [--video <url or path>]
+/// [--options-menu] [--picker-menu] [--find] [--dialog] [--select] [--video <url or path>]
 /// [--screenshot <out.bmp> [--gpu] [--bench <n>]]`.
 ///
 /// `--video` is what the Video section's "Load sample stream" plays instead
@@ -25,7 +25,9 @@ pub const std_options: std.Options = .{
 /// `--menu` opens the Menu Bar section's menu `n`. `--sheet` and `--alert`
 /// present the Overlays section's sheet and alert over any section;
 /// `--popover`, `--passthrough` and `--options-menu` open its popover, its
-/// passthrough popover and its Options menu (`--section 13`). `--find`,
+/// passthrough popover and its Options menu (`--section 13`).
+/// `--picker-menu` opens the Pickers section's first menu (`--section 29`),
+/// as the theme family opens it (`--theme`). `--find`,
 /// `--dialog` and `--select` show the Editor section's find bar (after
 /// `greeting`), its Open dialog, and a selection across three lines
 /// (`--section 17`).
@@ -75,6 +77,9 @@ const Arguments = struct {
     /// Open the Overlays panel's Options menu.
     options_menu: bool = false,
 
+    /// Open the Pickers panel's first menu.
+    picker_menu: bool = false,
+
     /// Show the Editor panel's find bar, its first match selected.
     find: bool = false,
 
@@ -117,6 +122,8 @@ const Arguments = struct {
                 arguments.passthrough = true;
             } else if (std.mem.eql(u8, argument, "--options-menu")) {
                 arguments.options_menu = true;
+            } else if (std.mem.eql(u8, argument, "--picker-menu")) {
+                arguments.picker_menu = true;
             } else if (std.mem.eql(u8, argument, "--find")) {
                 arguments.find = true;
             } else if (std.mem.eql(u8, argument, "--dialog")) {
@@ -179,6 +186,7 @@ const Arguments = struct {
         if (self.popover) shown.showcase.show_popover.set(true);
         if (self.passthrough) shown.showcase.show_pass_popover.set(true);
         if (self.options_menu) shown.showcase.menu_open.set(true);
+        if (self.picker_menu) shown.pickers.openMenu();
         if (self.find) shown.editor.showMatch("greeting");
         if (self.dialog) shown.editor.openDialog();
         if (self.select) shown.editor.selectBetween("const greeting", "// Click");

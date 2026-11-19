@@ -108,7 +108,17 @@ pub const ViewLowering = struct {
         if (view.modifiers.form_label) {
             const child = try context.arena.create(renderer.Node);
             child.* = node;
-            node = .{ .frame = .{ .width = context.form_label_width, .alignment = .topTrailing, .child = child } };
+            // Beside a row taller than itself (a pop-up, a field), the label is
+            // centered in that row, level with the control's text, as macOS
+            // lines them up; else it keeps to the top.
+            const label_height = renderer.LayoutEngine.shared().measure(child.*, .unspecified).height;
+            const level = context.form_row_height > label_height;
+            node = .{ .frame = .{
+                .width = context.form_label_width,
+                .height = if (level) context.form_row_height else null,
+                .alignment = if (level) .trailing else .topTrailing,
+                .child = child,
+            } };
         }
         if (view.modifiers.padding) |insets| {
             const child = try context.arena.create(renderer.Node);
@@ -190,7 +200,7 @@ pub const ViewLowering = struct {
                 measure.* = .{ .arena = context.arena, .spans = rich.spans, .faces = context.richFaces(), .pixel_size = context.resolvedFontSize(view), .line_multiple = rich.line_multiple, .preformatted = rich.preformatted };
                 return .{ .measured = .{ .context = measure, .measure_fn = RichTextMeasure.measure } };
             },
-            .shape, .drawing => return .{ .leaf = .{
+            .shape, .canvas => return .{ .leaf = .{
                 .min = .{},
                 .ideal = .{ .width = 10, .height = 10 },
                 .max = .{ .width = infinity, .height = infinity },
@@ -298,6 +308,7 @@ pub const ViewLowering = struct {
                 .max = .{ .width = infinity, .height = infinity },
             } },
             .picker => |picker| {
+                if (context.resolvedPickerStyle() == .menu) return .{ .leaf = renderer.SizingHints.fixedSize(Self.menuPickerSize(context, picker)) };
                 const pixel_size = context.theme.typography.body.size;
                 var width: f32 = 0;
                 // Per-segment horizontal padding (each side gets half) so labels have
@@ -312,7 +323,13 @@ pub const ViewLowering = struct {
             },
             .stack => |stack| {
                 const nodes = try context.arena.alloc(renderer.Node, stack.children.len);
-                for (stack.children, 0..) |child, index| nodes[index] = try Self.buildNode(context, child);
+                // A `LabeledContent` row: its label learns the height of the
+                // content's first row, to sit level with it.
+                var label_context = context.*;
+                if (stack.direction == .horizontal and stack.children.len >= 2 and stack.children[0].modifiers.form_label) {
+                    label_context.form_row_height = try Self.firstRowHeight(context, stack.children[1]);
+                }
+                for (stack.children, 0..) |child, index| nodes[index] = try Self.buildNode(if (index == 0) &label_context else context, child);
                 return .{ .stack = .{
                     .direction = stack.direction,
                     .spacing = stack.spacing,
@@ -330,6 +347,49 @@ pub const ViewLowering = struct {
     }
 
     /// A button's size: its label (and glyph) plus padding, at least a control tall.
+    ///
+    /// - `context`: the context.
+    /// - `button`: the button.
+    /// - Returns: the size.
+    /// The height of a view's first row: a vertical stack's first child's,
+    /// another stack's tallest child's, else the view's own (a form row's
+    /// content, whose label sits level with it).
+    ///
+    /// - `context`: the context.
+    /// - `view`: the view.
+    /// - Returns: the height, in points; propagates allocation failure.
+    pub fn firstRowHeight(context: *const mod.Context, view: mod.View) std.mem.Allocator.Error!f32 {
+        switch (view.kind) {
+            .stack => |stack| {
+                if (stack.children.len == 0) return 0;
+                if (stack.direction == .vertical) return Self.firstRowHeight(context, stack.children[0]);
+                var tallest: f32 = 0;
+                for (stack.children) |child| tallest = @max(tallest, try Self.firstRowHeight(context, child));
+                return tallest;
+            },
+            else => return renderer.LayoutEngine.shared().measure(try Self.buildNode(context, view), .unspecified).height,
+        }
+    }
+
+    /// A menu-style picker's size: wide enough for its widest option and the
+    /// theme family's trailing mark, as tall as a control.
+    ///
+    /// - `context`: the context.
+    /// - `picker`: the picker.
+    /// - Returns: the size.
+    pub fn menuPickerSize(context: *const mod.Context, picker: mod.PickerData) renderer.Size {
+        const pixel_size = context.theme.typography.body.size;
+        const shaper = renderer.TextShaper.init(context.cache.face);
+        var widest: f32 = 0;
+        for (picker.options) |option| widest = @max(widest, shaper.measureLineWidth(option, pixel_size));
+        const height = @max(shaper.lineHeight(pixel_size), context.theme.metrics.control_height);
+        // The mark's box measured from the trailing edge of a zero-width frame.
+        const mark = mod.ControlPainter.menuPickerMark(context.theme.menu_picker, .{ .width = 0, .height = height });
+        return .{ .width = mod.ControlMetrics.control_horizontal_padding + widest + mod.ControlMetrics.popup_chevron_gap - mark.x, .height = height };
+    }
+
+    /// A button's size: its label, icon and key cap between the control's
+    /// padding, as tall as a control.
     ///
     /// - `context`: the context.
     /// - `button`: the button.

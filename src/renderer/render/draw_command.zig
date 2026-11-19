@@ -1,4 +1,4 @@
-//! One high-level drawing operation in a `Canvas` command list.
+//! One high-level drawing operation in a `DisplayList` command list.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_draw_command);

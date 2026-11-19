@@ -70,12 +70,12 @@ const Fixtures = struct {
         return mod.Rectangle(cell_color).frameHeight(20);
     }
 
-    /// The coverage width of the first glyph a canvas holds.
+    /// The coverage width of the first glyph a display list holds.
     ///
-    /// - `canvas`: the commands.
+    /// - `display_list`: the commands.
     /// - Returns: the width, or null without a glyph.
-    fn firstGlyphCoverageWidth(canvas: *const renderer.Canvas) ?u32 {
-        for (canvas.commands.items) |command| {
+    fn firstGlyphCoverageWidth(display_list: *const renderer.DisplayList) ?u32 {
+        for (display_list.commands.items) |command| {
             if (command == .glyph) return command.glyph.coverage.width;
         }
         return null;
@@ -117,8 +117,8 @@ test "view: fixedSize keeps a Toggle at its ideal width beside a Spacer" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     var on = renderer.State(bool).init(std.testing.allocator, false);
     defer on.deinit();
     const ideal = (try mod.ViewRenderer.measure(&context, mod.Toggle("Amend", on.binding()), .unspecified)).width;
@@ -127,7 +127,7 @@ test "view: fixedSize keeps a Toggle at its ideal width beside a Spacer" {
     try std.testing.expectApproxEqAbs(ideal, (try mod.ViewRenderer.measure(&context, mod.Toggle("Amend", on.binding()).fixedSize(), .{ .width = 400, .height = null })).width, 0.5);
     // In a row the Spacer takes all the slack, so the switch stays by its label.
     const row = mod.HStack(.{ mod.Toggle("Amend", on.binding()).fixedSize(), mod.Spacer() });
-    try mod.ViewRenderer.render(&context, row, .{ .x = 0, .y = 0, .width = 400, .height = 30 }, &canvas);
+    try mod.ViewRenderer.render(&context, row, .{ .x = 0, .y = 0, .width = 400, .height = 30 }, &display_list);
     try std.testing.expectEqual(@as(usize, 1), environment.hits.items.len);
     try std.testing.expectApproxEqAbs(@as(f32, 0), environment.hits.items[0].rect.x, 0.5);
     try std.testing.expectApproxEqAbs(ideal, environment.hits.items[0].rect.width, 0.5);
@@ -152,15 +152,15 @@ test "view: Rectangle fills its frame with color" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const tree = mod.Rectangle(renderer.Color.red);
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &canvas);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &display_list);
 
     var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, 20, 20);
     defer framebuffer.deinit();
     framebuffer.clear(renderer.Color.white);
-    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
     try std.testing.expect(framebuffer.at(10, 10).approxEql(renderer.Color.red, 0.02));
 }
 
@@ -169,16 +169,16 @@ test "view: padding insets the content" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // A red rectangle padded 5 inside a 20x20 frame -> red only in the inner 10x10.
     const tree = mod.Rectangle(renderer.Color.red).padding(5);
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &canvas);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &display_list);
 
     var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, 20, 20);
     defer framebuffer.deinit();
     framebuffer.clear(renderer.Color.white);
-    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
     try std.testing.expect(framebuffer.at(10, 10).approxEql(renderer.Color.red, 0.02)); // inside
     try std.testing.expect(framebuffer.at(1, 1).approxEql(renderer.Color.white, 0.05)); // padding margin
 }
@@ -188,14 +188,14 @@ test "view: background paints behind text" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const tree = mod.Text("A").padding(4).background(renderer.Color.blue);
     const size = try mod.ViewRenderer.measure(&context, tree, .unspecified);
-    try mod.ViewRenderer.render(&context, tree, renderer.Rect.fromOriginSize(.{}, size), &canvas);
+    try mod.ViewRenderer.render(&context, tree, renderer.Rect.fromOriginSize(.{}, size), &display_list);
     // first command should be the background fill
-    try std.testing.expect(canvas.commands.items[0] == .fillRoundedRect);
-    try std.testing.expect(canvas.commands.items[0].fillRoundedRect.color.approxEql(renderer.Color.blue, 0.02));
+    try std.testing.expect(display_list.commands.items[0] == .fillRoundedRect);
+    try std.testing.expect(display_list.commands.items[0].fillRoundedRect.color.approxEql(renderer.Color.blue, 0.02));
 }
 
 test "view: Button registers a hit region and tap fires the action" {
@@ -203,13 +203,13 @@ test "view: Button registers a hit region and tap fires the action" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
 
     Counter.value = 0;
     const tree = mod.Button("Click", mod.Callback.action(Counter.increment));
     const size = try mod.ViewRenderer.measure(&context, tree, .unspecified);
-    try mod.ViewRenderer.render(&context, tree, renderer.Rect.fromOriginSize(.{}, size), &canvas);
+    try mod.ViewRenderer.render(&context, tree, renderer.Rect.fromOriginSize(.{}, size), &display_list);
 
     try std.testing.expectEqual(@as(usize, 1), environment.hits.items.len);
     // tap inside -> fires
@@ -225,11 +225,11 @@ test "view: disabled view's tap region does not fire" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     Counter.value = 0;
     const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTap(mod.Callback.action(Counter.increment)).disabled(true);
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &canvas);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &display_list);
     try std.testing.expect(!mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 10, .y = 10 }));
     try std.testing.expectEqual(@as(u32, 0), Counter.value);
 }
@@ -239,11 +239,11 @@ test "view: a right-click handler fires on secondary only, a tap on primary only
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     Counter.value = 0;
     const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTap(mod.Callback.action(Counter.increment)).onSecondaryTap(mod.Callback.action(Counter.incrementSecondary));
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &canvas);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &display_list);
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 10, .y = 10 }));
     try std.testing.expectEqual(@as(u32, 1), Counter.value);
     try std.testing.expectEqual(@as(u32, 0), Counter.secondary);
@@ -258,8 +258,8 @@ test "view: a tap handler can arm a drag from its own press; the end hook fires 
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     DragProbe.travel = 0;
     DragProbe.ended = 0;
     const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTap(mod.Callback.action(struct {
@@ -268,7 +268,7 @@ test "view: a tap handler can arm a drag from its own press; the end hook fires 
             mod.PointerInput.shared().armDrag(.{ .function = DragProbe.move });
         }
     }.arm));
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &canvas);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &display_list);
     mod.PointerInput.shared().setDragEndHook(DragProbe.end);
     defer mod.PointerInput.shared().setDragEndHook(null);
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 10, .y = 4 }));
@@ -412,12 +412,12 @@ test "view: glassEffect draws the theme's glass surface behind content" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // The macOS painter's glass surface starts with a backdrop frost.
-    try mod.ViewRenderer.render(&context, mod.Empty().frame(80, 28).glassEffect(), .{ .x = 0, .y = 0, .width = 80, .height = 28 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.Empty().frame(80, 28).glassEffect(), .{ .x = 0, .y = 0, .width = 80, .height = 28 }, &display_list);
     var saw_blur = false;
-    for (canvas.commands.items) |command| {
+    for (display_list.commands.items) |command| {
         if (command == .blurRect) saw_blur = true;
     }
     try std.testing.expect(saw_blur);
@@ -434,11 +434,11 @@ test "view: SidebarStyled prominent selection is the accent row" {
         .{ .label = "New Chat", .detail = "just now" },
         .{ .label = "Older", .detail = "4h ago" },
     };
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.SidebarStyled(&items, selection.binding(), .prominent), .{ .x = 0, .y = 0, .width = 220, .height = 200 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.SidebarStyled(&items, selection.binding(), .prominent), .{ .x = 0, .y = 0, .width = 220, .height = 200 }, &display_list);
     var has_accent_row = false;
-    for (canvas.commands.items) |command| {
+    for (display_list.commands.items) |command| {
         if (command == .fillRoundedRect and command.fillRoundedRect.color.approxEql(context.theme.colors.selection, 0.05)) has_accent_row = true;
     }
     try std.testing.expect(has_accent_row);
@@ -471,11 +471,11 @@ test "view: Icon paints nothing when no icon cache is wired" {
     defer environment.deinit();
     var context = environment.context();
     context.icon_cache = null; // simulate an app that didn't wire the icon font
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.Icon(.heart, 24, renderer.Color.red), .{ .x = 0, .y = 0, .width = 24, .height = 24 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.Icon(.heart, 24, renderer.Color.red), .{ .x = 0, .y = 0, .width = 24, .height = 24 }, &display_list);
     // No glyph command emitted for the icon.
-    for (canvas.commands.items) |command| try std.testing.expect(command != .glyph);
+    for (display_list.commands.items) |command| try std.testing.expect(command != .glyph);
 }
 
 test "view: Stepper increments and clamps" {
@@ -538,14 +538,14 @@ test "view: Label draws an icon swatch then the title" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const tree = mod.Label("Wi-Fi", renderer.Color.blue);
     const size = try mod.ViewRenderer.measure(&context, tree, .unspecified);
-    try mod.ViewRenderer.render(&context, tree, renderer.Rect.fromOriginSize(.{}, size), &canvas);
-    try std.testing.expect(canvas.commands.items[0] == .fillRoundedRect); // the icon swatch
-    try std.testing.expect(canvas.commands.items[0].fillRoundedRect.color.approxEql(renderer.Color.blue, 0.02));
-    try std.testing.expect(canvas.count() > 1); // plus glyphs
+    try mod.ViewRenderer.render(&context, tree, renderer.Rect.fromOriginSize(.{}, size), &display_list);
+    try std.testing.expect(display_list.commands.items[0] == .fillRoundedRect); // the icon swatch
+    try std.testing.expect(display_list.commands.items[0].fillRoundedRect.color.approxEql(renderer.Color.blue, 0.02));
+    try std.testing.expect(display_list.count() > 1); // plus glyphs
 }
 
 test "view: WrappedText measures taller at a narrow width than a wide one" {
@@ -745,19 +745,19 @@ test "view: TextField paints, focuses on tap, and shows a caret" {
     defer mod.Focus.shared().clear(); // a tap focuses it
     try field.setText("hi");
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.TextField("type…", &field), .{ .x = 0, .y = 0, .width = 180, .height = 28 }, &canvas);
-    const before = canvas.count();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.TextField("type…", &field), .{ .x = 0, .y = 0, .width = 180, .height = 28 }, &display_list);
+    const before = display_list.count();
     // tap focuses
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 20, .y = 14 }));
     try std.testing.expect(field.focused);
 
     // focused render draws an extra caret line
-    canvas.clearCommands();
-    try mod.ViewRenderer.render(&context, mod.TextField("type…", &field), .{ .x = 0, .y = 0, .width = 180, .height = 28 }, &canvas);
+    display_list.clearCommands();
+    try mod.ViewRenderer.render(&context, mod.TextField("type…", &field), .{ .x = 0, .y = 0, .width = 180, .height = 28 }, &display_list);
     var has_line = false;
-    for (canvas.commands.items) |command| {
+    for (display_list.commands.items) |command| {
         if (command == .line) has_line = true;
     }
     try std.testing.expect(has_line);
@@ -772,8 +772,8 @@ test "view: onSubmit fires only for a focused field with a callback" {
     var field = mod.TextFieldState.init(std.testing.allocator);
     defer field.deinit();
     Counter.value = 0;
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
 
     // Focus this field directly (avoids touching any stale global focus pointer
     // a prior test may have left behind).
@@ -782,13 +782,13 @@ test "view: onSubmit fires only for a focused field with a callback" {
     defer mod.Focus.shared().clear();
 
     // Focused but no onSubmit -> Focus.submit is a no-op.
-    try mod.ViewRenderer.render(&context, mod.TextField("msg", &field), .{ .x = 0, .y = 0, .width = 180, .height = 28 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.TextField("msg", &field), .{ .x = 0, .y = 0, .width = 180, .height = 28 }, &display_list);
     mod.Focus.shared().submit();
     try std.testing.expectEqual(@as(u32, 0), Counter.value);
 
     // With onSubmit, render (stashing it on the focused field) then submit fires.
-    canvas.clearCommands();
-    try mod.ViewRenderer.render(&context, mod.TextField("msg", &field).onSubmit(mod.Callback.action(Counter.increment)), .{ .x = 0, .y = 0, .width = 180, .height = 28 }, &canvas);
+    display_list.clearCommands();
+    try mod.ViewRenderer.render(&context, mod.TextField("msg", &field).onSubmit(mod.Callback.action(Counter.increment)), .{ .x = 0, .y = 0, .width = 180, .height = 28 }, &display_list);
     mod.Focus.shared().submit();
     try std.testing.expectEqual(@as(u32, 1), Counter.value);
 }
@@ -801,9 +801,9 @@ test "view: Picker selects a segment on tap" {
     var selection = renderer.State(i64).init(std.testing.allocator, 0);
     defer selection.deinit();
     const options = [_][]const u8{ "Low", "Medium", "High" };
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.Picker(selection.binding(), &options), .{ .x = 0, .y = 0, .width = 300, .height = 28 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.Picker(selection.binding(), &options), .{ .x = 0, .y = 0, .width = 300, .height = 28 }, &display_list);
     try std.testing.expectEqual(@as(usize, 3), environment.hits.items.len); // one region per segment
     // tap the third segment (x ~ 250)
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 250, .y = 14 }));
@@ -818,9 +818,9 @@ test "view: RadioGroup selects an option on tap" {
     var selection = renderer.State(i64).init(std.testing.allocator, 0);
     defer selection.deinit();
     const options = [_][]const u8{ "One", "Two", "Three" };
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.RadioGroup(selection.binding(), &options), .{ .x = 0, .y = 0, .width = 200, .height = 120 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.RadioGroup(selection.binding(), &options), .{ .x = 0, .y = 0, .width = 200, .height = 120 }, &display_list);
     try std.testing.expectEqual(@as(usize, 3), environment.hits.items.len); // one tap target per option
     // tapping the second row sets the binding to index 1
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, environment.hits.items[1].rect.center()));
@@ -839,13 +839,13 @@ test "view: Sidebar selects a row on tap and highlights the selection" {
         .{ .label = "Sent" },
         .{ .label = "Drafts" },
     };
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.Sidebar(&items, selection.binding()), .{ .x = 0, .y = 0, .width = 220, .height = 300 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.Sidebar(&items, selection.binding()), .{ .x = 0, .y = 0, .width = 220, .height = 300 }, &display_list);
     try std.testing.expectEqual(@as(usize, 3), environment.hits.items.len);
     // the selected (row 0) draws the neutral selection wash behind it
     var has_selection = false;
-    for (canvas.commands.items) |command| {
+    for (display_list.commands.items) |command| {
         if (command == .fillRoundedRect and command.fillRoundedRect.color.approxEql(context.theme.colors.quaternary_fill, 0.05)) has_selection = true;
     }
     try std.testing.expect(has_selection);
@@ -867,9 +867,9 @@ test "view: Table shows a header + rows and selects a row on tap" {
         &.{ "Alan", "41" },
         &.{ "Grace", "45" },
     };
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.Table(&columns, &rows, selection.binding()), .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.Table(&columns, &rows, selection.binding()), .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &display_list);
     // selection enabled -> one callback tap target per data row (header has none)
     var row_hits: usize = 0;
     var second: ?renderer.Rect = null;
@@ -899,9 +899,9 @@ test "view: DataTable sortable header toggles the sort binding" {
         &.{ mod.Text("Ada"), mod.Text("6 GB") },
         &.{ mod.Text("Alan"), mod.Text("9 GB") },
     };
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.DataTable(&columns, &rows, sort.binding(), null), .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.DataTable(&columns, &rows, sort.binding(), null), .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &display_list);
 
     // Only the one sortable header registers a tap target.
     var header_hit: ?renderer.Rect = null;
@@ -1001,17 +1001,17 @@ test "view: NavigationLink pushes its route, NavigationBackButton pops" {
     var navigation = mod.NavigationPath.init(std.testing.allocator);
     defer navigation.deinit();
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.NavigationLink("Details", 42, &navigation), .{ .x = 0, .y = 0, .width = 120, .height = 28 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.NavigationLink("Details", 42, &navigation), .{ .x = 0, .y = 0, .width = 120, .height = 28 }, &display_list);
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 60, .y = 14 }));
     try std.testing.expectEqual(@as(usize, 1), navigation.depth());
     try std.testing.expectEqual(@as(i64, 42), navigation.top().?);
 
     // a back button pops it
     environment.hits.clearRetainingCapacity();
-    canvas.clearCommands();
-    try mod.ViewRenderer.render(&context, mod.NavigationBackButton("Back", &navigation), .{ .x = 0, .y = 0, .width = 80, .height = 28 }, &canvas);
+    display_list.clearCommands();
+    try mod.ViewRenderer.render(&context, mod.NavigationBackButton("Back", &navigation), .{ .x = 0, .y = 0, .width = 80, .height = 28 }, &display_list);
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 40, .y = 14 }));
     try std.testing.expectEqual(@as(usize, 0), navigation.depth());
 }
@@ -1042,11 +1042,11 @@ test "view: renderScaled rasterizes glyphs at device resolution (crisp, not upsc
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 60, .height = 30 };
     const tree = mod.Text("A").font(.title);
 
-    var canvas1 = renderer.Canvas.init(std.testing.allocator);
+    var canvas1 = renderer.DisplayList.init(std.testing.allocator);
     defer canvas1.deinit();
     try mod.ViewRenderer.renderScaled(&context, tree, root, 1, &canvas1);
 
-    var canvas2 = renderer.Canvas.init(std.testing.allocator);
+    var canvas2 = renderer.DisplayList.init(std.testing.allocator);
     defer canvas2.deinit();
     try mod.ViewRenderer.renderScaled(&context, tree, root, 2, &canvas2);
 
@@ -1066,7 +1066,7 @@ test "view: renderScaled doubles shape coordinates and ~4×s glyph ink at scale 
     // (a) a shape's device coordinates scale by the factor
     const shape_tree = mod.Rectangle(renderer.Color.red).frame(10, 10);
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 40, .height = 40 };
-    var shape_canvas1 = renderer.Canvas.init(std.testing.allocator);
+    var shape_canvas1 = renderer.DisplayList.init(std.testing.allocator);
     defer shape_canvas1.deinit();
     try mod.ViewRenderer.renderScaled(&context, shape_tree, root, 1, &shape_canvas1);
     var framebuffer1 = try renderer.Framebuffer.init(std.testing.allocator, 40, 40);
@@ -1074,7 +1074,7 @@ test "view: renderScaled doubles shape coordinates and ~4×s glyph ink at scale 
     framebuffer1.clear(renderer.Color.white);
     try renderer.Rasterizer.init(std.testing.allocator, &framebuffer1).render(shape_canvas1.commands.items);
 
-    var shape_canvas2 = renderer.Canvas.init(std.testing.allocator);
+    var shape_canvas2 = renderer.DisplayList.init(std.testing.allocator);
     defer shape_canvas2.deinit();
     try mod.ViewRenderer.renderScaled(&context, shape_tree, root, 2, &shape_canvas2);
     var framebuffer2 = try renderer.Framebuffer.init(std.testing.allocator, 80, 80);
@@ -1090,7 +1090,7 @@ test "view: renderScaled doubles shape coordinates and ~4×s glyph ink at scale 
 
     // (b) glyph ink area roughly quadruples (2× linear) between scales
     const text_tree = mod.Text("Ag").font(.title);
-    var text_canvas1 = renderer.Canvas.init(std.testing.allocator);
+    var text_canvas1 = renderer.DisplayList.init(std.testing.allocator);
     defer text_canvas1.deinit();
     try mod.ViewRenderer.renderScaled(&context, text_tree, .{ .x = 0, .y = 0, .width = 80, .height = 40 }, 1, &text_canvas1);
     var text_framebuffer1 = try renderer.Framebuffer.init(std.testing.allocator, 80, 40);
@@ -1098,7 +1098,7 @@ test "view: renderScaled doubles shape coordinates and ~4×s glyph ink at scale 
     text_framebuffer1.clear(renderer.Color.white);
     try renderer.Rasterizer.init(std.testing.allocator, &text_framebuffer1).render(text_canvas1.commands.items);
 
-    var text_canvas2 = renderer.Canvas.init(std.testing.allocator);
+    var text_canvas2 = renderer.DisplayList.init(std.testing.allocator);
     defer text_canvas2.deinit();
     try mod.ViewRenderer.renderScaled(&context, text_tree, .{ .x = 0, .y = 0, .width = 80, .height = 40 }, 2, &text_canvas2);
     var text_framebuffer2 = try renderer.Framebuffer.init(std.testing.allocator, 160, 80);
@@ -1117,19 +1117,19 @@ test "view: backgroundMaterial frosts the backdrop drawn beneath it" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // a sharp red→blue gradient backdrop, then a centered 40×40 material panel
     const tree = mod.ZStack(.{
         mod.LinearGradient(renderer.Color.red, renderer.Color.blue, .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }).frameMaxWidth().frameMaxHeight(),
         mod.Empty().frame(40, 40).backgroundMaterial(.regular),
     });
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 100, .height = 100 };
-    try mod.ViewRenderer.render(&context, tree, root, &canvas);
+    try mod.ViewRenderer.render(&context, tree, root, &display_list);
 
     // the material emits a blur command
     var has_blur = false;
-    for (canvas.commands.items) |command| {
+    for (display_list.commands.items) |command| {
         if (command == .blurRect) has_blur = true;
     }
     try std.testing.expect(has_blur);
@@ -1137,7 +1137,7 @@ test "view: backgroundMaterial frosts the backdrop drawn beneath it" {
     var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, 100, 100);
     defer framebuffer.deinit();
     framebuffer.clear(renderer.Color.white);
-    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
     // inside the panel the frost lightens the gradient vs. the raw backdrop above it
     try std.testing.expect(framebuffer.at(50, 50).luminance() > framebuffer.at(50, 5).luminance() + 0.2);
 }
@@ -1154,15 +1154,15 @@ test "a11y: emits a node per meaningful component with roles, labels, values" {
     var amount = renderer.State(f32).init(std.testing.allocator, 0.5);
     defer amount.deinit();
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const tree = mod.VStack(.{
         mod.Text("Title"),
         mod.Button("Increment", mod.Callback.action(Counter.increment)),
         mod.Toggle("Wi-Fi", on.binding()),
         mod.Slider(amount.binding(), 0, 1),
     });
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &canvas);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &display_list);
 
     var has_text = false;
     var has_button = false;
@@ -1203,8 +1203,8 @@ test "a11y: a field's text and a slider's value are built only for an accessibil
     const long_text: [4096]u8 = @splat('x');
     try field.setText(&long_text);
     try editor.setText(&long_text);
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const tree = mod.VStack(.{
         mod.TextField("ph", &field),
         mod.TextEditor(&editor, &scroll, false).frameHeight(60),
@@ -1221,8 +1221,8 @@ test "a11y: a field's text and a slider's value are built only for an accessibil
         environment.hits = .empty;
         var a11y: std.ArrayList(mod.A11yNode) = .empty;
         if (pass == 1) context.a11y = &a11y;
-        canvas.clearCommands();
-        try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &canvas);
+        display_list.clearCommands();
+        try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &display_list);
         bytes.* = counting.allocated_bytes;
         for (a11y.items) |node| if (node.role == .textField) try std.testing.expectEqual(long_text.len, node.value.len);
     }
@@ -1238,13 +1238,13 @@ test "a11y: accessibilityHidden drops a node; accessibilityLabel overrides it" {
     var a11y: std.ArrayList(mod.A11yNode) = .empty;
     context.a11y = &a11y;
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const tree = mod.VStack(.{
         mod.Text("secret").accessibilityHidden(true),
         mod.Text("raw").accessibilityLabel("Friendly"),
     });
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 200, .height = 100 }, &canvas);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 200, .height = 100 }, &display_list);
 
     var saw_secret = false;
     var saw_friendly = false;
@@ -1269,10 +1269,10 @@ test "a11y: an icon segmented control's segments are buttons named by their titl
     var selection = renderer.State(i64).init(std.testing.allocator, 1);
     defer selection.deinit();
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const segments = [_]mod.IconSegment{ .{ .icon = .gitBranch, .title = "Git" }, .{ .icon = .code, .title = "Files" } };
-    try mod.ViewRenderer.render(&context, mod.IconSegmentedControl(selection.binding(), &segments), .{ .x = 0, .y = 0, .width = 200, .height = 24 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.IconSegmentedControl(selection.binding(), &segments), .{ .x = 0, .y = 0, .width = 200, .height = 24 }, &display_list);
 
     var git: ?mod.A11yNode = null;
     var files: ?mod.A11yNode = null;
@@ -1287,21 +1287,21 @@ test "a11y: an icon segmented control's segments are buttons named by their titl
 }
 
 test "a selectable row's id rides its tap region" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const Probe = struct {
         const Self = @This();
 
         /// Does nothing: the test reads the region, not the tap.
         fn tapped() void {}
     };
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const row = mod.SelectableRow(mod.Text("file"), false, true, mod.Callback.action(Probe.tapped)).id(42);
-    canvas.end();
-    var frame = try canvas.render(row, 200, 22);
+    window.end();
+    var frame = try window.render(row, 200, 22);
     defer frame.deinit();
     var found = false;
-    for (canvas.hits.items) |region| {
+    for (window.hits.items) |region| {
         if (region.action == .callback and region.id == 42) found = true;
     }
     try std.testing.expect(found);
@@ -1317,11 +1317,11 @@ test "view: sheet enqueues an overlay, draws a scrim over content, dismisses on 
     var presented = renderer.State(bool).init(std.testing.allocator, true);
     defer presented.deinit();
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 200, .height = 200 };
     const sheet_content = mod.Rectangle(renderer.Color.red).frame(120, 60);
-    try mod.ViewRenderer.render(&context, mod.Text("Base").sheet(presented.binding(), sheet_content), root, &canvas);
+    try mod.ViewRenderer.render(&context, mod.Text("Base").sheet(presented.binding(), sheet_content), root, &display_list);
 
     // one overlay collected with the right style
     try std.testing.expectEqual(@as(usize, 1), overlays.items.len);
@@ -1329,7 +1329,7 @@ test "view: sheet enqueues an overlay, draws a scrim over content, dismisses on 
 
     // a full-root, semi-transparent scrim fill is appended AFTER the base content
     var scrim_index: ?usize = null;
-    for (canvas.commands.items, 0..) |command, index| {
+    for (display_list.commands.items, 0..) |command, index| {
         if (command == .fillRoundedRect) {
             const fill = command.fillRoundedRect;
             if (fill.rect.width == 200 and fill.rect.height == 200 and fill.color.a > 0 and fill.color.a < 0.5) scrim_index = index;
@@ -1348,7 +1348,7 @@ test "view: sheet enqueues an overlay, draws a scrim over content, dismisses on 
     var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, 200, 200);
     defer framebuffer.deinit();
     framebuffer.clear(renderer.Color.white);
-    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
     try std.testing.expect(mod.TestEnvironment.countRed(&framebuffer) > 100);
     try std.testing.expect(framebuffer.at(100, 20).luminance() < 0.95);
 }
@@ -1365,24 +1365,24 @@ test "view: chaining .sheet and .alert keeps both overlays (neither clobbers)" {
     var alert_on = renderer.State(bool).init(std.testing.allocator, false);
     defer alert_on.deinit();
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 200, .height = 200 };
     const base = mod.Text("Base")
         .sheet(sheet_on.binding(), mod.Rectangle(renderer.Color.red).frame(80, 40))
         .alert(alert_on.binding(), mod.Rectangle(renderer.Color.blue).frame(80, 40));
 
     // Only the sheet is presented → exactly one overlay, and it's the sheet.
-    try mod.ViewRenderer.render(&context, base, root, &canvas);
+    try mod.ViewRenderer.render(&context, base, root, &display_list);
     try std.testing.expectEqual(@as(usize, 1), overlays.items.len);
     try std.testing.expectEqual(mod.OverlayStyle.sheet, overlays.items[0].style);
 
     // Turn the alert on too → both present (the .alert did not overwrite .sheet).
     overlays.clearRetainingCapacity();
     environment.hits.clearRetainingCapacity();
-    canvas.clearCommands();
+    display_list.clearCommands();
     alert_on.set(true);
-    try mod.ViewRenderer.render(&context, base, root, &canvas);
+    try mod.ViewRenderer.render(&context, base, root, &display_list);
     try std.testing.expectEqual(@as(usize, 2), overlays.items.len);
     try std.testing.expectEqual(mod.OverlayStyle.sheet, overlays.items[0].style);
     try std.testing.expectEqual(mod.OverlayStyle.alert, overlays.items[1].style);
@@ -1407,15 +1407,15 @@ test "view: onHover fires once on enter and once on leave, and only on movement"
             if (inside) enters += 1 else leaves += 1;
         }
     };
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 200, .height = 200 };
     const tree = mod.VStack(.{
         mod.Rectangle(renderer.Color.red).frame(100, 40).onHover(.{ .function = Probe.seen }),
         mod.Rectangle(renderer.Color.blue).frame(100, 40).onHover(.{ .function = Probe.seen }).disabled(true),
         mod.Spacer(),
     }).alignment(.leading).frameMaxWidth().frameMaxHeight();
-    try mod.ViewRenderer.render(&context, tree, root, &canvas);
+    try mod.ViewRenderer.render(&context, tree, root, &display_list);
     try std.testing.expectEqual(@as(usize, 2), hovers.items.len);
     const box = hovers.items[0].rect;
     const inside = renderer.Point{ .x = box.x + 10, .y = box.y + 10 };
@@ -1454,8 +1454,8 @@ test "view: a popoverPassthrough view takes taps while a popover is open" {
             taps += 1;
         }
     };
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 300, .height = 300 };
     const tree = mod.VStack(.{
         mod.HStack(.{
@@ -1465,7 +1465,7 @@ test "view: a popoverPassthrough view takes taps while a popover is open" {
         }),
         mod.Spacer(),
     }).frameMaxWidth().frameMaxHeight();
-    try mod.ViewRenderer.render(&context, tree, root, &canvas);
+    try mod.ViewRenderer.render(&context, tree, root, &display_list);
 
     // The second box sits at x 60..120 on the top row: a tap there reaches it
     // and leaves the popover up.
@@ -1501,8 +1501,8 @@ test "view: a modalPassthrough view takes taps under an alert; a popoverPassthro
             popover += 1;
         }
     };
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 300, .height = 300 };
     const tree = mod.VStack(.{
         mod.HStack(.{
@@ -1512,7 +1512,7 @@ test "view: a modalPassthrough view takes taps under an alert; a popoverPassthro
         }),
         mod.Spacer(),
     }).frameMaxWidth().frameMaxHeight().alert(presented.binding(), mod.Rectangle(renderer.Color.blue).frame(80, 80));
-    try mod.ViewRenderer.render(&context, tree, root, &canvas);
+    try mod.ViewRenderer.render(&context, tree, root, &display_list);
 
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 30, .y = 15 }));
     try std.testing.expectEqual(@as(u32, 1), Probe.modal);
@@ -1534,13 +1534,13 @@ test "view: a popover taller than the window is cut to fit and scrolls" {
     context.scroll_regions = &scrolls;
     var presented = renderer.State(bool).init(std.testing.allocator, true);
     defer presented.deinit();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 300, .height = 300 };
     const tree = mod.VStack(.{ mod.Spacer(), mod.Text("anchor").popover(presented.binding(), mod.Rectangle(renderer.Color.blue).frame(80, 2000)) });
     // The app paints after the build pass ends; so does this test.
     mod.BuildScope.shared().end();
-    try mod.ViewRenderer.render(&context, tree, root, &canvas);
+    try mod.ViewRenderer.render(&context, tree, root, &display_list);
     // A scroll region for the popover, inside the window.
     try std.testing.expectEqual(@as(usize, 1), scrolls.items.len);
     try std.testing.expect(scrolls.items[0].rect.y >= 0 and scrolls.items[0].rect.maxY() <= 300);
@@ -1551,16 +1551,16 @@ test "view: press-drag over selectable text selects it for copying" {
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 400, .height = 40 };
     const tree = mod.RichText(&.{.{ .text = "hello world" }}).selectable().frameMaxWidth().frameAlign(.leading);
-    try mod.ViewRenderer.render(&context, tree, root, &canvas);
+    try mod.ViewRenderer.render(&context, tree, root, &display_list);
     // Press at the far left, drag past the end: the whole text.
     try std.testing.expect(mod.PointerInput.shared().tap(context.hit_regions.items, .{ .x = 1, .y = 20 }));
     mod.PointerInput.shared().drag(context.hit_regions.items, .{ .x = 399, .y = 20 });
     mod.PointerInput.shared().endDrag();
-    try mod.ViewRenderer.render(&context, tree, root, &canvas); // paints the highlight, refreshes the text
+    try mod.ViewRenderer.render(&context, tree, root, &display_list); // paints the highlight, refreshes the text
     try std.testing.expectEqualStrings("hello world", mod.TextSelection.shared().selectedText().?);
     // A press elsewhere clears it.
     _ = mod.PointerInput.shared().tap(&.{}, .{ .x = 500, .y = 500 });
@@ -1572,8 +1572,8 @@ test "view: identical selectable paragraphs select apart, and stay apart frame t
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     defer mod.TextSelection.shared().current = null;
     var scroll = mod.ScrollState{};
     const Transcript = struct {
@@ -1612,7 +1612,7 @@ test "view: identical selectable paragraphs select apart, and stay apart frame t
     var found: [4]*const mod.SelectHit = undefined;
 
     // Both shown: they are told apart, and a drag over the second selects it alone.
-    try mod.ViewRenderer.render(&context, Transcript.build(&scroll), .{ .x = 0, .y = 0, .width = 400, .height = 200 }, &canvas);
+    try mod.ViewRenderer.render(&context, Transcript.build(&scroll), .{ .x = 0, .y = 0, .width = 400, .height = 200 }, &display_list);
     try std.testing.expectEqual(@as(usize, 2), Transcript.selectables(environment.hits.items, &found));
     const first_key = found[0].key;
     const second_key = found[1].key;
@@ -1627,8 +1627,8 @@ test "view: identical selectable paragraphs select apart, and stay apart frame t
     // The next frame builds them anew: the same keys, the selection stays put.
     mod.BuildScope.shared().begin(environment.arena_state.allocator());
     environment.hits.clearRetainingCapacity();
-    canvas.clearCommands();
-    try mod.ViewRenderer.render(&context, Transcript.build(&scroll), .{ .x = 0, .y = 0, .width = 400, .height = 200 }, &canvas);
+    display_list.clearCommands();
+    try mod.ViewRenderer.render(&context, Transcript.build(&scroll), .{ .x = 0, .y = 0, .width = 400, .height = 200 }, &display_list);
     try std.testing.expectEqual(@as(usize, 2), Transcript.selectables(environment.hits.items, &found));
     try std.testing.expectEqual(first_key, found[0].key);
     try std.testing.expectEqual(second_key, found[1].key);
@@ -1638,8 +1638,8 @@ test "view: identical selectable paragraphs select apart, and stay apart frame t
     for (0..2) |_| {
         mod.BuildScope.shared().begin(environment.arena_state.allocator());
         environment.hits.clearRetainingCapacity();
-        canvas.clearCommands();
-        try mod.ViewRenderer.render(&context, Transcript.build(&scroll), .{ .x = 0, .y = 0, .width = 400, .height = 40 }, &canvas);
+        display_list.clearCommands();
+        try mod.ViewRenderer.render(&context, Transcript.build(&scroll), .{ .x = 0, .y = 0, .width = 400, .height = 40 }, &display_list);
         scroll.scrollToBottom();
     }
     try std.testing.expectEqual(@as(usize, 1), Transcript.selectables(environment.hits.items, &found));
@@ -1694,64 +1694,64 @@ test "view: ScrollViewStateBoth lays content out at its width and scrolls it sid
     try std.testing.expectEqual(@as(f32, 0), plain.content_width);
 }
 
-test "view: a Drawing paints into its frame" {
+test "view: a Canvas paints into its frame" {
     var environment = mod.TestEnvironment.init();
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const Box = struct {
         const Self = @This();
         color: renderer.Color,
         /// Fills the frame's left half with the probe's color.
         ///
         /// - `self`: the probe.
-        /// - `pen`: the pen.
+        /// - `graphics`: what it draws with.
         /// - `rect`: the frame.
         /// - Returns: nothing; propagates allocation failure.
-        fn draw(self: *const Self, pen: *mod.Pen, rect: renderer.Rect) std.mem.Allocator.Error!void {
-            try pen.fill(.{ .x = rect.x, .y = rect.y, .width = rect.width / 2, .height = rect.height }, 0, self.color);
+        fn draw(self: *const Self, graphics: *mod.GraphicsContext, rect: renderer.Rect) std.mem.Allocator.Error!void {
+            try graphics.fill(.{ .x = rect.x, .y = rect.y, .width = rect.width / 2, .height = rect.height }, 0, self.color);
         }
     };
     const box = Box{ .color = renderer.Color.blue };
-    try mod.ViewRenderer.render(&context, mod.Drawing(Box, &box, Box.draw).frame(40, 20), .{ .x = 0, .y = 0, .width = 40, .height = 20 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.Canvas(Box, &box, Box.draw).frame(40, 20), .{ .x = 0, .y = 0, .width = 40, .height = 20 }, &display_list);
     var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, 40, 20);
     defer framebuffer.deinit();
     framebuffer.clear(renderer.Color.white);
-    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
     try std.testing.expect(framebuffer.at(5, 10).b > 0.9 and framebuffer.at(5, 10).r < 0.1);
     try std.testing.expect(framebuffer.at(35, 10).r > 0.9);
 }
 
-test "view: a Drawing's picture skips the atlas and stays inside the clip" {
+test "view: a Canvas's picture skips the atlas and stays inside the clip" {
     var environment = mod.TestEnvironment.init();
     environment.setup();
     defer environment.deinit();
     var context = environment.context();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const Photo = struct {
         const Self = @This();
         pixels: [4 * 4 * 4]u8,
         /// Draws the picture twice the frame's width, so half of it falls past the frame.
         ///
         /// - `self`: the probe.
-        /// - `pen`: the pen.
+        /// - `graphics`: what it draws with.
         /// - `rect`: the frame.
         /// - Returns: nothing; propagates allocation failure.
-        fn draw(self: *const Self, pen: *mod.Pen, rect: renderer.Rect) std.mem.Allocator.Error!void {
+        fn draw(self: *const Self, graphics: *mod.GraphicsContext, rect: renderer.Rect) std.mem.Allocator.Error!void {
             const image = renderer.Image{ .width = 4, .height = 4, .pixels = &self.pixels };
-            try pen.picture(.{ .x = rect.x, .y = rect.y, .width = rect.width * 2, .height = rect.height }, image, @intFromPtr(&self.pixels), 1);
+            try graphics.picture(.{ .x = rect.x, .y = rect.y, .width = rect.width * 2, .height = rect.height }, image, @intFromPtr(&self.pixels), 1);
         }
     };
     var photo = Photo{ .pixels = undefined };
     for (0..16) |index| photo.pixels[index * 4 ..][0..4].* = .{ 255, 0, 0, 255 };
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 60, .height = 20 };
-    try mod.ViewRenderer.render(&context, mod.HStack(.{ mod.Drawing(Photo, &photo, Photo.draw).frame(40, 20).clipped(), mod.Spacer() }).spacing(0).frame(60, 20), root, &canvas);
+    try mod.ViewRenderer.render(&context, mod.HStack(.{ mod.Canvas(Photo, &photo, Photo.draw).frame(40, 20).clipped(), mod.Spacer() }).spacing(0).frame(60, 20), root, &display_list);
 
     var pictures: usize = 0;
-    for (canvas.commands.items) |command| {
+    for (display_list.commands.items) |command| {
         if (command == .videoFrame) pictures += 1;
         try std.testing.expect(command != .image);
     }
@@ -1760,7 +1760,7 @@ test "view: a Drawing's picture skips the atlas and stays inside the clip" {
     var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, 60, 20);
     defer framebuffer.deinit();
     framebuffer.clear(renderer.Color.white);
-    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
     try std.testing.expect(framebuffer.at(20, 10).r > 0.9 and framebuffer.at(20, 10).g < 0.1);
     // Past the clip the picture is not drawn.
     try std.testing.expect(framebuffer.at(50, 10).g > 0.9);
@@ -1777,8 +1777,8 @@ test "view: an alert widens to content that cannot be narrower" {
     defer presented.deinit();
     var choice = renderer.State(i64).init(std.testing.allocator, 0);
     defer choice.deinit();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 900, .height = 400 };
     const options = [_][]const u8{ "A long first option", "A long second option", "A long third option", "Fourth" };
     const picker = mod.Picker(choice.binding(), &options);
@@ -1788,10 +1788,10 @@ test "view: an alert widens to content that cannot be narrower" {
     const content = mod.VStack(.{ mod.Text("Settings"), picker.frameMaxWidth() }).alignment(.leading).padding(20);
     const tree = mod.Rectangle(renderer.Color.white).alert(presented.binding(), content);
     mod.BuildScope.shared().end();
-    try mod.ViewRenderer.render(&context, tree, root, &canvas);
+    try mod.ViewRenderer.render(&context, tree, root, &display_list);
     // The panel holds every segment: none reaches its clip, which is the panel.
     var clip: ?renderer.Rect = null;
-    for (canvas.commands.items) |command| if (command == .pushClip) {
+    for (display_list.commands.items) |command| if (command == .pushClip) {
         clip = command.pushClip.rect;
     };
     try std.testing.expect(clip.?.width >= least.width + 40 - 0.5);
@@ -1811,19 +1811,19 @@ test "view: popover content is positioned near its (top) anchor" {
     var presented = renderer.State(bool).init(std.testing.allocator, true);
     defer presented.deinit();
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 300, .height = 300 };
     const popover_content = mod.Rectangle(renderer.Color.blue).frame(80, 40);
     const tree = mod.VStack(.{ mod.Text("anchor").popover(presented.binding(), popover_content), mod.Spacer() });
-    try mod.ViewRenderer.render(&context, tree, root, &canvas);
+    try mod.ViewRenderer.render(&context, tree, root, &display_list);
     try std.testing.expectEqual(@as(usize, 1), overlays.items.len);
     try std.testing.expectEqual(mod.OverlayStyle.popover, overlays.items[0].style);
 
     var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, 300, 300);
     defer framebuffer.deinit();
     framebuffer.clear(renderer.Color.white);
-    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+    try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
     // the anchor sits at the top, so the popover renders in the top half only
     var top_blue: u32 = 0;
     var bottom_blue: u32 = 0;
@@ -1853,12 +1853,12 @@ test "view: nested overlays drain once each without recursion" {
     var inner = renderer.State(bool).init(std.testing.allocator, true);
     defer inner.deinit();
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // the sheet's content itself presents an alert
     const inner_content = mod.Rectangle(renderer.Color.green).frame(60, 40);
     const sheet_content = mod.Text("sheet").alert(inner.binding(), inner_content);
-    try mod.ViewRenderer.render(&context, mod.Text("base").sheet(outer.binding(), sheet_content), .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.Text("base").sheet(outer.binding(), sheet_content), .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &display_list);
 
     try std.testing.expectEqual(@as(usize, 2), overlays.items.len);
     try std.testing.expectEqual(mod.OverlayStyle.sheet, overlays.items[0].style);
@@ -1888,9 +1888,9 @@ test "view: double-click selects the word; TextField exposes text_click" {
 
     // The single-line field now registers a `text_click`, so a double-click
     // dispatch near the left edge selects the first word.
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.TextField("ph", &field), .{ .x = 0, .y = 0, .width = 200, .height = 40 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.TextField("ph", &field), .{ .x = 0, .y = 0, .width = 200, .height = 40 }, &display_list);
     try std.testing.expectEqual(@as(usize, 1), environment.hits.items.len);
     try std.testing.expect(environment.hits.items[0].action == .textClick);
     try std.testing.expect(mod.PointerInput.shared().doubleClick(environment.hits.items, .{ .x = 12, .y = 20 }));
@@ -1944,10 +1944,10 @@ test "view: Menu toggles a popover of items" {
     var open = renderer.State(bool).init(std.testing.allocator, false);
     defer open.deinit();
 
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // closed: no overlay; tapping the button opens the menu
-    try mod.ViewRenderer.render(&context, mod.Menu("Options", &open, .{mod.Button("A", mod.Callback.action(Counter.increment))}), .{ .x = 0, .y = 0, .width = 100, .height = 200 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.Menu("Options", &open, .{mod.Button("A", mod.Callback.action(Counter.increment))}), .{ .x = 0, .y = 0, .width = 100, .height = 200 }, &display_list);
     try std.testing.expectEqual(@as(usize, 0), overlays.items.len);
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 50, .y = 14 }));
     try std.testing.expect(open.get());
@@ -1955,8 +1955,8 @@ test "view: Menu toggles a popover of items" {
     // open: a single popover overlay holds the menu items
     environment.hits.clearRetainingCapacity();
     overlays.clearRetainingCapacity();
-    canvas.clearCommands();
-    try mod.ViewRenderer.render(&context, mod.Menu("Options", &open, .{mod.Button("A", mod.Callback.action(Counter.increment))}), .{ .x = 0, .y = 0, .width = 100, .height = 200 }, &canvas);
+    display_list.clearCommands();
+    try mod.ViewRenderer.render(&context, mod.Menu("Options", &open, .{mod.Button("A", mod.Callback.action(Counter.increment))}), .{ .x = 0, .y = 0, .width = 100, .height = 200 }, &display_list);
     try std.testing.expectEqual(@as(usize, 1), overlays.items.len);
     try std.testing.expectEqual(mod.OverlayStyle.popover, overlays.items[0].style);
 }
@@ -2091,8 +2091,8 @@ test "painter: every family paints all controls without error" {
     const rect = renderer.Rect{ .x = 0, .y = 0, .width = 60, .height = 24 };
     const knob = renderer.Rect{ .x = 0, .y = 0, .width = 18, .height = 18 };
     for (families) |theme| {
-        var canvas = renderer.Canvas.init(arena.allocator());
-        const surface = renderer.Surface{ .canvas = &canvas, .palette = &theme.colors, .metrics = &theme.metrics, .scheme = theme.scheme };
+        var display_list = renderer.DisplayList.init(arena.allocator());
+        const surface = renderer.Surface{ .display_list = &display_list, .palette = &theme.colors, .metrics = &theme.metrics, .scheme = theme.scheme };
         const painter = theme.painter;
         _ = try painter.button(surface, rect, .normal, .{});
         try painter.field(surface, rect, 4, .{});
@@ -2105,7 +2105,7 @@ test "painter: every family paints all controls without error" {
         try painter.progress(surface, rect, 0.5);
         try painter.panel(surface, rect, 8, .modal);
         try painter.panel(surface, rect, 8, .popover);
-        try std.testing.expect(canvas.commands.items.len > 0);
+        try std.testing.expect(display_list.commands.items.len > 0);
     }
 }
 
@@ -2181,9 +2181,9 @@ test "view: clipped content takes no taps outside the frame" {
         }).spacing(0).frame(40, 20).clipped(),
         mod.Spacer(),
     }).spacing(0).frameMaxWidth().frameAlign(.leading);
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, view, .{ .x = 0, .y = 0, .width = 100, .height = 20 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, view, .{ .x = 0, .y = 0, .width = 100, .height = 20 }, &display_list);
     try std.testing.expect(!mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 55, .y = 10 }));
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 20, .y = 10 }));
     try std.testing.expectEqual(@as(u32, 1), Probe.taps);
@@ -2216,9 +2216,9 @@ test "view: a row scrolled up under a header leaves the header its taps" {
         mod.ScrollViewState(&scroll, mod.VStack(.{ row, row, row, row, row }).spacing(0)).frameHeight(100),
         mod.Spacer(),
     }).spacing(0).frameMaxWidth().frameMaxHeight();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, view, .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, view, .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &display_list);
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 100, .y = 15 }));
     try std.testing.expectEqual(@as(u32, 1), Probe.header);
     try std.testing.expectEqual(@as(u32, 0), Probe.rows);
@@ -2247,9 +2247,9 @@ test "view: a passthrough row scrolled under a header leaves no hole there" {
         mod.Rectangle(renderer.Color.green).frame(60, 30).popover(presented.binding(), mod.Rectangle(renderer.Color.white).frame(40, 40)),
         mod.Spacer(),
     }).spacing(0).frameMaxWidth().frameMaxHeight();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, view, .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, view, .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &display_list);
     // The header is no hole: a tap there dismisses the popover.
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 100, .y = 15 }));
     try std.testing.expect(!presented.get());
@@ -2266,9 +2266,9 @@ test "a soft-wrap editor ending in a newline has a row for its empty last line" 
     mod.Focus.shared().set(&field);
     defer mod.Focus.shared().clear();
     var scroll: mod.ScrollState = .{};
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.TextEditor(&field, &scroll, false).softWrap(), .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.TextEditor(&field, &scroll, false).softWrap(), .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &display_list);
 
     // Two rows tall, and a click on the second line puts the caret after the newline.
     var clicked: ?usize = null;
@@ -2292,11 +2292,11 @@ test "video player: in a window it erases its frame and registers it, the visibl
     context.video_regions = &regions;
     var player = mod.Player.init(std.testing.allocator);
     defer player.deinit();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
 
     const tree = mod.VStack(.{ mod.VideoPlayer(&player).cornerRadius(8), mod.Text("Below") }).clipped();
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 320, .height = 200 }, &canvas);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 320, .height = 200 }, &display_list);
 
     try std.testing.expectEqual(@as(usize, 1), regions.items.len);
     const region = regions.items[0];
@@ -2305,7 +2305,7 @@ test "video player: in a window it erases its frame and registers it, the visibl
     try std.testing.expectApproxEqAbs(@as(f32, 320), region.rect.width, 0.5);
     try std.testing.expect(region.visible.width > 0 and region.visible.height <= region.rect.height);
     var erased = false;
-    for (canvas.commands.items) |command| switch (command) {
+    for (display_list.commands.items) |command| switch (command) {
         .eraseRect => |erase| erased = erase.rect.width == region.rect.width and erase.radius == 8,
         else => {},
     };
@@ -2454,14 +2454,14 @@ test "video player: where the platform hands its frames over, it draws the lates
     defer mod.Player.setBackend(null);
     var player = mod.Player.init(std.testing.allocator);
     defer player.deinit();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
 
-    try mod.ViewRenderer.render(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 0, .width = 200, .height = 200 }, &display_list);
 
     var frames: usize = 0;
     var glyphs: usize = 0;
-    for (canvas.commands.items) |command| switch (command) {
+    for (display_list.commands.items) |command| switch (command) {
         .videoFrame => |picture| {
             frames += 1;
             try std.testing.expectEqual(@as(u32, 4), picture.image.width);
@@ -2490,13 +2490,13 @@ test "video player: a scrolled-away player registers an empty visible part" {
     context.visible = .{ .x = 0, .y = 500, .width = 320, .height = 100 };
     var player = mod.Player.init(std.testing.allocator);
     defer player.deinit();
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
     // A frame wholly outside the viewport skips painting altogether.
-    try mod.ViewRenderer.render(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 0, .width = 320, .height = 180 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 0, .width = 320, .height = 180 }, &display_list);
     try std.testing.expectEqual(@as(usize, 0), regions.items.len);
     // One straddling its edge registers only the part inside.
-    try mod.ViewRenderer.render(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 450, .width = 320, .height = 180 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.VideoPlayer(&player), .{ .x = 0, .y = 450, .width = 320, .height = 180 }, &display_list);
     try std.testing.expectEqual(@as(usize, 1), regions.items.len);
     try std.testing.expectApproxEqAbs(@as(f32, 500), regions.items[0].visible.y, 0.5);
     try std.testing.expectApproxEqAbs(@as(f32, 100), regions.items[0].visible.height, 0.5);
@@ -2510,11 +2510,11 @@ test "native view: in a window it registers its frame and paints nothing" {
     var regions: std.ArrayList(mod.NativeRegion) = .empty;
     context.native_regions = &regions;
     var marker: u8 = 0;
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
 
     const tree = mod.VStack(.{ mod.NativeView(&marker).cornerRadius(6), mod.Text("Below") }).clipped();
-    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 320, .height = 200 }, &canvas);
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 320, .height = 200 }, &display_list);
 
     try std.testing.expectEqual(@as(usize, 1), regions.items.len);
     const region = regions.items[0];
@@ -2522,7 +2522,7 @@ test "native view: in a window it registers its frame and paints nothing" {
     try std.testing.expectEqual(@as(f32, 6), region.corner_radius);
     try std.testing.expectApproxEqAbs(@as(f32, 320), region.rect.width, 0.5);
     try std.testing.expect(region.visible.width > 0 and region.visible.height <= region.rect.height);
-    for (canvas.commands.items) |command| switch (command) {
+    for (display_list.commands.items) |command| switch (command) {
         .fillRoundedRect => |fill| try std.testing.expect(fill.rect.width != region.rect.width or fill.rect.height != region.rect.height),
         else => {},
     };
@@ -2540,9 +2540,9 @@ test "native view: headless, or with no handle, it is a placeholder and register
 
     var regions: std.ArrayList(mod.NativeRegion) = .empty;
     context.native_regions = &regions;
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.NativeView(null), .{ .x = 0, .y = 0, .width = 64, .height = 40 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.NativeView(null), .{ .x = 0, .y = 0, .width = 64, .height = 40 }, &display_list);
     try std.testing.expectEqual(@as(usize, 0), regions.items.len);
 }
 
@@ -2555,11 +2555,11 @@ test "native view: a scrolled-away view registers nothing, one straddling the ed
     context.native_regions = &regions;
     context.visible = .{ .x = 0, .y = 500, .width = 320, .height = 100 };
     var marker: u8 = 0;
-    var canvas = renderer.Canvas.init(std.testing.allocator);
-    defer canvas.deinit();
-    try mod.ViewRenderer.render(&context, mod.NativeView(&marker), .{ .x = 0, .y = 0, .width = 320, .height = 180 }, &canvas);
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, mod.NativeView(&marker), .{ .x = 0, .y = 0, .width = 320, .height = 180 }, &display_list);
     try std.testing.expectEqual(@as(usize, 0), regions.items.len);
-    try mod.ViewRenderer.render(&context, mod.NativeView(&marker), .{ .x = 0, .y = 450, .width = 320, .height = 180 }, &canvas);
+    try mod.ViewRenderer.render(&context, mod.NativeView(&marker), .{ .x = 0, .y = 450, .width = 320, .height = 180 }, &display_list);
     try std.testing.expectEqual(@as(usize, 1), regions.items.len);
     try std.testing.expectApproxEqAbs(@as(f32, 500), regions.items[0].visible.y, 0.5);
     try std.testing.expectApproxEqAbs(@as(f32, 100), regions.items[0].visible.height, 0.5);
@@ -2623,4 +2623,232 @@ test "view: a TextEditor's .mono() draws it in the fixed-width face" {
     // Ten narrow i's in the proportional face; ten full cells in the mono one.
     try std.testing.expect(rights[0] > 8);
     try std.testing.expect(rights[1] > rights[0] + 30);
+}
+
+/// Draws a menu-style picker alone, for the tests.
+const PickerProbe = struct {
+    const Self = @This();
+
+    /// The options the tests' picker offers.
+    const options = [_][]const u8{ "Plain Text", "Rich Text", "Markdown" };
+
+    /// Draws the picker 80 points in from the window's top leading corner
+    /// (room for its menu above it), in `theme`.
+    ///
+    /// - `window`: the window.
+    /// - `theme`: the theme.
+    /// - `selection`: the picker's selection.
+    /// - Returns: nothing; propagates a failed draw.
+    fn draw(window: *mod.TestWindow, theme: renderer.Theme, selection: *renderer.State(i64)) !void {
+        window.begin(theme);
+        const view = mod.VStack(.{ mod.HStack(.{ mod.Picker(selection.binding(), &options).pickerStyle(.menu), mod.Spacer() }), mod.Spacer() }).padding(80);
+        window.end();
+        var frame = try window.render(view, 400, 300);
+        frame.deinit();
+    }
+};
+
+test "a menu picker's tap opens its menu over it, and a row's tap chooses and closes" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var selection = renderer.State(i64).init(std.testing.allocator, 1);
+    defer selection.deinit();
+    defer mod.PickerMenu.shared().close();
+
+    try PickerProbe.draw(window, renderer.MacosTheme.light, &selection);
+    try std.testing.expectEqual(@as(usize, 0), window.overlays.items.len);
+    try std.testing.expect(window.tap(.{ .x = 90, .y = 94 }));
+    try std.testing.expect(mod.PickerMenu.shared().isOpenFor(selection.binding()));
+
+    // Open: presented over the picker, the chosen (second) row over its title.
+    try PickerProbe.draw(window, renderer.MacosTheme.light, &selection);
+    try std.testing.expectEqual(@as(usize, 1), window.overlays.items.len);
+    const request = window.overlays.items[0];
+    try std.testing.expect(request.content_anchor != null and request.content_anchor.?.y > 0);
+    // The second row's middle lies on the picker's: one row below it is the
+    // third. Its offset is the inset, a row and a half, less half the picker.
+    const row_height = (request.content_anchor.?.y + request.anchor.height / 2 - mod.ControlMetrics.popup_menu_inset) / 1.5;
+    try std.testing.expect(window.tap(.{ .x = request.anchor.x + 20, .y = request.anchor.midY() + row_height }));
+    try std.testing.expectEqual(@as(i64, 2), selection.get());
+    try std.testing.expect(!mod.PickerMenu.shared().isOpen());
+}
+
+test "a menu picker opens below on Windows, and the keys move the highlight and choose" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var selection = renderer.State(i64).init(std.testing.allocator, 0);
+    defer selection.deinit();
+    defer mod.PickerMenu.shared().close();
+
+    try PickerProbe.draw(window, renderer.Windows10Theme.light, &selection);
+    try std.testing.expect(window.tap(.{ .x = 90, .y = 94 }));
+    try PickerProbe.draw(window, renderer.Windows10Theme.light, &selection);
+    try std.testing.expectEqual(@as(usize, 1), window.overlays.items.len);
+    try std.testing.expect(window.overlays.items[0].content_anchor == null);
+
+    mod.PickerMenu.shared().moveHighlight(1);
+    mod.PickerMenu.shared().moveHighlight(1);
+    mod.PickerMenu.shared().moveHighlight(1);
+    mod.PickerMenu.shared().chooseHighlighted();
+    try std.testing.expectEqual(@as(i64, 2), selection.get());
+    try std.testing.expect(!mod.PickerMenu.shared().isOpen());
+
+    // Return with no key moved keeps the choice; a tap beside the menu closes it.
+    mod.PickerMenu.shared().open(selection.binding());
+    mod.PickerMenu.shared().chooseHighlighted();
+    try std.testing.expectEqual(@as(i64, 2), selection.get());
+    mod.PickerMenu.shared().open(selection.binding());
+    try PickerProbe.draw(window, renderer.Windows10Theme.light, &selection);
+    try std.testing.expect(window.tap(.{ .x = 390, .y = 290 }));
+    try std.testing.expect(!mod.PickerMenu.shared().isOpen());
+}
+
+/// Draws two menu-style pickers bound to one value, one above the other, for
+/// the tests.
+const TwinPickers = struct {
+    const Self = @This();
+
+    /// The options both pickers offer.
+    const options = [_][]const u8{ "One", "Two", "Three" };
+
+    /// Draws both pickers 80 points in from the window's top leading corner.
+    ///
+    /// - `window`: the window.
+    /// - `selection`: the value both are bound to.
+    /// - Returns: nothing; propagates a failed draw.
+    fn draw(window: *mod.TestWindow, selection: *renderer.State(i64)) !void {
+        window.begin(renderer.MacosTheme.light);
+        const view = mod.VStack(.{
+            mod.HStack(.{ mod.Picker(selection.binding(), &options).pickerStyle(.menu), mod.Spacer() }),
+            mod.HStack(.{ mod.Picker(selection.binding(), &options).pickerStyle(.menu), mod.Spacer() }),
+            mod.Spacer(),
+        }).spacing(60).padding(80);
+        window.end();
+        var frame = try window.render(view, 400, 400);
+        frame.deinit();
+    }
+};
+
+test "two menu pickers bound to one value open their own menus, never both" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var selection = renderer.State(i64).init(std.testing.allocator, 0);
+    defer selection.deinit();
+    defer mod.PickerMenu.shared().close();
+
+    // Opened in code: the first picker's menu, once.
+    mod.PickerMenu.shared().open(selection.binding());
+    try TwinPickers.draw(window, &selection);
+    try std.testing.expectEqual(@as(usize, 1), window.overlays.items.len);
+    const first = window.overlays.items[0].anchor;
+    mod.PickerMenu.shared().close();
+
+    // A tap on the second opens the second's, once.
+    try TwinPickers.draw(window, &selection);
+    try std.testing.expect(window.tap(.{ .x = first.x + 10, .y = first.midY() + first.height + 60 }));
+    try TwinPickers.draw(window, &selection);
+    try std.testing.expectEqual(@as(usize, 1), window.overlays.items.len);
+    try std.testing.expect(window.overlays.items[0].anchor.y > first.maxY());
+}
+
+test "a menu picker whose selection names no option lays its first row over it" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var none = renderer.State(i64).init(std.testing.allocator, -1);
+    defer none.deinit();
+    var second = renderer.State(i64).init(std.testing.allocator, 1);
+    defer second.deinit();
+    defer mod.PickerMenu.shared().close();
+
+    mod.PickerMenu.shared().open(none.binding());
+    try PickerProbe.draw(window, renderer.MacosTheme.light, &none);
+    const unchosen = window.overlays.items[0].content_anchor.?.y;
+    mod.PickerMenu.shared().open(second.binding());
+    try PickerProbe.draw(window, renderer.MacosTheme.light, &second);
+    // The second row lies a row lower than the first.
+    try std.testing.expect(window.overlays.items[0].content_anchor.?.y > unchosen);
+    try std.testing.expectEqual(@as(i64, -1), none.get());
+}
+
+test "the text of a key the picker menu took is dropped, once" {
+    const menu = mod.PickerMenu.shared();
+    menu.noteKey(true);
+    try std.testing.expect(menu.takesText());
+    try std.testing.expect(!menu.takesText());
+    menu.noteKey(false);
+    try std.testing.expect(!menu.takesText());
+}
+
+test "a letter moves a picker menu's highlight to the next option starting with it, around" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var selection = renderer.State(i64).init(std.testing.allocator, 0);
+    defer selection.deinit();
+    defer mod.PickerMenu.shared().close();
+
+    mod.PickerMenu.shared().open(selection.binding());
+    try TwinPickers.draw(window, &selection);
+    // "One", "Two", "Three": T steps through Two and Three, then back.
+    mod.PickerMenu.shared().typeSelect('T');
+    mod.PickerMenu.shared().typeSelect('t');
+    mod.PickerMenu.shared().typeSelect('t');
+    mod.PickerMenu.shared().chooseHighlighted();
+    try std.testing.expectEqual(@as(i64, 1), selection.get());
+    // A letter no option starts with moves nothing.
+    mod.PickerMenu.shared().open(selection.binding());
+    try TwinPickers.draw(window, &selection);
+    mod.PickerMenu.shared().typeSelect('x');
+    mod.PickerMenu.shared().chooseHighlighted();
+    try std.testing.expectEqual(@as(i64, 1), selection.get());
+}
+
+test "a picker menu closes once the window under the pointer draws without its picker" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var selection = renderer.State(i64).init(std.testing.allocator, 0);
+    defer selection.deinit();
+    defer mod.PickerMenu.shared().close();
+
+    mod.PickerMenu.shared().open(selection.binding());
+    window.hover_point = .{ .x = 10, .y = 10 };
+    try TwinPickers.draw(window, &selection);
+    try std.testing.expect(mod.PickerMenu.shared().isOpen());
+
+    // A window the pointer is not over (a tray panel) closes nothing.
+    window.begin(renderer.MacosTheme.light);
+    window.hover_point = null;
+    var view = mod.Text("elsewhere");
+    window.end();
+    var frame = try window.render(view, 200, 100);
+    frame.deinit();
+    try std.testing.expect(mod.PickerMenu.shared().isOpen());
+
+    // The window the pointer is over, its picker gone: closed.
+    window.begin(renderer.MacosTheme.light);
+    window.hover_point = .{ .x = 10, .y = 10 };
+    view = mod.Text("elsewhere");
+    window.end();
+    frame = try window.render(view, 200, 100);
+    frame.deinit();
+    try std.testing.expect(!mod.PickerMenu.shared().isOpen());
+}
+
+test "a form label is centered beside a pop-up's row, and keeps to the top beside a line of text" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    const context = environment.context();
+    var selection = renderer.State(i64).init(std.testing.allocator, 0);
+    defer selection.deinit();
+    const options = [_][]const u8{ "One", "Two" };
+
+    const beside_picker = try mod.ViewLowering.buildNode(&context, mod.LabeledContent("Format:", mod.Picker(selection.binding(), &options).pickerStyle(.menu)));
+    const level = beside_picker.frame.child.stack.children[0].frame;
+    try std.testing.expect(level.height != null);
+    try std.testing.expectEqual(renderer.Alignment.trailing, level.alignment);
+
+    const beside_text = try mod.ViewLowering.buildNode(&context, mod.LabeledContent("Name:", mod.Text("A line")));
+    const top = beside_text.frame.child.stack.children[0].frame;
+    try std.testing.expect(top.height == null);
+    try std.testing.expectEqual(renderer.Alignment.topTrailing, top.alignment);
 }

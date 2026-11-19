@@ -22,6 +22,12 @@ pub const Palette = @import("palette.zig").Palette;
 pub const Typography = @import("typography.zig").Typography;
 /// A theme's spacing, sizing, and radius metrics.
 pub const Metrics = @import("metrics.zig").Metrics;
+/// How a theme family draws a menu-style picker and opens its menu.
+pub const MenuPickerLook = @import("menu_picker_look.zig").MenuPickerLook;
+/// What a menu-style picker is drawn as: a button or a field.
+pub const MenuPickerChrome = @import("menu_picker_look.zig").MenuPickerChrome;
+/// The mark at a menu-style picker's trailing edge.
+pub const MenuPickerIndicator = @import("menu_picker_look.zig").MenuPickerIndicator;
 /// Everything a painter needs to draw chrome.
 pub const Surface = @import("surface.zig").Surface;
 /// A theme's vtable of chrome-drawing functions.
@@ -50,7 +56,7 @@ pub const Rect = @import("../module.zig").Rect;
 /// An RGBA color (from the renderer).
 pub const Color = @import("../module.zig").Color;
 /// A retained list of draw commands (from the renderer).
-pub const Canvas = @import("../module.zig").Canvas;
+pub const DisplayList = @import("../module.zig").DisplayList;
 /// A CPU pixel buffer (from the renderer).
 pub const Framebuffer = @import("../module.zig").Framebuffer;
 /// The CPU rasterizer (from the renderer).
@@ -72,6 +78,7 @@ test {
     _ = @import("palette.zig");
     _ = @import("typography.zig");
     _ = @import("metrics.zig");
+    _ = @import("menu_picker_look.zig");
     _ = @import("surface.zig");
     _ = @import("painter.zig");
     _ = @import("theme.zig");

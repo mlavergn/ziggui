@@ -128,6 +128,11 @@ const editor_sample =
 pub const Showcase = struct {
     const Self = @This();
 
+    /// The Canvas card's week of readings, each a fraction of the plot's height.
+    const chart_readings = [_]f32{ 0.35, 0.6, 0.45, 0.8, 0.55, 0.9, 0.7 };
+    /// The Canvas card's day under each reading.
+    const chart_days = [_][]const u8{ "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+
     /// The Picture card's picture width, in pixels.
     const picture_width = 2048;
     /// The Picture card's picture height, in pixels.
@@ -592,8 +597,7 @@ pub const Showcase = struct {
                 ziggui.Text(if (self.hovering.get()) "Pointer inside" else "Point at the box").foreground(theme.colors.secondary_label),
                 ziggui.Spacer(),
             }).spacing(12)),
-            Self.card(theme, "Custom title bar (Config.custom_titlebar)", "ziggui.Drawing · Theme.drawTitleBar · .modalPassthrough", self.titleBarDemo(theme)),
-            Self.card(theme, "A large picture (drag to pan)", "ziggui.Drawing · Pen.picture · .onDrag · .clipped", self.pictureDemo(theme)),
+            Self.card(theme, "Custom title bar (Config.custom_titlebar)", "ziggui.Canvas · Theme.drawTitleBar · .modalPassthrough", self.titleBarDemo(theme)),
             Self.card(theme, "Key-ups and quitting", "ziggui.App.setKeyUpHandler · ziggui.Toggle", ziggui.VStack(.{
                 ziggui.Text(key_up_text).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
                 Self.row("Ask before quitting (close button, ⌘Q)", ziggui.Toggle("", self.ask_quit.binding())),
@@ -860,7 +864,7 @@ pub const Showcase = struct {
     fn titleBarDemo(self: *Self, theme: ziggui.Theme) ziggui.View {
         const foreground = theme.titleBarForeground();
         return ziggui.ZStack(.{
-            ziggui.Drawing(Self, self, Self.drawTitleBar).frameMaxWidth().frameHeight(32),
+            ziggui.Canvas(Self, self, Self.drawTitleBar).frameMaxWidth().frameHeight(32),
             ziggui.HStack(.{
                 ziggui.Icon(.boxes, 16, foreground),
                 ziggui.Text("File").foreground(foreground),
@@ -875,8 +879,69 @@ pub const Showcase = struct {
         }).frameMaxWidth().frameHeight(32);
     }
 
+    /// The Image & Canvas panel: an image at its own size and scaled to fit
+    /// frames, a chart a `Canvas` draws through its `GraphicsContext`, and a large
+    /// picture drawn from a texture of its own, panned and zoomed.
+    ///
+    /// - `self`: the showcase.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the panel's view.
+    pub fn canvasPanel(self: *Self, theme: ziggui.Theme) ziggui.View {
+        const image: ziggui.ImagePixels = .{ .width = demo_image_side, .height = demo_image_side, .pixels = &demo_image };
+        return ziggui.VStack(.{
+            Self.card(theme, "Image: its own size, and scaled to fit a frame", "ziggui.Image · .scaledToFit()", ziggui.HStack(.{
+                ziggui.Image(image),
+                ziggui.Image(image).scaledToFit().frame(160, 96).border(theme.colors.separator, 1),
+                ziggui.Image(image).scaledToFit().frame(48, 96).border(theme.colors.separator, 1),
+                ziggui.Spacer(),
+            }).spacing(16)),
+            Self.card(theme, "Canvas: a view that draws itself", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", ziggui.Canvas(Self, self, Self.drawChart).frameMaxWidth().frameHeight(160).clipped().cornerRadius(8)),
+            Self.card(theme, "A large picture (drag to pan)", "ziggui.Canvas · GraphicsContext.picture · .onDrag · .clipped", self.pictureDemo(theme)),
+        }).spacing(16);
+    }
+
+    /// Paints the Canvas card: a week of readings as bars over a tinted
+    /// ground and a grid, a line through their tops, and the day under each,
+    /// every measure taken from the frame, so it follows the card's width;
+    /// a frame too small for the margins draws only the ground.
+    ///
+    /// - `self`: the showcase.
+    /// - `graphics`: what it draws with.
+    /// - `bounds`: the card's frame.
+    /// - Returns: nothing; propagates allocation failure.
+    fn drawChart(self: *const Self, graphics: *ziggui.GraphicsContext, bounds: ziggui.Rect) std.mem.Allocator.Error!void {
+        _ = self;
+        const colors = graphics.context.theme.colors;
+        try graphics.verticalGradient(bounds, colors.accent.withAlpha(0.12), colors.accent.withAlpha(0.02));
+        const label_size: f32 = 11;
+        const label_height = graphics.lineHeight(label_size);
+        const plot = ziggui.Rect{ .x = bounds.x + 16, .y = bounds.y + 14, .width = bounds.width - 32, .height = bounds.height - 26 - label_height };
+        // A frame too small for its margins and labels has no plot to draw.
+        if (plot.width <= 0 or plot.height <= 0) return;
+        for (0..5) |step| {
+            const y = plot.y + plot.height * @as(f32, @floatFromInt(step)) / 4;
+            try graphics.line(.{ .x = plot.x, .y = y }, .{ .x = plot.maxX(), .y = y }, 1, colors.separator);
+        }
+        const slot = plot.width / @as(f32, @floatFromInt(chart_readings.len));
+        var previous: ?ziggui.Point = null;
+        for (chart_readings, chart_days, 0..) |reading, day, index| {
+            const slot_x = plot.x + slot * @as(f32, @floatFromInt(index));
+            const height = plot.height * reading;
+            try graphics.fill(.{ .x = slot_x + slot * 0.2, .y = plot.maxY() - height, .width = slot * 0.6, .height = height }, 4, colors.accent.withAlpha(0.45));
+            const top = ziggui.Point{ .x = slot_x + slot / 2, .y = plot.maxY() - height };
+            if (previous) |from| try graphics.line(from, top, 2, colors.accent);
+            previous = top;
+            try graphics.text(day, label_size, colors.secondary_label, .{ .x = slot_x + (slot - graphics.textWidth(day, label_size)) / 2, .y = plot.maxY() + 8 });
+        }
+        // The dots go on last, over the line's joins.
+        for (chart_readings, 0..) |reading, index| {
+            const center = ziggui.Point{ .x = plot.x + slot * (@as(f32, @floatFromInt(index)) + 0.5), .y = plot.maxY() - plot.height * reading };
+            try graphics.fill(.{ .x = center.x - 3.5, .y = center.y - 3.5, .width = 7, .height = 7 }, 3.5, colors.accent);
+        }
+    }
+
     /// The Picture card: a 2048 × 1536 picture drawn from a texture of its own
-    /// (`Pen.picture`, never the atlas), dragged to pan and zoomed with the buttons.
+    /// (`GraphicsContext.picture`, never the atlas), dragged to pan and zoomed with the buttons.
     ///
     /// - `self`: the showcase.
     /// - `theme`: the theme this frame draws with.
@@ -884,7 +949,7 @@ pub const Showcase = struct {
     fn pictureDemo(self: *Self, theme: ziggui.Theme) ziggui.View {
         const zoom_text = ziggui.BuildScope.shared().allocator().print("{d:.0}%", .{self.picture_zoom * 100}) catch @panic("oom");
         return ziggui.VStack(.{
-            ziggui.Drawing(Self, self, Self.drawPicture).frameMaxWidth().frameHeight(180).clipped().cornerRadius(8)
+            ziggui.Canvas(Self, self, Self.drawPicture).frameMaxWidth().frameHeight(180).clipped().cornerRadius(8)
                 .onDrag(.{ .context = self, .function = Self.panPicture }),
             ziggui.HStack(.{
                 ziggui.ButtonRoled("−", .normal, ziggui.Callback.init(Self, self, Self.zoomPictureOut)),
@@ -900,10 +965,10 @@ pub const Showcase = struct {
     /// zoom about the frame's center and moved by the pan.
     ///
     /// - `self`: the showcase.
-    /// - `pen`: the paint context.
+    /// - `graphics`: what it draws with.
     /// - `bounds`: the card's frame.
     /// - Returns: nothing; propagates allocation failure.
-    fn drawPicture(self: *const Self, pen: *ziggui.Pen, bounds: ziggui.Rect) std.mem.Allocator.Error!void {
+    fn drawPicture(self: *const Self, graphics: *ziggui.GraphicsContext, bounds: ziggui.Rect) std.mem.Allocator.Error!void {
         const image = ziggui.ImagePixels{ .width = picture_width, .height = picture_height, .pixels = self.picture_pixels };
         const fit = @min(bounds.width / @as(f32, picture_width), bounds.height / @as(f32, picture_height));
         const scale = fit * self.picture_zoom;
@@ -915,7 +980,7 @@ pub const Showcase = struct {
             .width = width,
             .height = height,
         };
-        try pen.picture(rect, image, @intFromPtr(self.picture_pixels.ptr), 1);
+        try graphics.picture(rect, image, @intFromPtr(self.picture_pixels.ptr), 1);
     }
 
     /// Pans the Picture card.
@@ -977,12 +1042,12 @@ pub const Showcase = struct {
     /// Paints the theme family's title bar (`Theme.drawTitleBar`).
     ///
     /// - `self`: the showcase.
-    /// - `pen`: the paint context.
+    /// - `graphics`: what it draws with.
     /// - `bounds`: the bar's frame.
     /// - Returns: nothing; propagates allocation failure.
-    fn drawTitleBar(self: *const Self, pen: *ziggui.Pen, bounds: ziggui.Rect) std.mem.Allocator.Error!void {
+    fn drawTitleBar(self: *const Self, graphics: *ziggui.GraphicsContext, bounds: ziggui.Rect) std.mem.Allocator.Error!void {
         _ = self;
-        try pen.context.theme.drawTitleBar(pen.context.surface(pen.canvas), bounds);
+        try graphics.context.theme.drawTitleBar(graphics.context.surface(graphics.display_list), bounds);
     }
 
     /// The Geometry panel's content: its own size, and bars a quarter and
@@ -1153,12 +1218,12 @@ test "every showcase panel builds and draws headless" {
 
     var showcase = try Showcase.init(allocator);
     defer showcase.deinit();
-    const canvas = try ziggui.TestCanvas.create(allocator);
-    defer canvas.destroy();
+    const window = try ziggui.TestWindow.create(allocator);
+    defer window.destroy();
 
     const theme = ziggui.ThemeFamily.all[0].forScheme(.light);
     for (0..10) |index| {
-        canvas.begin(theme);
+        window.begin(theme);
         const panel = switch (index) {
             0 => showcase.controlsPanel(theme),
             1 => showcase.textPanel(theme),
@@ -1172,8 +1237,8 @@ test "every showcase panel builds and draws headless" {
             else => showcase.geometryPanel(theme),
         };
         const root = showcase.presentations(panel, theme);
-        canvas.end();
-        var framebuffer = try canvas.render(root, gallery.test_width, gallery.test_height);
+        window.end();
+        var framebuffer = try window.render(root, gallery.test_width, gallery.test_height);
         defer framebuffer.deinit();
         try std.testing.expectEqual(gallery.test_width, framebuffer.width);
     }

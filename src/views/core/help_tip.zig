@@ -100,9 +100,9 @@ pub const HelpTip = struct {
     /// - `self`: the hint.
     /// - `context`: the paint context; its `hover_point` places the hint.
     /// - `root`: the window's frame, which the hint stays inside.
-    /// - `canvas`: where it is painted.
+    /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
-    pub fn draw(self: *Self, context: *const mod.Context, root: renderer.Rect, canvas: *renderer.Canvas) std.mem.Allocator.Error!void {
+    pub fn draw(self: *Self, context: *const mod.Context, root: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
         const now = mod.FrameClock.shared().time();
         const found = self.offer_now orelse {
             self.resting_key = 0;
@@ -144,8 +144,8 @@ pub const HelpTip = struct {
         if (y + size.height > root.maxY()) y = point.y - below_pointer / 2 - size.height;
         if (y < root.y) y = root.y;
         const target = renderer.Rect{ .x = x, .y = y, .width = width, .height = size.height };
-        try context.theme.painter.panel(context.surface(canvas), target, @min(context.theme.metrics.corner_radius, 6), .popover);
-        try mod.ViewRenderer.renderInto(context, content, target, canvas);
+        try context.theme.painter.panel(context.surface(display_list), target, @min(context.theme.metrics.corner_radius, 6), .popover);
+        try mod.ViewRenderer.renderInto(context, content, target, display_list);
     }
 
     /// A hash of an offer's text and frame: the same view, offered frame after frame.

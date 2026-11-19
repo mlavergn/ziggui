@@ -74,8 +74,8 @@ test {
 }
 
 test "a keyed button is wider than its plain twin, and taps" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const Probe = struct {
         const Self = @This();
         tapped: bool = false,
@@ -88,13 +88,13 @@ test "a keyed button is wider than its plain twin, and taps" {
     };
     var probe: Probe = .{};
     const callback = mod.Callback.init(Probe, &probe, Probe.onTap);
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const plain = mod.HStack(.{ ButtonRoled("Save", .prominent, callback), mod.Spacer() });
     const keyed = mod.HStack(.{ ButtonKeyed("Save", "↩", .prominent, callback), mod.Spacer() });
-    canvas.end();
-    var plain_frame = try canvas.render(plain, 200, 30);
+    window.end();
+    var plain_frame = try window.render(plain, 200, 30);
     defer plain_frame.deinit();
-    var keyed_frame = try canvas.render(keyed, 200, 30);
+    var keyed_frame = try window.render(keyed, 200, 30);
     defer keyed_frame.deinit();
     // The accent fill runs further right with the key cap in it.
     var plain_right: u32 = 0;
@@ -105,26 +105,26 @@ test "a keyed button is wider than its plain twin, and taps" {
         if (keyed_frame.at(column, 15).b > keyed_frame.at(column, 15).r + 0.3) keyed_right = column;
     }
     try std.testing.expect(keyed_right > plain_right + 10);
-    try std.testing.expect(canvas.tap(.{ .x = 10, .y = 15 }));
+    try std.testing.expect(window.tap(.{ .x = 10, .y = 15 }));
     try std.testing.expect(probe.tapped);
 }
 
 test "a plain button takes its own foreground, never an ancestor's" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const Idle = struct {
         const Self = @This();
         /// Does nothing.
         fn nothing() void {}
     };
     const red = renderer.Color.fromRgb8(255, 0, 0);
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const own = mod.HStack(.{ ButtonRoled("Delete", .plain, mod.Callback.action(Idle.nothing)).foreground(red), mod.Spacer() });
     const inherited = mod.HStack(.{ ButtonRoled("Delete", .plain, mod.Callback.action(Idle.nothing)), mod.Spacer() }).foreground(red);
-    canvas.end();
-    var own_frame = try canvas.render(own, 200, 30);
+    window.end();
+    var own_frame = try window.render(own, 200, 30);
     defer own_frame.deinit();
-    var inherited_frame = try canvas.render(inherited, 200, 30);
+    var inherited_frame = try window.render(inherited, 200, 30);
     defer inherited_frame.deinit();
     // The reddest label pixel: strongly red with its own tint, not with the stack's.
     var own_red: f32 = 0;
@@ -139,8 +139,8 @@ test "a plain button takes its own foreground, never an ancestor's" {
 }
 
 test "a held button draws pressed, and only while the pointer stays on it" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const Idle = struct {
         const Self = @This();
         /// Does nothing: the button is only drawn.
@@ -150,12 +150,12 @@ test "a held button draws pressed, and only while the pointer stays on it" {
     var shades: [3]renderer.Color = undefined;
     const pointers = [_][2]?renderer.Point{ .{ center, null }, .{ center, center }, .{ .{ .x = 200, .y = 80 }, center } };
     for (pointers, &shades) |pointer, *shade| {
-        canvas.begin(renderer.MacosTheme.light);
-        canvas.hover_point = pointer[0];
-        canvas.press_point = pointer[1];
+        window.begin(renderer.MacosTheme.light);
+        window.hover_point = pointer[0];
+        window.press_point = pointer[1];
         const view = mod.ButtonRoled("", .prominent, mod.Callback.action(Idle.nothing)).frame(120, 40);
-        canvas.end();
-        var framebuffer = try canvas.render(view, 120, 40);
+        window.end();
+        var framebuffer = try window.render(view, 120, 40);
         defer framebuffer.deinit();
         shade.* = framebuffer.at(60, 20);
     }

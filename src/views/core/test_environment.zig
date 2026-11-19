@@ -80,12 +80,12 @@ pub const TestEnvironment = struct {
     /// - Returns: the framebuffer, owned by the caller; propagates failure.
     pub fn renderToFramebuffer(self: *Self, frame_context: *mod.Context, tree: mod.View, rect: renderer.Rect, width: u32, height: u32) !renderer.Framebuffer {
         _ = self;
-        var canvas = renderer.Canvas.init(std.testing.allocator);
-        defer canvas.deinit();
-        try mod.ViewRenderer.render(frame_context, tree, rect, &canvas);
+        var display_list = renderer.DisplayList.init(std.testing.allocator);
+        defer display_list.deinit();
+        try mod.ViewRenderer.render(frame_context, tree, rect, &display_list);
         var framebuffer = try renderer.Framebuffer.init(std.testing.allocator, width, height);
         framebuffer.clear(renderer.Color.white);
-        try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(canvas.commands.items);
+        try renderer.Rasterizer.init(std.testing.allocator, &framebuffer).render(display_list.commands.items);
         return framebuffer;
     }
 

@@ -593,6 +593,20 @@ pub const View = struct {
         return view;
     }
 
+    /// Sets how the `Picker`s in this subtree draw, as SwiftUI's
+    /// `.pickerStyle()`: `.menu` is a pop-up button whose tap shows the
+    /// options in a menu, `.segmented` every option side by side;
+    /// `.automatic` (the default) is a menu in a `Form`.
+    ///
+    /// - `self`: the view.
+    /// - `style`: the style.
+    /// - Returns: the view.
+    pub fn pickerStyle(self: *const Self, style: mod.PickerStyle) Self {
+        var view = self.*;
+        view.modifiers.picker_style = style;
+        return view;
+    }
+
     /// Sets how the `Toggle`s in this subtree draw, as SwiftUI's
     /// `.toggleStyle()`: `.checkbox` puts a box before the label, `.switch` a
     /// switch after it; `.automatic` (the default) is a checkbox in a `Form`.

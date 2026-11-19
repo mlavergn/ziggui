@@ -32,24 +32,10 @@ const WICRect = extern struct {
     Height: i32,
 };
 
-/// COM's `PROPVARIANT`, as far as a string or GUID value reads it.
-const PROPVARIANT = extern struct {
-    const Self = @This();
-
-    vt: u16 = 0,
-    reserved1: u16 = 0,
-    reserved2: u16 = 0,
-    reserved3: u16 = 0,
-    /// `pwszVal` for `VT_LPWSTR`, `puuid` for `VT_CLSID`.
-    pointer: ?*anyopaque = null,
-    padding: u64 = 0,
-};
-
 extern "mfplat" fn MFStartup(version: u32, flags: u32) callconv(.winapi) mod.HRESULT;
 extern "mfplat" fn MFCreateAttributes(attributes: *?*anyopaque, size: u32) callconv(.winapi) mod.HRESULT;
 extern "oleaut32" fn SysAllocString(text: [*:0]const u16) callconv(.winapi) ?[*:0]u16;
 extern "oleaut32" fn SysFreeString(text: ?[*:0]u16) callconv(.winapi) void;
-extern "ole32" fn PropVariantClear(value: *PROPVARIANT) callconv(.winapi) mod.HRESULT;
 
 /// The identifiers the player needs.
 const Guid = struct {
@@ -61,6 +47,8 @@ const Guid = struct {
     const iid_class_factory = std.os.windows.GUID.parse("{4d645ace-26aa-4688-9be1-df3516990b93}");
     /// `IID_IMFMediaEngineEx`.
     const iid_engine_ex = std.os.windows.GUID.parse("{83015ead-b1e6-40d0-a98a-37145ffe1ad1}");
+    /// `IID_IMFMediaEngineAudioEndpointId`: the engine's output device.
+    const iid_audio_endpoint_id = std.os.windows.GUID.parse("{7a3bac98-0e76-49fb-8c20-8a86fd98eaf2}");
     /// `IID_IMFMediaEngineNotify`.
     const iid_notify = std.os.windows.GUID.parse("{fee7c112-e776-42b5-9bbf-0048524e2bd5}");
     /// `MF_MEDIA_ENGINE_CALLBACK`.
@@ -149,6 +137,8 @@ const OtherSlot = struct {
 
     /// `IMFMediaEngineClassFactory::CreateInstance(DWORD, IMFAttributes*, IMFMediaEngine**)`.
     const create_engine = 3;
+    /// `IMFMediaEngineAudioEndpointId::SetAudioEndpointId(LPCWSTR)`.
+    const set_audio_endpoint_id = 3;
     /// `IMFAttributes::SetUINT32(REFGUID, UINT32)`.
     const set_uint32 = 21;
     /// `IMFAttributes::SetUnknown(REFGUID, IUnknown*)`.
@@ -482,10 +472,10 @@ const NativePlayer = struct {
     /// - `attribute`: the attribute.
     /// - Returns: the text, empty when the stream has none; propagates allocation failure.
     fn streamText(self: *const Self, allocator: std.mem.Allocator, stream: u32, attribute: *const std.os.windows.GUID) std.mem.Allocator.Error![]u8 {
-        var value = PROPVARIANT{};
-        const result = mod.Com.method(*const fn (*anyopaque, u32, *const std.os.windows.GUID, *PROPVARIANT) callconv(.winapi) mod.HRESULT, self.engine, EngineSlot.get_stream_attribute)(self.engine, stream, attribute, &value);
-        defer _ = PropVariantClear(&value);
-        if (result < 0 or value.vt != MediaFoundationPlayer.vt_lpwstr) return allocator.alloc(u8, 0);
+        var value = mod.PROPVARIANT{};
+        const result = mod.Com.method(*const fn (*anyopaque, u32, *const std.os.windows.GUID, *mod.PROPVARIANT) callconv(.winapi) mod.HRESULT, self.engine, EngineSlot.get_stream_attribute)(self.engine, stream, attribute, &value);
+        defer mod.Com.clearVariant(&value);
+        if (result < 0 or value.vt != mod.PROPVARIANT.vt_lpwstr) return allocator.alloc(u8, 0);
         return mod.Com.narrow(allocator, @ptrCast(@alignCast(value.pointer)));
     }
 
@@ -495,10 +485,10 @@ const NativePlayer = struct {
     /// - `stream`: the stream's index.
     /// - Returns: true for an audio stream.
     fn isAudio(self: *const Self, stream: u32) bool {
-        var value = PROPVARIANT{};
-        const result = mod.Com.method(*const fn (*anyopaque, u32, *const std.os.windows.GUID, *PROPVARIANT) callconv(.winapi) mod.HRESULT, self.engine, EngineSlot.get_stream_attribute)(self.engine, stream, &Guid.major_type, &value);
-        defer _ = PropVariantClear(&value);
-        if (result < 0 or value.vt != MediaFoundationPlayer.vt_clsid) return false;
+        var value = mod.PROPVARIANT{};
+        const result = mod.Com.method(*const fn (*anyopaque, u32, *const std.os.windows.GUID, *mod.PROPVARIANT) callconv(.winapi) mod.HRESULT, self.engine, EngineSlot.get_stream_attribute)(self.engine, stream, &Guid.major_type, &value);
+        defer mod.Com.clearVariant(&value);
+        if (result < 0 or value.vt != mod.PROPVARIANT.vt_clsid) return false;
         const major: *const std.os.windows.GUID = @ptrCast(@alignCast(value.pointer orelse return false));
         return std.meta.eql(major.*, Guid.audio);
     }
@@ -520,6 +510,7 @@ pub const MediaFoundationPlayer = struct {
 
     /// The backend `Player`s are made with.
     pub const backend: views.PlayerBackend = .{
+        .name = "Media Foundation",
         .create = Self.create,
         .destroy = Self.destroy,
         .load = Self.load,
@@ -530,6 +521,7 @@ pub const MediaFoundationPlayer = struct {
         .observe = Self.observe,
         .tracks = Self.tracks,
         .select_track = Self.selectTrack,
+        .set_audio_output = Self.setAudioOutput,
     };
 
     /// Its pictures show in the window: the loop collects `VideoPlayer`
@@ -542,10 +534,6 @@ pub const MediaFoundationPlayer = struct {
     const dxgi_format_bgra: u32 = 87;
     /// `MF_MEDIA_ENGINE_PRELOAD_AUTOMATIC`.
     const preload_automatic: u32 = 4;
-    /// `VT_LPWSTR`: a `PROPVARIANT` holding a wide string.
-    const vt_lpwstr: u16 = 31;
-    /// `VT_CLSID`: a `PROPVARIANT` holding a GUID.
-    const vt_clsid: u16 = 72;
     /// `WICBitmapLockRead`.
     const wic_lock_read: u32 = 1;
     /// `WICBitmapCacheOnLoad`.
@@ -768,6 +756,38 @@ pub const MediaFoundationPlayer = struct {
     fn setMuted(handle: *anyopaque, muted: bool) void {
         const native = Self.nativeOf(handle);
         _ = mod.Com.method(*const fn (*anyopaque, i32) callconv(.winapi) mod.HRESULT, native.engine, EngineSlot.set_muted)(native.engine, @intFromBool(muted));
+    }
+
+    /// Routes the sound to one output (`IMFMediaEngineAudioEndpointId`: a
+    /// Core Audio endpoint id, `MmDeviceAudioOutputs`), or to the system
+    /// default when null. An output gone since it was listed, or a Windows
+    /// whose engine cannot route one player's sound, leaves the default.
+    ///
+    /// - `handle`: the player.
+    /// - `id`: the output's id, or null for the system default.
+    /// - Returns: false when the output was not found or could not be set
+    ///   (the system default plays), else true.
+    fn setAudioOutput(handle: *anyopaque, id: ?[:0]const u8) bool {
+        const native = Self.nativeOf(handle);
+        const found = if (id) |wanted| mod.MmDeviceAudioOutputs.hasOutput(wanted) else true;
+        if (!found) log.warn("audio output {s} not found: the system default plays", .{id.?});
+        const endpoint = mod.Com.query(native.engine, &Guid.iid_audio_endpoint_id) orelse {
+            log.warn("this Media Foundation cannot route one player's sound: the system default plays", .{});
+            return id == null;
+        };
+        defer mod.Com.release(endpoint);
+        const allocator = std.heap.c_allocator;
+        const wide: ?[:0]u16 = if (!found) null else if (id) |wanted| mod.Com.wide(allocator, wanted) catch |err| {
+            log.warn("audio output id not converted: {s}", .{@errorName(err)});
+            return false;
+        } else null;
+        defer if (wide) |text| allocator.free(text);
+        const result = mod.Com.method(*const fn (*anyopaque, ?[*:0]const u16) callconv(.winapi) mod.HRESULT, endpoint, OtherSlot.set_audio_endpoint_id)(endpoint, if (wide) |text| text.ptr else null);
+        if (result < 0) {
+            log.warn("audio output not set [0x{x}]: the system default plays", .{@as(u32, @bitCast(result))});
+            return id == null;
+        }
+        return found;
     }
 
     /// Samples the engine's state.

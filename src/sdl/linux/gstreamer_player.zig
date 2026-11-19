@@ -8,7 +8,7 @@
 //! sink is an `appsink` taking RGBA at square pixels, whose each new frame
 //! wakes the window (`FrameClock.wake`, from GStreamer's streaming thread);
 //! `VideoPlayer` asks for the latest (`frame`) as it paints and draws it with
-//! `Canvas.drawVideoFrame`, uploaded to a texture of its own each frame. So
+//! `DisplayList.drawVideoFrame`, uploaded to a texture of its own each frame. So
 //! what an app stacks over the player (the controls, a sheet) draws on top,
 //! as on macOS, where the picture sits behind the surface instead; the X11
 //! child window the native-view host uses would cover them. No region is
@@ -86,6 +86,8 @@ pub const GstreamerPlayer = struct {
 
     /// The backend `Player`s are made with.
     pub const backend: views.PlayerBackend = .{
+        .name = "GStreamer",
+        .version = Self.version,
         .create = Self.create,
         .destroy = Self.destroy,
         .load = Self.load,
@@ -97,6 +99,7 @@ pub const GstreamerPlayer = struct {
         .tracks = Self.tracks,
         .select_track = Self.selectTrack,
         .frame = Self.frame,
+        .set_audio_output = Self.setAudioOutput,
     };
 
     /// No picture is placed behind the surface: `VideoPlayer` draws the
@@ -125,6 +128,19 @@ pub const GstreamerPlayer = struct {
 
     /// Nothing is in the window to take out.
     pub fn detachAll() void {}
+
+    /// GStreamer's version ("GStreamer 1.26.2"), starting it if it has not
+    /// started.
+    ///
+    /// - `allocator`: owns the text.
+    /// - Returns: the version, or null where GStreamer cannot start; propagates
+    ///   allocation failure.
+    fn version(allocator: std.mem.Allocator) std.mem.Allocator.Error!?[]const u8 {
+        const api = mod.Gstreamer.start() orelse return null;
+        const text = api.gst_version_string() orelse return null;
+        defer api.g_free(text);
+        return try allocator.dupe(u8, std.mem.span(text));
+    }
 
     /// Makes a `playbin` with an RGBA app sink as its video sink and no item.
     ///
@@ -245,6 +261,41 @@ pub const GstreamerPlayer = struct {
     fn setVolume(handle: *anyopaque, volume: f32) void {
         const api = mod.Gstreamer.running() orelse return;
         api.g_object_set(Self.nativeOf(handle).playbin, "volume", @as(f64, std.math.clamp(volume, 0, 1)), @as(?*anyopaque, null));
+    }
+
+    /// Routes the sound to one output (`GstreamerAudioOutputs.createSink`'s
+    /// sink as `playbin`'s `audio-sink`), or to the system default when null
+    /// (`playbin`'s own `autoaudiosink`). `playbin` takes a new sink only
+    /// stopped, so a loaded item is stopped, rerouted and started again, an
+    /// item with an end where it was, at the rate it played at. An output
+    /// gone since it was listed leaves the default.
+    ///
+    /// - `handle`: the player.
+    /// - `id`: the output's id, or null for the system default.
+    /// - Returns: false when no output has that id now (the system default
+    ///   plays), else true.
+    fn setAudioOutput(handle: *anyopaque, id: ?[:0]const u8) bool {
+        const native = Self.nativeOf(handle);
+        const api = mod.Gstreamer.running() orelse return false;
+        const sink: ?*anyopaque = if (id) |wanted| mod.GstreamerAudioOutputs.createSink(api, wanted) else null;
+        const routed = id == null or sink != null;
+        if (!routed) log.warn("audio output {s} not found: the system default plays", .{id.?});
+        const resume_at = if (native.has_item) Self.resumePoint(api, native) else null;
+        if (native.has_item) {
+            _ = api.gst_element_set_state(native.playbin, mod.Gstreamer.state_null);
+            Self.drain(api, native);
+        }
+        api.g_object_set(native.playbin, "audio-sink", sink, @as(?*anyopaque, null));
+        if (!native.has_item) return routed;
+        native.state = mod.Gstreamer.state_null;
+        native.ready = false;
+        native.buffering = null;
+        native.pending_seek = resume_at;
+        // The restarted pipeline plays at 1 until the preroll's seek gives it
+        // the rate asked for (`drain`).
+        native.playback_rate = 1;
+        Self.applyState(api, native);
+        return routed;
     }
 
     /// Mutes or unmutes, keeping the volume.
@@ -463,10 +514,15 @@ pub const GstreamerPlayer = struct {
                 native.state = reached;
             } else if (message.type == mod.Gstreamer.message_async_done and message.src == native.playbin) {
                 native.ready = true;
+                // A rate asked for before the pipeline could take a seek (a
+                // new item, a reroute's restart) goes with the waiting seek,
+                // or with a seek in place; a live item takes no rate.
+                const rate_waiting = native.rate > 0 and @as(f64, native.rate) != native.playback_rate and !native.live;
+                if (rate_waiting) native.playback_rate = native.rate;
                 if (native.pending_seek) |seconds| {
                     native.pending_seek = null;
                     Self.seekTo(api, native, seconds);
-                }
+                } else if (rate_waiting) Self.seekTo(api, native, Self.position(api, native) orelse 0);
             }
         }
     }
@@ -512,6 +568,22 @@ pub const GstreamerPlayer = struct {
         var nanoseconds: i64 = 0;
         if (api.gst_element_query_position(native.playbin, mod.Gstreamer.format_time, &nanoseconds) == 0 or nanoseconds < 0) return null;
         return @as(f64, @floatFromInt(nanoseconds)) / mod.Gstreamer.nanoseconds_per_second;
+    }
+
+    /// Where a restarted item picks up: a seek still waiting for the
+    /// pipeline, else the playhead of an item with an end; a live one (no
+    /// end) starts again at its live edge.
+    ///
+    /// - `api`: GStreamer's entry points.
+    /// - `native`: the player.
+    /// - Returns: seconds from the item's start, or null to start afresh.
+    fn resumePoint(api: *const mod.GstreamerApi, native: *NativePlayer) ?f64 {
+        // Asked for before the item could take it: its length is not known yet.
+        if (native.pending_seek) |seconds| return seconds;
+        if (native.live) return null;
+        var duration: i64 = 0;
+        if (api.gst_element_query_duration(native.playbin, mod.Gstreamer.format_time, &duration) == 0 or duration <= 0) return null;
+        return Self.position(api, native);
     }
 
     /// `playbin`'s `flags`.

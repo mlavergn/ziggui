@@ -86,7 +86,7 @@ pub const EraseRectCommand = renderer.EraseRectCommand;
 /// A `DrawCommand.pushClip` payload.
 pub const PushClipCommand = renderer.PushClipCommand;
 /// The draw commands a frame emits.
-pub const Canvas = renderer.Canvas;
+pub const DisplayList = renderer.DisplayList;
 /// Pixels the rasterizer draws into.
 pub const Framebuffer = renderer.Framebuffer;
 /// The software rasterizer.
@@ -107,7 +107,7 @@ pub const FrameStep = renderer.FrameStep;
 pub const AtlasUpload = renderer.AtlasUpload;
 /// The GPU scene's texture atlas bookkeeping.
 pub const TextureAtlas = renderer.TextureAtlas;
-/// A canvas translated for the GPU backend.
+/// A display list translated for the GPU backend.
 pub const GpuScene = renderer.GpuScene;
 
 // -----------------------------------------------------------------------------
@@ -181,7 +181,7 @@ pub const WrappedLine = renderer.WrappedLine;
 pub const TextShaper = renderer.TextShaper;
 /// A font face.
 pub const Font = renderer.Font;
-/// Paints text and icon glyphs into a canvas; `TextPainter.shared().setGamma` sets the coverage gamma.
+/// Paints text and icon glyphs into a display list; `TextPainter.shared().setGamma` sets the coverage gamma.
 pub const TextPainter = renderer.TextPainter;
 /// A text style's face selection (weight, italic, monospace).
 pub const FontStyle = renderer.FontStyle;
@@ -209,6 +209,12 @@ pub const Palette = renderer.Palette;
 pub const Typography = renderer.Typography;
 /// A theme's spacing, sizing, and radius metrics.
 pub const Metrics = renderer.Metrics;
+/// How a theme family draws a menu-style picker and opens its menu.
+pub const MenuPickerLook = renderer.MenuPickerLook;
+/// What a menu-style picker is drawn as: a button or a field.
+pub const MenuPickerChrome = renderer.MenuPickerChrome;
+/// The mark at a menu-style picker's trailing edge.
+pub const MenuPickerIndicator = renderer.MenuPickerIndicator;
 /// Everything a painter needs to draw chrome.
 pub const Surface = renderer.Surface;
 /// A theme's vtable of chrome-drawing functions.
@@ -287,8 +293,8 @@ pub const ScrollStateData = views.ScrollStateData;
 pub const GeometryData = views.GeometryData;
 /// A picker's payload.
 pub const PickerData = views.PickerData;
-/// A `Drawing`'s payload.
-pub const DrawingData = views.DrawingData;
+/// A `Canvas`'s payload.
+pub const CanvasData = views.CanvasData;
 /// A `VideoPlayer`'s payload.
 pub const VideoPlayerData = views.VideoPlayerData;
 /// A `NativeView`'s payload.
@@ -297,6 +303,8 @@ pub const NativeViewData = views.NativeViewData;
 pub const Modifiers = views.Modifiers;
 /// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
 pub const ToggleStyle = views.ToggleStyle;
+/// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
+pub const PickerStyle = views.PickerStyle;
 /// A `.sheet`/`.alert`/`.popover` modifier.
 pub const OverlayModifier = views.OverlayModifier;
 /// A `.frame(...)` modifier's sizes and alignment.
@@ -363,8 +371,8 @@ pub const AccessibilityTraits = views.AccessibilityTraits;
 pub const OverlayRequest = views.OverlayRequest;
 /// A selectable paragraph's geometry for one frame.
 pub const SelectHit = views.SelectHit;
-/// What a `Drawing` paints with.
-pub const Pen = views.Pen;
+/// What a `Canvas` draws with (SwiftUI's `GraphicsContext`).
+pub const GraphicsContext = views.GraphicsContext;
 /// The build arena, published theme and tokens, viewport, wrap cache and link
 /// handler: `BuildScope.shared().begin(arena)`/`end()`, `allocator()`,
 /// `setTheme(theme)`, `theme()`, `tokens()`, `viewport()`, `print(...)`.
@@ -408,6 +416,8 @@ pub const TextSelection = views.TextSelection;
 pub const SelectionSpan = views.SelectionSpan;
 /// The text-field context menu: `TextContextMenu.shared().open(field, point)`, `close()`, `isOpen()`.
 pub const TextContextMenu = views.TextContextMenu;
+/// The open menu of a menu-style `Picker`: one at a time, drawn over everything.
+pub const PickerMenu = views.PickerMenu;
 /// The hover hint a view's `.help(text)` shows (`HelpTip.shared()`, `HelpTip.delay_ms`).
 pub const HelpTip = views.HelpTip;
 /// The clipboard the context menu copies to and pastes from.
@@ -456,7 +466,7 @@ pub const Slider = views.Slider;
 pub const Stepper = views.Stepper;
 /// A progress bar.
 pub const ProgressView = views.ProgressView;
-/// A pop-up menu over a selection binding.
+/// A picker over a selection binding: segmented or a pop-up menu (`.pickerStyle()`).
 pub const Picker = views.Picker;
 /// A one-line text field.
 pub const TextField = views.TextField;
@@ -471,7 +481,7 @@ pub const Icon = views.Icon;
 /// A borderless icon button.
 pub const IconButton = views.IconButton;
 /// A view that paints itself through a callback.
-pub const Drawing = views.Drawing;
+pub const Canvas = views.Canvas;
 /// A push button with its keyboard shortcut in a key cap after the label.
 pub const ButtonKeyed = views.ButtonKeyed;
 /// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
@@ -890,6 +900,18 @@ pub const VideoPlayer = views.VideoPlayer;
 pub const VideoPlayerControls = views.VideoPlayerControls;
 /// What a `VideoPlayerControls` keeps across frames; app-owned.
 pub const VideoPlayerControlsState = views.VideoPlayerControlsState;
+/// The standard controls with the app's own among them.
+pub const VideoPlayerControlsWith = views.VideoPlayerControlsWith;
+/// The app's views the standard controls place among their own.
+pub const VideoPlayerControlsAccessories = views.VideoPlayerControlsAccessories;
+/// A button drawn as the standard controls' are.
+pub const VideoPlayerControlButton = views.VideoPlayerControlButton;
+/// A menu among the controls: a control button showing its items in a popover.
+pub const VideoPlayerControlMenu = views.VideoPlayerControlMenu;
+/// An audio player's controls in one bar, as a podcast player draws them.
+pub const AudioPlayerControls = views.AudioPlayerControls;
+/// What an `AudioPlayerControls` keeps across frames; app-owned.
+pub const AudioPlayerControlsState = views.AudioPlayerControlsState;
 /// What a platform web view reports about its page (`WebPage.update`).
 pub const WebPageState = views.WebPageState;
 /// A message a page posted to a bridge, borrowed for the call.
@@ -904,14 +926,34 @@ pub const WebPageBackend = views.WebPageBackend;
 pub const WebView = views.WebView;
 /// A platform view the app owns, placed where layout puts it.
 pub const NativeView = views.NativeView;
+/// One device sound can play through (`AudioOutputs.list`, `Player.setAudioOutput`).
+pub const AudioOutput = views.AudioOutput;
+/// A platform's audio device listing, installed by the SDL runtime.
+pub const AudioOutputBackend = views.AudioOutputBackend;
+/// The system's audio outputs, through the installed backend.
+pub const AudioOutputs = views.AudioOutputs;
+/// Builds the list an audio output backend returns: strings copied, each id once.
+pub const AudioOutputCollector = views.AudioOutputCollector;
+/// How the window's frames are drawn: GPU, software, or not yet known.
+pub const GraphicsRenderer = views.GraphicsRenderer;
+/// One reading of the system (`SystemInfo.report`).
+pub const SystemReport = views.SystemReport;
+/// The system facts the runtime notes, and the report over them.
+pub const SystemInfo = views.SystemInfo;
+/// A `SystemReport` as a columned form, an app's "System Info" sheet.
+pub const SystemInfoView = views.SystemInfoView;
+/// How the window draws and the media player, as a columned form.
+pub const VideoInfoView = views.VideoInfoView;
+/// The audio output in use and the devices, as a columned form.
+pub const AudioInfoView = views.AudioInfoView;
 
 // -----------------------------------------------------------------------------
 // Testing
 
 /// A headless frame for the view engine's unit tests.
 pub const TestEnvironment = views.TestEnvironment;
-/// A headless frame for the unit tests.
-pub const TestCanvas = views.TestCanvas;
+/// A headless window for the unit tests.
+pub const TestWindow = views.TestWindow;
 /// Two menus for the menu bar's unit tests, counting their choices.
 pub const TestMenus = views.TestMenus;
 

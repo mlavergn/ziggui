@@ -38,12 +38,12 @@ test {
 }
 
 test "field chrome adds the raised ground, the strong border and the corner, keeping the padding" {
-    const canvas = try mod.TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
-    canvas.begin(renderer.MacosTheme.light);
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(renderer.MacosTheme.light);
     const tokens = mod.BuildScope.shared().tokens();
     const field = FieldChrome(mod.Text("x").padding(4));
-    canvas.end();
+    window.end();
     try std.testing.expectEqual(tokens.raised, field.modifiers.background.?.color);
     try std.testing.expectEqual(tokens.line_strong, field.modifiers.border_color.?);
     try std.testing.expectEqual(field_radius, field.modifiers.corner_radius);

@@ -82,6 +82,18 @@ pub const GstAppSinkCallbacks = extern struct {
     rest: [12]?*const anyopaque = @splat(null),
 };
 
+/// GLib's `GList`: a doubly linked list node (the device monitor's devices).
+pub const GList = extern struct {
+    const Self = @This();
+
+    /// The node's item.
+    data: ?*anyopaque,
+    /// The next node, or null at the end.
+    next: ?*GList,
+    /// The previous node, or null at the start.
+    prev: ?*GList,
+};
+
 /// The entry points resolved, by library. Each field mirrors the C function
 /// of its name, so they keep its spelling.
 pub const GstreamerApi = struct {
@@ -95,8 +107,12 @@ pub const GstreamerApi = struct {
     g_object_set: *const fn (*anyopaque, [*:0]const u8, ...) callconv(.c) void,
     /// `g_object_get`, resolved from its library.
     g_object_get: *const fn (*anyopaque, [*:0]const u8, ...) callconv(.c) void,
+    /// `g_list_free`, resolved from its library.
+    g_list_free: *const fn (?*GList) callconv(.c) void,
     /// `g_signal_emit_by_name`, resolved from its library.
     g_signal_emit_by_name: *const fn (*anyopaque, [*:0]const u8, ...) callconv(.c) void,
+    /// `gst_version_string`, resolved from its library.
+    gst_version_string: *const fn () callconv(.c) ?[*:0]u8,
     /// `gst_init_check`, resolved from its library.
     gst_init_check: *const fn (?*c_int, ?*anyopaque, ?*?*mod.Gerror) callconv(.c) mod.Gboolean,
     /// `gst_element_factory_make`, resolved from its library.
@@ -135,6 +151,28 @@ pub const GstreamerApi = struct {
     gst_caps_get_structure: *const fn (*anyopaque, c_uint) callconv(.c) ?*anyopaque,
     /// `gst_structure_get_int`, resolved from its library.
     gst_structure_get_int: *const fn (*anyopaque, [*:0]const u8, *c_int) callconv(.c) mod.Gboolean,
+    /// `gst_structure_get_string`, resolved from its library.
+    gst_structure_get_string: *const fn (*anyopaque, [*:0]const u8) callconv(.c) ?[*:0]const u8,
+    /// `gst_structure_get_boolean`, resolved from its library.
+    gst_structure_get_boolean: *const fn (*anyopaque, [*:0]const u8, *mod.Gboolean) callconv(.c) mod.Gboolean,
+    /// `gst_structure_free`, resolved from its library.
+    gst_structure_free: *const fn (*anyopaque) callconv(.c) void,
+    /// `gst_device_monitor_new`, resolved from its library.
+    gst_device_monitor_new: *const fn () callconv(.c) ?*anyopaque,
+    /// `gst_device_monitor_add_filter`, resolved from its library.
+    gst_device_monitor_add_filter: *const fn (*anyopaque, ?[*:0]const u8, ?*anyopaque) callconv(.c) c_uint,
+    /// `gst_device_monitor_start`, resolved from its library.
+    gst_device_monitor_start: *const fn (*anyopaque) callconv(.c) mod.Gboolean,
+    /// `gst_device_monitor_stop`, resolved from its library.
+    gst_device_monitor_stop: *const fn (*anyopaque) callconv(.c) void,
+    /// `gst_device_monitor_get_devices`, resolved from its library.
+    gst_device_monitor_get_devices: *const fn (*anyopaque) callconv(.c) ?*GList,
+    /// `gst_device_get_display_name`, resolved from its library.
+    gst_device_get_display_name: *const fn (*anyopaque) callconv(.c) ?[*:0]u8,
+    /// `gst_device_get_properties`, resolved from its library.
+    gst_device_get_properties: *const fn (*anyopaque) callconv(.c) ?*anyopaque,
+    /// `gst_device_create_element`, resolved from its library.
+    gst_device_create_element: *const fn (*anyopaque, ?[*:0]const u8) callconv(.c) ?*anyopaque,
     /// `gst_sample_get_buffer`, resolved from its library.
     gst_sample_get_buffer: *const fn (*anyopaque) callconv(.c) ?*anyopaque,
     /// `gst_sample_get_caps`, resolved from its library.

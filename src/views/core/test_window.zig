@@ -1,18 +1,18 @@
-//! A headless frame for the unit tests: draws a view tree and replays taps and pointer moves (a test fixture).
+//! A headless window for the unit tests: draws a view tree and replays taps and pointer moves (a test fixture).
 
 const std = @import("std");
-const log = std.log.scoped(.ziggui_test_canvas);
+const log = std.log.scoped(.ziggui_test_window);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 
-/// A headless frame for the unit tests: builds a view tree, draws it with
+/// A headless window for the unit tests: builds a view tree, draws it with
 /// ziggui's software rasterizer, and replays taps on what it drew.
 ///
 /// Heap-allocated (`create`), because the glyph caches point into its fonts.
-pub const TestCanvas = struct {
+pub const TestWindow = struct {
     const Self = @This();
 
-    /// The allocator the canvas and its frames come from.
+    /// The allocator the window and its frames come from.
     allocator: std.mem.Allocator,
 
     /// The build and frame arena, reset by each `begin`.
@@ -48,10 +48,10 @@ pub const TestCanvas = struct {
     /// The overlays (popovers, sheets, alerts) the last `render` drew.
     overlays: std.ArrayList(mod.OverlayRequest) = .empty,
 
-    /// Makes a canvas.
+    /// Makes a window.
     ///
-    /// - `allocator`: allocator for the canvas, its caches and its frames.
-    /// - Returns: the canvas, owned by the caller (`destroy`); propagates allocation failure.
+    /// - `allocator`: allocator for the window, its caches and its frames.
+    /// - Returns: the window, owned by the caller (`destroy`); propagates allocation failure.
     pub fn create(allocator: std.mem.Allocator) !*Self {
         const self = try allocator.create(Self);
         self.* = .{
@@ -67,9 +67,9 @@ pub const TestCanvas = struct {
         return self;
     }
 
-    /// Frees the canvas, its caches and its last frame.
+    /// Frees the window, its caches and its last frame.
     ///
-    /// - `self`: the canvas; invalid afterwards.
+    /// - `self`: the window; invalid afterwards.
     pub fn destroy(self: *Self) void {
         self.icon_cache.deinit();
         self.cache.deinit();
@@ -79,7 +79,7 @@ pub const TestCanvas = struct {
 
     /// Starts building a frame in `theme`: publishes its tokens and opens the build arena.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the window.
     /// - `theme`: the theme to build and draw with.
     pub fn begin(self: *Self, theme: renderer.Theme) void {
         _ = self.arena.reset(.retain_capacity);
@@ -93,7 +93,7 @@ pub const TestCanvas = struct {
 
     /// Closes the build arena, as the app does before it draws.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the window.
     pub fn end(self: *const Self) void {
         _ = self;
         mod.BuildScope.shared().end();
@@ -101,7 +101,7 @@ pub const TestCanvas = struct {
 
     /// Draws `view` at `width` × `height` points on a white background.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the window.
     /// - `view`: the tree built since `begin`.
     /// - `width`: the frame's width.
     /// - `height`: the frame's height.
@@ -114,19 +114,19 @@ pub const TestCanvas = struct {
         context.hover_point = self.hover_point;
         context.press_point = self.press_point;
         context.overlays = &self.overlays;
-        var canvas = renderer.Canvas.init(arena);
+        var display_list = renderer.DisplayList.init(arena);
         const full: renderer.Rect = .{ .x = 0, .y = 0, .width = @floatFromInt(width), .height = @floatFromInt(height) };
-        try mod.ViewRenderer.render(&context, view, full, &canvas);
+        try mod.ViewRenderer.render(&context, view, full, &display_list);
         var framebuffer = try renderer.Framebuffer.init(self.allocator, width, height);
         errdefer framebuffer.deinit();
         framebuffer.clear(renderer.Color.white);
-        try renderer.Rasterizer.init(self.allocator, &framebuffer).render(canvas.commands.items);
+        try renderer.Rasterizer.init(self.allocator, &framebuffer).render(display_list.commands.items);
         return framebuffer;
     }
 
     /// Taps the last frame at `point`, as a click would.
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the window.
     /// - `point`: where to tap, in points.
     /// - Returns: whether a region took the tap.
     pub fn tap(self: *const Self, point: renderer.Point) bool {
@@ -136,7 +136,7 @@ pub const TestCanvas = struct {
     /// Moves the pointer over the last frame from `from` to `to`, as a mouse
     /// motion would: views whose frame it entered or left hear of it (`onHover`).
     ///
-    /// - `self`: the canvas.
+    /// - `self`: the window.
     /// - `from`: where the pointer was, or null outside the window.
     /// - `to`: where it is now, or null outside the window.
     /// - Returns: whether any `onHover` callback fired.
@@ -154,11 +154,12 @@ test {
     _ = log;
 }
 
-test "a test canvas draws a view and replays a tap on it" {
-    const canvas = try TestCanvas.create(std.testing.allocator);
-    defer canvas.destroy();
+test "a test window draws a view and replays a tap on it" {
+    const window = try TestWindow.create(std.testing.allocator);
+    defer window.destroy();
     const Probe = struct {
         const Self = @This();
+        /// Whether the button was tapped.
         tapped: bool = false,
         /// Notes the tap.
         ///
@@ -168,12 +169,12 @@ test "a test canvas draws a view and replays a tap on it" {
         }
     };
     var probe: Probe = .{};
-    canvas.begin(renderer.MacosTheme.light);
+    window.begin(renderer.MacosTheme.light);
     const view = mod.Rectangle(renderer.Color.red).onTap(mod.Callback.init(Probe, &probe, Probe.onTap));
-    canvas.end();
-    var frame = try canvas.render(view, 20, 20);
+    window.end();
+    var frame = try window.render(view, 20, 20);
     defer frame.deinit();
     try std.testing.expect(frame.at(10, 10).r > 0.9);
-    try std.testing.expect(canvas.tap(.{ .x = 10, .y = 10 }));
+    try std.testing.expect(window.tap(.{ .x = 10, .y = 10 }));
     try std.testing.expect(probe.tapped);
 }
