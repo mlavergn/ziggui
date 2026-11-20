@@ -39,6 +39,9 @@ pub const TestWindow = struct {
     /// The `onHover` regions the last `render` registered.
     hovers: std.ArrayList(mod.HoverRegion) = .empty,
 
+    /// The scroll regions the last `render` registered.
+    scrolls: std.ArrayList(mod.ScrollRegion) = .empty,
+
     /// Where the pointer rests for the next `render`, or null (outside the window).
     hover_point: ?renderer.Point = null,
 
@@ -85,6 +88,7 @@ pub const TestWindow = struct {
         _ = self.arena.reset(.retain_capacity);
         self.hits = .empty;
         self.hovers = .empty;
+        self.scrolls = .empty;
         self.overlays = .empty;
         self.theme = theme;
         mod.BuildScope.shared().setTheme(theme);
@@ -111,6 +115,7 @@ pub const TestWindow = struct {
         var context = mod.Context.init(self.theme, &self.cache, arena, &self.hits);
         context.icon_cache = &self.icon_cache;
         context.hover_regions = &self.hovers;
+        context.scroll_regions = &self.scrolls;
         context.hover_point = self.hover_point;
         context.press_point = self.press_point;
         context.overlays = &self.overlays;
@@ -131,6 +136,18 @@ pub const TestWindow = struct {
     /// - Returns: whether a region took the tap.
     pub fn tap(self: *const Self, point: renderer.Point) bool {
         return mod.PointerInput.shared().tap(self.hits.items, point);
+    }
+
+    /// Turns the wheel over the last frame at `point`, as a mouse wheel or a
+    /// trackpad would: the scroll view under it moves (`PointerInput.scrollBoth`).
+    ///
+    /// - `self`: the window.
+    /// - `point`: the pointer, in points.
+    /// - `delta_x`: the sideways delta, positive to the right.
+    /// - `delta_y`: the vertical delta, positive away from the user.
+    /// - Returns: whether a region took the event.
+    pub fn scroll(self: *const Self, point: renderer.Point, delta_x: f32, delta_y: f32) bool {
+        return mod.PointerInput.shared().scrollBoth(self.scrolls.items, point, delta_x, delta_y);
     }
 
     /// Moves the pointer over the last frame from `from` to `to`, as a mouse

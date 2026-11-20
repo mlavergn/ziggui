@@ -1,4 +1,4 @@
-//! SDL3's native open dialogs: NSOpenPanel / IFileDialog / XDG portal.
+//! SDL3's native open and save dialogs: NSOpenPanel / NSSavePanel / IFileDialog / XDG portal.
 //! Asynchronous: the OS panel runs alongside the loop and SDL invokes the
 //! callback later, possibly on another thread, so the callback only copies
 //! the path to the heap and pushes a user event to wake
@@ -96,6 +96,32 @@ pub const FileDialog = struct {
             mod.App.shared().window,
             default_location orelse null,
             false, // allow_many
+        );
+        return true;
+    }
+
+    /// Shows the native "Save File" dialog. `default_location` is a folder
+    /// ending in `/`, or a path whose last part is the name the field starts
+    /// with (`/Users/ada/Downloads/notes.txt`); the OS asks before replacing a
+    /// file there. `filters` must outlive the dialog, as for `openFile`.
+    /// Shares the result plumbing of `openFile`: poll `takeResult` each frame
+    /// for the chosen path. Call from the main thread.
+    ///
+    /// - `self`: the dialog state.
+    /// - `filters`: the file filters, possibly empty.
+    /// - `default_location`: the folder, or folder and name, to start at, or null.
+    /// - Returns: false if a dialog is already open.
+    pub fn saveFile(self: *Self, filters: []const FileFilter, default_location: ?[*:0]const u8) bool {
+        if (self.open) return false;
+        self.open = true;
+        self.done.store(false, .release);
+        sdl_c.SDL_ShowSaveFileDialog(
+            Self.finished,
+            null,
+            mod.App.shared().window,
+            if (filters.len > 0) filters.ptr else null,
+            @intCast(filters.len),
+            default_location orelse null,
         );
         return true;
     }

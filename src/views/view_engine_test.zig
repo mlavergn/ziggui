@@ -1353,6 +1353,62 @@ test "view: sheet enqueues an overlay, draws a scrim over content, dismisses on 
     try std.testing.expect(framebuffer.at(100, 20).luminance() < 0.95);
 }
 
+test "view: a test window replays the wheel on what it drew" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var scroll: mod.ScrollState = .{};
+
+    window.begin(renderer.MacosTheme.light);
+    const view = mod.ScrollViewState(&scroll, mod.Rectangle(renderer.Color.red).frame(100, 1000)).frameMaxWidth().frameMaxHeight();
+    window.end();
+    var framebuffer = try window.render(view, 200, 200);
+    framebuffer.deinit();
+
+    try std.testing.expect(window.scroll(.{ .x = 100, .y = 100 }, 0, -1));
+    try std.testing.expect(scroll.offset > 0);
+    try std.testing.expect(!window.scroll(.{ .x = 500, .y = 500 }, 0, -1));
+}
+
+test "view: a sheet stops the wheel over what it covers; its own scroll view still scrolls" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var presented = renderer.State(bool).init(std.testing.allocator, true);
+    defer presented.deinit();
+    var wide: mod.ScrollState = .{};
+    var tall: mod.ScrollState = .{};
+
+    // A view that scrolls both ways, under a sheet whose body scrolls only down.
+    window.begin(renderer.MacosTheme.light);
+    var tree = mod.ScrollViewStateBoth(&wide, mod.Rectangle(renderer.Color.red).frame(2000, 2000)).frameMaxWidth().frameMaxHeight()
+        .sheet(presented.binding(), mod.ScrollViewState(&tall, mod.Rectangle(renderer.Color.blue).frame(200, 1000)).frameHeight(150));
+    window.end();
+    var framebuffer = try window.render(tree, 600, 400);
+    framebuffer.deinit();
+
+    // Over the sheet's body: down scrolls it; sideways moves nothing behind it.
+    try std.testing.expect(window.scroll(.{ .x = 300, .y = 200 }, 0, -1));
+    try std.testing.expect(tall.offset > 0);
+    try std.testing.expect(window.scroll(.{ .x = 300, .y = 200 }, 1, 0));
+    try std.testing.expectEqual(@as(f32, 0), wide.offset_x);
+
+    // Over the scrim: either way, nothing behind moves.
+    try std.testing.expect(window.scroll(.{ .x = 10, .y = 10 }, 1, -1));
+    try std.testing.expectEqual(@as(f32, 0), wide.offset);
+    try std.testing.expectEqual(@as(f32, 0), wide.offset_x);
+
+    // Dismissed, the view scrolls again.
+    presented.set(false);
+    window.begin(renderer.MacosTheme.light);
+    tree = mod.ScrollViewStateBoth(&wide, mod.Rectangle(renderer.Color.red).frame(2000, 2000)).frameMaxWidth().frameMaxHeight()
+        .sheet(presented.binding(), mod.Empty());
+    window.end();
+    framebuffer = try window.render(tree, 600, 400);
+    framebuffer.deinit();
+    try std.testing.expect(window.scroll(.{ .x = 10, .y = 10 }, 1, -1));
+    try std.testing.expect(wide.offset_x > 0);
+    try std.testing.expect(wide.offset > 0);
+}
+
 test "view: chaining .sheet and .alert keeps both overlays (neither clobbers)" {
     var environment = mod.TestEnvironment.init();
     environment.setup();

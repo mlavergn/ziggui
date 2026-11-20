@@ -193,7 +193,8 @@ pub const ViewRenderer = struct {
     }
 
     /// Draws one overlay request: a dimming scrim across `root`, a tap-to-dismiss
-    /// region, a panel background, then the content positioned by style.
+    /// region, for a sheet or alert a region that stops the wheel, a panel
+    /// background, then the content positioned by style.
     ///
     /// - `context`: the context.
     /// - `request`: the overlay.
@@ -201,19 +202,26 @@ pub const ViewRenderer = struct {
     /// - `display_list`: where it is painted.
     /// - Returns: nothing; propagates allocation failure.
     fn drawOverlay(context: *const mod.Context, request: mod.OverlayRequest, root: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
+        // A popover's input passes through its `popoverPassthrough` frames, a
+        // sheet's or alert's through its `modalPassthrough` ones.
+        const list = if (request.style == .popover) context.passthrough else context.modal_passthrough;
+        const holes: []const renderer.Rect = if (list) |frames| frames.items else &.{};
         // 1. Dimming scrim over the whole frame (theme-tinted; native macOS dims
-        //    by ~20% black under modals). Popovers are light-dismiss but do NOT
-        //    dim the window behind them.
+        //    by ~20% black under modals), which also stops the wheel over
+        //    everything it covers: registered before the content's own scroll
+        //    views, so those still scroll, and a delta they do not take (sideways
+        //    over a sheet that only scrolls down) moves nothing behind the modal.
+        //    Popovers are light-dismiss but do NOT dim or stop the window behind them.
         if (request.style != .popover) {
             try display_list.fillRect(root, context.theme.colors.scrim);
+            if (context.scroll_regions) |regions| {
+                try regions.append(context.arena, mod.ScrollRegion.absorbing(root, try context.arena.dupe(renderer.Rect, holes)));
+            }
         }
         // 2. Tap-to-dismiss region beneath the content (appended before content's
-        //    own regions, so a tap on the content hits the content first). A
-        //    popover's leaves out the `popoverPassthrough` frames, a sheet's or
-        //    alert's the `modalPassthrough` ones.
+        //    own regions, so a tap on the content hits the content first), its
+        //    holes left out.
         if (request.dismiss) |dismiss| {
-            const list = if (request.style == .popover) context.passthrough else context.modal_passthrough;
-            const holes: []const renderer.Rect = if (list) |frames| frames.items else &.{};
             try Self.appendDismiss(context, root, holes, dismiss);
         }
 

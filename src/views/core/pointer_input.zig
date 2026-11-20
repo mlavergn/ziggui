@@ -358,7 +358,8 @@ pub const PointerInput = struct {
     }
 
     /// Routes a wheel delta to the top-most scroll region containing `point`
-    /// (back-to-front, like `tap`).
+    /// (back-to-front, like `tap`). A modal's absorbing region (`ScrollRegion.absorbing`)
+    /// takes it outside its holes and moves nothing; inside one, it goes on behind.
     ///
     /// - `self`: the pointer input.
     /// - `regions`: the frame's scroll regions.
@@ -372,12 +373,10 @@ pub const PointerInput = struct {
             index -= 1;
             const region = regions[index];
             if (region.rect.contains(point)) {
+                if (region.stops(point)) return true;
+                if (region.absorbs) continue;
                 region.state.scrollBy(delta_y * scroll_speed);
-                // Surface the overlay scrollbar and keep the loop awake long enough
-                // for it to fade back out (see FrameClock.scrollbarsAnimating).
-                const clock = mod.FrameClock.shared();
-                region.state.last_active_ms = clock.time_ms;
-                clock.keepScrollbarsVisible();
+                Self.showScrollbars(region.state);
                 return true;
             }
         }
@@ -386,7 +385,10 @@ pub const PointerInput = struct {
 
     /// Routes a wheel event with both deltas: `delta_y` as `scroll` does,
     /// and `delta_x` to the top-most horizontal region (`ScrollViewStateBoth`)
-    /// containing `point`. A zero delta is skipped.
+    /// containing `point`, passing over vertical-only ones in front of it, but
+    /// never past a modal's absorbing region: a sideways delta over a sheet
+    /// that only scrolls up and down moves nothing behind it. A zero delta is
+    /// skipped.
     ///
     /// - `self`: the pointer input.
     /// - `regions`: the frame's scroll regions, back to front.
@@ -402,12 +404,12 @@ pub const PointerInput = struct {
         while (index > 0) {
             index -= 1;
             const region = regions[index];
-            if (!region.horizontal or !region.rect.contains(point)) continue;
+            if (!region.rect.contains(point)) continue;
+            if (region.stops(point)) return true;
+            if (!region.horizontal) continue;
             // Positive x is to the right: the content moves left, so the offset grows.
             region.state.scrollByX(-delta_x * scroll_speed);
-            const clock = mod.FrameClock.shared();
-            region.state.last_active_ms = clock.time_ms;
-            clock.keepScrollbarsVisible();
+            Self.showScrollbars(region.state);
             return true;
         }
         return consumed;
@@ -542,6 +544,16 @@ pub const PointerInput = struct {
         self.last_count = self.tap_clicks;
     }
 
+    /// Surfaces a scrolled view's overlay scrollbar and keeps the loop awake
+    /// long enough for it to fade back out (see `FrameClock.scrollbarsAnimating`).
+    ///
+    /// - `state`: the scroll position the wheel just moved.
+    fn showScrollbars(state: *mod.ScrollState) void {
+        const clock = mod.FrameClock.shared();
+        state.last_active_ms = clock.time_ms;
+        clock.keepScrollbarsVisible();
+    }
+
     /// What a region is, for counting clicks: its `View.id`, else its frame,
     /// the kind of its action and, for a callback, its handler (a tagged
     /// callback's context is rebuilt each frame, so its place tells rows apart).
@@ -611,6 +623,36 @@ test "view: dispatchScrollXY sends sideways deltas only to horizontal regions" {
     // Down still goes to the region under the point, as dispatchScroll does.
     try std.testing.expect(input.scrollBoth(&regions, .{ .x = 50, .y = 50 }, 0, -1));
     try std.testing.expect(vertical.offset > 50);
+}
+
+test "view: an absorbing region stops the wheel behind it; regions in front still scroll" {
+    var behind = mod.ScrollState{ .content_height = 400, .viewport_height = 100, .offset = 50, .content_width = 400, .viewport_width = 100, .offset_x = 50 };
+    var front = mod.ScrollState{ .content_height = 400, .viewport_height = 100, .offset = 50 };
+    const everything: renderer.Rect = .{ .x = 0, .y = 0, .width = 200, .height = 200 };
+    const hole: renderer.Rect = .{ .x = 150, .y = 150, .width = 50, .height = 50 };
+    // Back to front: the view behind, the modal's scrim, the modal's vertical scroll view.
+    const regions = [_]mod.ScrollRegion{
+        .{ .rect = everything, .state = &behind, .horizontal = true },
+        mod.ScrollRegion.absorbing(everything, &.{hole}),
+        .{ .rect = .{ .x = 50, .y = 50, .width = 100, .height = 100 }, .state = &front },
+    };
+    const input = PointerInput.shared();
+
+    // Over the modal's scroll view: down moves it; sideways stops at the scrim.
+    try std.testing.expect(input.scrollBoth(&regions, .{ .x = 100, .y = 100 }, 0, -1));
+    try std.testing.expect(front.offset > 50);
+    try std.testing.expect(input.scrollBoth(&regions, .{ .x = 100, .y = 100 }, 1, 0));
+    try std.testing.expectEqual(@as(f32, 50), behind.offset_x);
+
+    // Over the scrim: taken, and nothing moves either way.
+    try std.testing.expect(input.scrollBoth(&regions, .{ .x = 10, .y = 10 }, 1, -1));
+    try std.testing.expectEqual(@as(f32, 50), behind.offset);
+    try std.testing.expectEqual(@as(f32, 50), behind.offset_x);
+
+    // Through the scrim's hole, the view behind scrolls.
+    try std.testing.expect(input.scrollBoth(&regions, .{ .x = 175, .y = 175 }, 1, -1));
+    try std.testing.expect(behind.offset > 50);
+    try std.testing.expect(behind.offset_x > 50);
 }
 
 test "an armed drag hears its press, its moves and, once, its end" {
