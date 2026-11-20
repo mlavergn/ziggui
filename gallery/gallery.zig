@@ -106,6 +106,10 @@ pub const Section = enum {
     /// and a large picture panned and zoomed (`GraphicsContext.picture`).
     canvas,
 
+    /// A folder tree whose folders fold, started collapsed, with expand
+    /// all and collapse all (`OutlineState`, `OutlineRow`).
+    outline,
+
     /// Every section, as sidebar rows, in the enum's order: a section's index
     /// (`--section`, the screenshots) is its place here.
     pub const items = blk: {
@@ -181,6 +185,7 @@ pub const Section = enum {
             .audioPlayer => "Audio Player",
             .pickers => "Pickers",
             .canvas => "Image & Canvas",
+            .outline => "Outline",
         };
     }
 
@@ -221,6 +226,7 @@ pub const Section = enum {
             .audioPlayer => .audioLines,
             .pickers => .chevronsUpDown,
             .canvas => .image,
+            .outline => .listTree,
         };
     }
 
@@ -791,6 +797,7 @@ pub const Gallery = struct {
             .audioPlayer => self.media.audioPanel(active_theme),
             .pickers => self.pickers.panel(active_theme),
             .canvas => self.showcase.canvasPanel(active_theme),
+            .outline => self.kit.outlinePanel(active_theme),
             .statusLine => Self.statusLinePanel(active_theme),
             .hover => self.hoverPanel(active_theme),
             .controls => self.showcase.controlsPanel(active_theme),
@@ -1243,7 +1250,7 @@ test "the sidebar lists the sections by label; each keeps its index" {
     // Indices are the enum's: the first section stays the first, the newest
     // is appended, whatever their rows.
     try std.testing.expectEqual(Section.chat, Section.at(0));
-    try std.testing.expectEqual(Section.canvas, Section.at(@intCast(Section.items.len - 1)));
+    try std.testing.expectEqual(Section.outline, Section.at(@intCast(Section.items.len - 1)));
     try std.testing.expectEqualStrings("Audio Player", Section.sidebar_items[0].label);
 }
 

@@ -50,10 +50,32 @@ const reorder_pitch: f32 = 28 + row_spacing;
 /// the gap above the last row.
 const reorder_frozen = ziggui.ReorderState{ .pressed = 1, .dragging = 1, .offset = 50, .row_height = reorder_pitch, .count = sample_items.len };
 
+/// The Outline panel's tree, in pre-order: folders first, then files.
+const outline_nodes = [_]ziggui.OutlineNode{
+    .{ .key = ".zig-cache/", .has_children = true },
+    .{ .key = ".zig-cache/h/", .depth = 1, .has_children = true },
+    .{ .key = ".zig-cache/h/timestamp", .depth = 2 },
+    .{ .key = "cli/", .has_children = true },
+    .{ .key = "cli/main.zig", .depth = 1 },
+    .{ .key = "src/", .has_children = true },
+    .{ .key = "src/flowable/", .depth = 1, .has_children = true },
+    .{ .key = "src/flowable/flowable.zig", .depth = 2 },
+    .{ .key = "src/operators/", .depth = 1, .has_children = true },
+    .{ .key = "src/operators/map.zig", .depth = 2 },
+    .{ .key = "src/operators/filter.zig", .depth = 2 },
+    .{ .key = "src/schedulers/", .depth = 1, .has_children = true },
+    .{ .key = "src/schedulers/queue.zig", .depth = 2 },
+    .{ .key = "src/callback.zig", .depth = 1 },
+    .{ .key = "src/disposable.zig", .depth = 1 },
+    .{ .key = "src/emitter.zig", .depth = 1 },
+    .{ .key = "build.zig" },
+    .{ .key = "README.md" },
+};
+
 /// The design-kit panels: badges, key caps, keyed buttons, segmented
 /// controls and the key-hint bar; setting rows and the form editors;
-/// selectable rows and a pane header; reorderable rows, with the state
-/// they bind to.
+/// selectable rows and a pane header; reorderable rows; the file browser;
+/// an outline's folding rows, with the state they bind to.
 pub const Kit = struct {
     const Self = @This();
 
@@ -95,6 +117,13 @@ pub const Kit = struct {
     /// The Reorder panel's frozen list's drag, reset to `reorder_frozen` each frame.
     reorder_preview: ziggui.ReorderState = reorder_frozen,
 
+    /// The Outline panel's folds: collapsed at first, `src/` opened.
+    outline: ziggui.OutlineState,
+
+    /// The Outline panel's selected node, by index into `outline_nodes`; kept
+    /// while folded away, shown on the folder holding it until that opens.
+    outline_selection: ziggui.State(i64),
+
     /// What the last keyed button did.
     pressed: []const u8 = "No button pressed yet.",
 
@@ -122,6 +151,8 @@ pub const Kit = struct {
             .toolsets = ziggui.TokenFieldState.init(allocator),
             .row_selection = ziggui.State(i64).init(allocator, 1),
             .reorder_selection = ziggui.State(i64).init(allocator, 0),
+            .outline = .init(allocator, false),
+            .outline_selection = ziggui.State(i64).init(allocator, 5),
             .search = ziggui.TextFieldState.init(allocator),
             // The gallery has no `Io` of its own to hand down; the global one
             // cannot run work concurrently, so the fixture folder is listed in
@@ -130,6 +161,7 @@ pub const Kit = struct {
         };
         errdefer self.deinit();
         try self.files.open(gallery.fixtures_path);
+        try self.outline.setExpanded("src/", true);
         try self.search.setText("releases");
         try self.headers.setPairs(&.{ .{ "Accept", "application/json" }, .{ "X-Trace-Id", "7f3a" } });
         try self.toolsets.setTokens(&.{ "repos", "issues", "pull_requests" });
@@ -142,6 +174,8 @@ pub const Kit = struct {
     pub fn deinit(self: *Self) void {
         self.files.deinit();
         self.search.deinit();
+        self.outline_selection.deinit();
+        self.outline.deinit();
         self.reorder_selection.deinit();
         self.row_selection.deinit();
         self.toolsets.deinit();
@@ -261,6 +295,29 @@ pub const Kit = struct {
         }).spacing(16);
     }
 
+    /// The Outline panel: a folder tree whose folders fold (a tap on a
+    /// folder's row), collapsed at first, with expand all and collapse all.
+    ///
+    /// - `self`: the kit.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the panel's view.
+    pub fn outlinePanel(self: *Self, theme: ziggui.Theme) ziggui.View {
+        const allocator = ziggui.BuildScope.shared().allocator();
+        const shown = self.outline.visible(allocator, &outline_nodes) catch @panic("oom");
+        const rows = allocator.alloc(ziggui.View, shown.len) catch @panic("oom");
+        const selected_node = self.outline.shownNode(&outline_nodes, @intCast(self.outline_selection.get()));
+        for (rows, shown) |*row, index| row.* = self.outlineRow(index, index == selected_node);
+        const list = ziggui.StackBuilder.fromSlice(.vertical, 0, .leading, rows).frameMaxWidth();
+        const buttons = ziggui.HStack(.{
+            ziggui.Button("Expand All", ziggui.Callback.init(Self, self, Self.expandedAll)),
+            ziggui.Button("Collapse All", ziggui.Callback.init(Self, self, Self.collapsedAll)),
+            ziggui.Spacer(),
+        }).spacing(8);
+        return ziggui.VStack(.{
+            Self.card(theme, "OutlineRow: tap a folder to fold or unfold it", "ziggui.OutlineState, ziggui.OutlineRow", ziggui.VStack(.{ buttons, list }).spacing(10).frameMaxWidth()),
+        }).spacing(16);
+    }
+
     /// The File Browser panel: a `FileBrowser` over the fixture folder, and what it would pick.
     ///
     /// - `self`: the kit.
@@ -303,6 +360,51 @@ pub const Kit = struct {
             }
         }
         return ziggui.StackBuilder.fromSlice(.vertical, row_spacing, .leading, rows).frameMaxWidth();
+    }
+
+    /// One Outline row: the node's name, a folder or file glyph, selected by a
+    /// tap, a folder's tap folding it too.
+    ///
+    /// - `self`: the kit.
+    /// - `index`: the node, by index into `outline_nodes`.
+    /// - `selected`: whether it shows the selection (`OutlineState.shownNode`).
+    /// - Returns: the row.
+    fn outlineRow(self: *Self, index: usize, selected: bool) ziggui.View {
+        const node = outline_nodes[index];
+        const color = ziggui.SelectableRowStyle.selectionText(selected, true);
+        const expanded = self.outline.isExpanded(node.key);
+        const trimmed = std.mem.trimEnd(u8, node.key, "/");
+        const name = if (std.mem.findScalarLast(u8, trimmed, '/')) |slash| trimmed[slash + 1 ..] else trimmed;
+        const glyph: ziggui.IconName = if (!node.has_children) .fileText else if (expanded) .folderOpen else .folder;
+        const label = ziggui.HStack(.{ ziggui.Icon(glyph, 13, color), ziggui.Text(name).foreground(color) }).spacing(6);
+        const tapped = ziggui.Callback.tagged(Self, self, Self.outlineTapped, index);
+        // Its key is what the row is: rows move under the pointer as folders fold.
+        const identity = std.hash.Wyhash.hash(0, node.key);
+        return ziggui.SelectableRow(ziggui.OutlineRow(node.depth, node.has_children, expanded, color, null, label), selected, true, tapped).id(identity);
+    }
+
+    /// A tap on an Outline row: selects it, and folds or unfolds a folder.
+    ///
+    /// - `self`: the kit.
+    /// - `index`: the node, by index into `outline_nodes`.
+    fn outlineTapped(self: *Self, index: usize) void {
+        self.outline_selection.set(@intCast(index));
+        if (!outline_nodes[index].has_children) return;
+        self.outline.toggle(outline_nodes[index].key) catch |err| log.warn("cannot fold the outline: {s}", .{@errorName(err)});
+    }
+
+    /// Expand All: every folder opens.
+    ///
+    /// - `self`: the kit.
+    fn expandedAll(self: *Self) void {
+        self.outline.expandAll();
+    }
+
+    /// Collapse All: every folder closes.
+    ///
+    /// - `self`: the kit.
+    fn collapsedAll(self: *Self) void {
+        self.outline.collapseAll();
     }
 
     /// The Save button: says it was pressed.
@@ -408,6 +510,42 @@ test "the Reorder panel's list reorders on a drag and selects on a tap" {
     // The selection follows its item, not its place.
     try std.testing.expectEqual(@as(i64, 0), kit.reorder_selection.get());
     frame = try window.render(list, 300, 150);
+    frame.deinit();
+}
+
+test "the Outline panel starts collapsed but for src/, folds on a tap, and expands and collapses all" {
+    var kit = try Kit.init(std.testing.allocator);
+    defer kit.deinit();
+    const window = try ziggui.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+
+    const top = try kit.outline.visible(std.testing.allocator, &outline_nodes);
+    defer std.testing.allocator.free(top);
+    // .zig-cache/, cli/, src/ and its six, build.zig, README.md.
+    try std.testing.expectEqual(11, top.len);
+
+    kit.outlineTapped(3);
+    try std.testing.expect(kit.outline.isExpanded("cli/"));
+    try std.testing.expectEqual(@as(i64, 3), kit.outline_selection.get());
+    kit.outlineTapped(4);
+    try std.testing.expect(kit.outline.isExpanded("cli/"));
+    kit.expandedAll();
+    const all = try kit.outline.visible(std.testing.allocator, &outline_nodes);
+    defer std.testing.allocator.free(all);
+    try std.testing.expectEqual(outline_nodes.len, all.len);
+    // A file folded away keeps the selection, shown on its top folder.
+    kit.outlineTapped(9);
+    kit.collapsedAll();
+    const none = try kit.outline.visible(std.testing.allocator, &outline_nodes);
+    defer std.testing.allocator.free(none);
+    try std.testing.expectEqual(5, none.len);
+    try std.testing.expectEqual(@as(i64, 9), kit.outline_selection.get());
+    try std.testing.expectEqual(5, kit.outline.shownNode(&outline_nodes, 9));
+
+    window.begin(ziggui.MacosTheme.light);
+    const panel = kit.outlinePanel(ziggui.MacosTheme.light);
+    window.end();
+    var frame = try window.render(panel, 400, 400);
     frame.deinit();
 }
 

@@ -642,6 +642,12 @@ pub const ReorderMove = views.ReorderMove;
 pub const ReorderState = views.ReorderState;
 /// A list row dragged up or down to reorder its list: `ReorderableRow(content, &state, index, count, row_height)`.
 pub const ReorderableRow = views.ReorderableRow;
+/// One node of an outline, in pre-order: `key` (a stable name, a path), `depth`, `has_children`.
+pub const OutlineNode = views.OutlineNode;
+/// What a list of `OutlineRow`s folds: `OutlineState.init(allocator, expanded)`, `isExpanded`, `toggle`, `setExpanded`, `expandAll`, `collapseAll`, `reset`, `visible(allocator, nodes)`, `shownNode(nodes, index)`, `parent(nodes, index)`.
+pub const OutlineState = views.OutlineState;
+/// One row of an outline, after SwiftUI's `OutlineGroup`: `OutlineRow(depth, expandable, expanded, tint, on_toggle, content)`.
+pub const OutlineRow = views.OutlineRow;
 /// A pane's title block: a title, a one-line description, an accessory.
 pub const PaneHeader = views.PaneHeader;
 /// A settings row: a label and its description, a control at the far edge.

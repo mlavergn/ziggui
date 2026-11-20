@@ -120,6 +120,12 @@ pub const ReorderMove = @import("reorder_state.zig").ReorderMove;
 pub const ReorderState = @import("reorder_state.zig").ReorderState;
 /// A list row dragged up or down to reorder its list.
 pub const ReorderableRow = @import("reorderable_row.zig").ReorderableRow;
+/// One node of an outline: its key, depth and whether it can expand.
+pub const OutlineNode = @import("outline_state.zig").OutlineNode;
+/// What a list of `OutlineRow`s folds (`isExpanded`, `toggle`, `expandAll`, `collapseAll`, `visible`, `shownNode`).
+pub const OutlineState = @import("outline_state.zig").OutlineState;
+/// One row of an outline: indented, a chevron, then the app's content.
+pub const OutlineRow = @import("outline_row.zig").OutlineRow;
 /// A pane's title block: a title, a one-line description, an accessory.
 pub const PaneHeader = @import("pane_header.zig").PaneHeader;
 /// A settings row: a label and its description, a control at the far edge.
@@ -211,6 +217,8 @@ test {
     _ = @import("selectable_row.zig");
     _ = @import("reorder_state.zig");
     _ = @import("reorderable_row.zig");
+    _ = @import("outline_state.zig");
+    _ = @import("outline_row.zig");
     _ = @import("pane_header.zig");
     _ = @import("setting_row.zig");
 }
