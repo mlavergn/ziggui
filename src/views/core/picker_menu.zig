@@ -123,7 +123,7 @@ pub const PickerMenu = struct {
     /// Ends a render: a menu its picker did not present in the window under
     /// the pointer (the one it opened in) closes, as the picker is gone; the
     /// renderer calls it as each render ends. A render with no pointer over
-    /// its window (a tray panel drawn in the same loop) closes nothing.
+    /// its window (a popover window drawn in the same loop) closes nothing.
     ///
     /// - `self`: the menu.
     /// - `pointer_over`: whether the pointer is over the rendered window.

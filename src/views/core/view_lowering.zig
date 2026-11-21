@@ -312,11 +312,10 @@ pub const ViewLowering = struct {
             } },
             .picker => |picker| {
                 if (context.resolvedPickerStyle() == .menu) return .{ .leaf = renderer.SizingHints.fixedSize(Self.menuPickerSize(context, picker)) };
-                const pixel_size = context.theme.typography.body.size;
-                var width: f32 = 0;
-                // Per-segment horizontal padding (each side gets half) so labels have
-                // breathing room and don't crowd the segment dividers.
-                for (picker.options) |option| width += renderer.TextShaper.init(context.cache.face).measureLineWidth(option, pixel_size) + 40;
+                // Each segment its label's width and the padding either side, as
+                // macOS sizes segments to their content (`paintPicker` divides
+                // the width given in the same proportions).
+                const width = mod.ControlPainter.segmentsWidth(context, picker.options);
                 const height = context.theme.metrics.control_height;
                 return .{ .leaf = .{
                     .min = .{ .width = width, .height = height },

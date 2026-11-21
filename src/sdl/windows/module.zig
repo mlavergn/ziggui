@@ -40,8 +40,8 @@ pub const WebView2Backend = @import("web_view2_backend.zig").WebView2Backend;
 
 /// The app and its window (`Win32` reaches the window), from the sdl module.
 pub const App = @import("../module.zig").App;
-/// The popover panel (`Win32` toggles it from the tray), from the sdl module.
-pub const Panel = @import("../module.zig").Panel;
+/// The popover window (`Win32` toggles it from the tray), from the sdl module.
+pub const PopoverWindow = @import("../module.zig").PopoverWindow;
 /// The window's icon (`Win32` sets the tray's), from the sdl module.
 pub const WindowIcon = @import("../module.zig").WindowIcon;
 /// A video frame drawn under ziggui's surface (`MediaFoundationPlayer` makes

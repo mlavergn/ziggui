@@ -11,7 +11,7 @@
 //! test suite, so `zig build test` stays headless and works in Docker.
 //!
 //! An app sets its handlers on `App.shared()` and then calls
-//! `App.shared().run(allocator, AppState, state, config, body, panel)`, which
+//! `App.shared().run(allocator, AppState, state, config, body, popover window)`, which
 //! returns when the loop ends.
 
 const std = @import("std");
@@ -166,8 +166,8 @@ pub const App = struct {
     /// Runs the app until the loop ends. `body` is invoked each frame to
     /// (re)build the view tree from the current application state; state
     /// mutations triggered by events cause the next frame to reflect the change.
-    /// When `panel` is non-null, a hidden borderless window hosting `panel.body`
-    /// is created too; `Panel.show` opens it under the pointer (a status-item
+    /// When `popover_window` is non-null, a hidden borderless window hosting `popover_window.body`
+    /// is created too; `PopoverWindow.show` opens it under the pointer (a status-item
     /// click is the usual trigger).
     ///
     /// - `self`: the app.
@@ -176,7 +176,7 @@ pub const App = struct {
     /// - `state`: the app's state, handed to `body`.
     /// - `config`: the window and rendering configuration.
     /// - `body`: builds the main window's view tree.
-    /// - `panel`: the popover panel, or null for none.
+    /// - `popover_window`: the popover window, or null for none.
     /// - Returns: nothing once the loop ends; propagates SDL start-up and
     ///   allocation failure.
     pub fn run(
@@ -186,11 +186,11 @@ pub const App = struct {
         state: *AppState,
         config: mod.AppConfig,
         body: *const fn (*AppState) views.View,
-        panel: ?mod.PanelSpecification(AppState),
+        popover_window: ?mod.PopoverWindowSpecification(AppState),
     ) !void {
         log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
         _ = self;
-        const event_loop = try mod.EventLoop(AppState).create(allocator, state, config, body, panel);
+        const event_loop = try mod.EventLoop(AppState).create(allocator, state, config, body, popover_window);
         defer event_loop.destroy();
         event_loop.run();
     }
@@ -579,8 +579,8 @@ pub const App = struct {
     }
 
     /// Shows the system cursor for a pointer look (`PointerInput.pointerStyleAt`):
-    /// the arrow, the I-beam over text, or a resize over a divider; each made
-    /// on first need.
+    /// the arrow, the I-beam over text, a resize over a divider, or an open or
+    /// closed hand over what a drag moves; each made on first need.
     ///
     /// - `self`: the app.
     /// - `style`: the look to show.
@@ -588,12 +588,7 @@ pub const App = struct {
         if (style == self.pointer_style) return;
         self.pointer_style = style;
         const index: usize = @backingInt(style);
-        if (self.cursors[index] == null) self.cursors[index] = sdl_c.SDL_CreateSystemCursor(switch (style) {
-            .default => sdl_c.SDL_SYSTEM_CURSOR_DEFAULT,
-            .horizontalText => sdl_c.SDL_SYSTEM_CURSOR_TEXT,
-            .columnResize => sdl_c.SDL_SYSTEM_CURSOR_EW_RESIZE,
-            .rowResize => sdl_c.SDL_SYSTEM_CURSOR_NS_RESIZE,
-        });
+        if (self.cursors[index] == null) self.cursors[index] = Self.makeCursor(style);
         if (self.cursors[index]) |cursor| _ = sdl_c.SDL_SetCursor(cursor);
     }
 
@@ -607,6 +602,27 @@ pub const App = struct {
             slot.* = null;
         }
         self.pointer_style = .default;
+    }
+
+    /// The cursor for a pointer look: SDL's system cursor, or on macOS
+    /// AppKit's open and closed hands, which SDL lacks (elsewhere the pointing
+    /// hand and the move cursor stand in for them).
+    ///
+    /// - `style`: the look.
+    /// - Returns: the cursor, which `releaseCursors` destroys, or null when none can be made.
+    fn makeCursor(style: views.PointerStyle) ?*sdl_c.SDL_Cursor {
+        if (mod.os_tag == .macos) switch (style) {
+            .grabIdle, .grabActive => if (mod.Cocoa.handCursor(style == .grabActive)) |cursor| return cursor,
+            else => {},
+        };
+        return sdl_c.SDL_CreateSystemCursor(switch (style) {
+            .default => sdl_c.SDL_SYSTEM_CURSOR_DEFAULT,
+            .horizontalText => sdl_c.SDL_SYSTEM_CURSOR_TEXT,
+            .columnResize => sdl_c.SDL_SYSTEM_CURSOR_EW_RESIZE,
+            .rowResize => sdl_c.SDL_SYSTEM_CURSOR_NS_RESIZE,
+            .grabIdle => sdl_c.SDL_SYSTEM_CURSOR_POINTER,
+            .grabActive => sdl_c.SDL_SYSTEM_CURSOR_MOVE,
+        });
     }
 
     /// `window`'s frame as it is now, in points.

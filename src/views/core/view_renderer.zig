@@ -73,7 +73,7 @@ pub const ViewRenderer = struct {
         if (render_context.passthrough == null) render_context.passthrough = &passthrough;
         if (render_context.modal_passthrough == null) render_context.modal_passthrough = &modal_passthrough;
         // The hover hint is one, shared by every window the loop draws: only the window the
-        // pointer is over touches it, so another (a tray panel) cannot reset its rest.
+        // pointer is over touches it, so another (a popover window) cannot reset its rest.
         const hints = render_context.hover_point != null;
         if (hints) mod.HelpTip.shared().begin();
         try Self.renderInto(&render_context, view, rect, display_list);

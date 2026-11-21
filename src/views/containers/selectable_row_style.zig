@@ -20,6 +20,17 @@ pub const SelectableRowStyle = struct {
         const tokens = mod.BuildScope.shared().tokens();
         return if (selected and focused) tokens.on_accent else tokens.label;
     }
+
+    /// The color for a row's secondary content (an icon, a trailing value):
+    /// `on_accent` on a selected row of the focused list, else `secondary_label`.
+    ///
+    /// - `selected`: whether the row is selected.
+    /// - `focused`: whether its list has the keyboard focus.
+    /// - Returns: the color.
+    pub fn secondaryText(selected: bool, focused: bool) renderer.Color {
+        const tokens = mod.BuildScope.shared().tokens();
+        return if (selected and focused) tokens.on_accent else tokens.secondary_label;
+    }
 };
 
 // -----------------------------------------------------------------------------

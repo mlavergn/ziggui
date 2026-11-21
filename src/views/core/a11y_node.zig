@@ -25,6 +25,23 @@ pub const A11yNode = struct {
 
     /// It is the selected one of a group (a segment, a tab).
     selected: bool = false,
+
+    /// Its stable name for tests and UI automation (`View.accessibilityIdentifier`);
+    /// empty for none.
+    identifier: []const u8 = "",
+
+    /// The node a frame emitted with an identifier, as a test finds a control.
+    ///
+    /// - `nodes`: the frame's accessibility tree.
+    /// - `identifier`: the identifier looked for; empty finds nothing.
+    /// - Returns: the first node with it, or null when none has it.
+    pub fn find(nodes: []const Self, identifier: []const u8) ?*const Self {
+        if (identifier.len == 0) return null;
+        for (nodes) |*node| {
+            if (std.mem.eql(u8, node.identifier, identifier)) return node;
+        }
+        return null;
+    }
 };
 
 // -----------------------------------------------------------------------------
@@ -32,6 +49,17 @@ pub const A11yNode = struct {
 
 test {
     std.testing.refAllDecls(@This());
+    std.testing.refAllDecls(A11yNode);
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "an accessibility node is found by its identifier, never by an empty one" {
+    const nodes = [_]A11yNode{
+        .{ .rect = .{ .x = 0, .y = 0, .width = 10, .height = 10 }, .role = .button, .label = "Save" },
+        .{ .rect = .{ .x = 0, .y = 10, .width = 10, .height = 10 }, .role = .button, .label = "Delete", .identifier = "delete-button" },
+    };
+    try std.testing.expectEqualStrings("Delete", A11yNode.find(&nodes, "delete-button").?.label);
+    try std.testing.expectEqual(null, A11yNode.find(&nodes, "missing"));
+    try std.testing.expectEqual(null, A11yNode.find(&nodes, ""));
 }

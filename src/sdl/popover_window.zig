@@ -1,43 +1,48 @@
-//! The popover panel window (see `PanelSpecification`): created hidden at startup and
+//! The popover window (see `PopoverWindowSpecification`): created hidden at startup and
 //! toggled by a status-item click. Its hit regions live in their own lists so
-//! clicks on the panel never resolve against the main window's tree.
+//! clicks on the popover window never resolve against the main window's tree.
 
 const std = @import("std");
-const log = std.log.scoped(.ziggui_panel);
+const log = std.log.scoped(.ziggui_popover_window);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 const views = @import("views");
 const sdl_c = @import("sdl_c");
 
-/// The popover panel's window and what its last frame registered. One per
+/// The popover window's window and what its last frame registered. One per
 /// process (`shared`); the event loop creates the window when `App.run` is
-/// given a `PanelSpecification`.
-pub const Panel = struct {
+/// given a `PopoverWindowSpecification`.
+pub const PopoverWindow = struct {
     const Self = @This();
 
-    /// The panel window, while the loop runs with one.
+    /// The popover window, while the loop runs with one.
     window: ?*sdl_c.SDL_Window = null,
 
-    /// The panel window's SDL id (0 with none).
+    /// The popover window's SDL id (0 with none).
     id: sdl_c.SDL_WindowID = 0,
 
-    /// Whether the panel is showing.
+    /// Whether the popover window is showing.
     shown: bool = false,
 
-    /// The panel's hit regions from its last frame.
+    /// The popover window's hit regions from its last frame.
     hits: []const views.HitRegion = &.{},
 
-    /// The panel's scroll regions from its last frame.
+    /// The popover window's scroll regions from its last frame.
     scrolls: []const views.ScrollRegion = &.{},
 
-    /// The pointer over the panel, in points, or null when it is elsewhere.
+    /// The pointer over the popover window, in points, or null when it is elsewhere.
     hover: ?renderer.Point = null,
 
-    /// When the panel last hid (SDL ticks). A tray click on an open panel first
+    /// SDL's mouse coordinates times this are the popover window's points:
+    /// its own, set as it draws, since it may be on a display of another scale
+    /// than the main window (`App.event_scale`).
+    event_scale: f32 = 1,
+
+    /// When the popover window last hid (SDL ticks). A tray click on an open popover window first
     /// takes its focus, hiding it, so the click that follows must not reopen it.
     hidden_ms: u64 = 0,
 
-    /// Size key of the frame already written by ZIGGUI_PANEL_DUMP (see the event
+    /// Size key of the frame already written by ZIGGUI_POPOVER_WINDOW_DUMP (see the event
     /// loop's frame drawing).
     dump_written: u64 = 0,
 
@@ -46,31 +51,41 @@ pub const Panel = struct {
     /// a host that sends no position reports.
     click_at: ?[2]i32 = null,
 
-    /// The process's panel.
-    var shared_panel: Self = .{};
+    /// The process's popover window.
+    var shared_popover_window: Self = .{};
 
-    /// The process's panel.
+    /// The process's popover window.
     ///
-    /// - Returns: the shared panel.
+    /// - Returns: the shared popover window.
     pub fn shared() *Self {
-        return &shared_panel;
+        return &shared_popover_window;
     }
 
-    /// Reports whether the panel is showing.
+    /// A position SDL reported in the popover window, in its points.
     ///
-    /// - `self`: the panel.
+    /// - `self`: the popover window.
+    /// - `x`: SDL's x, in the window's coordinates.
+    /// - `y`: SDL's y.
+    /// - Returns: the point.
+    pub fn eventPoint(self: *const Self, x: f32, y: f32) renderer.Point {
+        return .{ .x = x * self.event_scale, .y = y * self.event_scale };
+    }
+
+    /// Reports whether the popover window is showing.
+    ///
+    /// - `self`: the popover window.
     /// - Returns: true while it shows.
     pub fn visible(self: *const Self) bool {
         return self.shown;
     }
 
-    /// Positions the panel under the pointer (a tray click leaves the cursor on
+    /// Positions the popover window under the pointer (a tray click leaves the cursor on
     /// the icon), clamped to the screen's usable area, then shows and focuses
     /// it. A Linux status-item click anchors at the position its host reported
     /// instead (KDE and Xfce send one); a host that reports none (COSMIC sends
     /// 0, 0) gets the primary display's top-right corner, where its tray sits.
     ///
-    /// - `self`: the panel.
+    /// - `self`: the popover window.
     pub fn show(self: *Self) void {
         const window = self.window orelse return;
         var logical_width: c_int = 0;
@@ -117,9 +132,9 @@ pub const Panel = struct {
     /// is the content's fixed size; the auto-height frame can grow it when a
     /// conversation starts without moving the top edge.
     ///
-    /// - `self`: the panel.
-    /// - `width`: the panel's width, in points.
-    /// - `height`: the panel's height, in points.
+    /// - `self`: the popover window.
+    /// - `width`: the popover window's width, in points.
+    /// - `height`: the popover window's height, in points.
     pub fn showCentered(self: *Self, width: u32, height: u32) void {
         const window = self.window orelse return;
         _ = sdl_c.SDL_SetWindowSize(window, @intCast(width), @intCast(height));
@@ -140,9 +155,9 @@ pub const Panel = struct {
         mod.App.shared().wake();
     }
 
-    /// Hides the panel and clears any field focus it held.
+    /// Hides the popover window and clears any field focus it held.
     ///
-    /// - `self`: the panel.
+    /// - `self`: the popover window.
     pub fn hide(self: *Self) void {
         if (!self.shown) return;
         self.shown = false;
@@ -152,20 +167,22 @@ pub const Panel = struct {
             _ = sdl_c.SDL_HideWindow(window);
         }
         if (views.Focus.shared().focused() != null) views.Focus.shared().clear();
+        // What the popover window drew shows no more: its views' state stops taking events.
+        views.BuildScope.shared().forgetPopoverWindow();
         mod.App.shared().wake();
     }
 
-    /// Shows the panel when hidden, else hides it.
+    /// Shows the popover window when hidden, else hides it.
     ///
-    /// - `self`: the panel.
+    /// - `self`: the popover window.
     pub fn toggle(self: *Self) void {
         if (self.shown) self.hide() else self.show();
     }
 
-    /// Resizes the panel window without showing it (a launcher restores the
+    /// Resizes the popover window without showing it (a launcher restores the
     /// tray size before hiding, so the next tray click anchors correctly).
     ///
-    /// - `self`: the panel.
+    /// - `self`: the popover window.
     /// - `width`: the new width, in points.
     /// - `height`: the new height, in points.
     pub fn setSize(self: *const Self, width: u32, height: u32) void {
@@ -174,19 +191,19 @@ pub const Panel = struct {
     }
 
     /// Reports whether a status-item click counts: false for the click that
-    /// just closed the panel by taking its focus.
+    /// just closed the popover window by taking its focus.
     ///
-    /// - `self`: the panel.
+    /// - `self`: the popover window.
     /// - Returns: true when the click should act.
     pub fn statusClickCounts(self: *const Self) bool {
         return self.shown or sdl_c.SDL_GetTicks() - self.hidden_ms >= 300;
     }
 
     /// Gives an override-redirect X11 window input focus (no window manager
-    /// does), so a click elsewhere takes it away again and closes the panel. A
+    /// does), so a click elsewhere takes it away again and closes the popover window. A
     /// no-op off X11.
     ///
-    /// - `window`: the panel's window.
+    /// - `window`: the popover window's window.
     fn x11Focus(window: *sdl_c.SDL_Window) void {
         const properties = sdl_c.SDL_GetWindowProperties(window);
         const display = sdl_c.SDL_GetPointerProperty(properties, sdl_c.SDL_PROP_WINDOW_X11_DISPLAY_POINTER, null) orelse return;
@@ -204,7 +221,7 @@ pub const Panel = struct {
 
 test {
     std.testing.refAllDecls(@This());
-    std.testing.refAllDecls(Panel);
+    std.testing.refAllDecls(PopoverWindow);
     // Nothing here does I/O to trace.
     _ = log;
 }

@@ -116,6 +116,9 @@ pub const Modifiers = struct {
     a11y_label: ?[]const u8 = null,
     /// Hides this view (and its subtree) from the accessibility tree.
     a11y_hidden: bool = false,
+    /// A stable name for this view's accessibility node, for tests and UI
+    /// automation to find it by (`accessibilityIdentifier`); empty for none.
+    a11y_identifier: []const u8 = "",
     /// Accessibility traits added to this view (`accessibilityAddTraits`).
     a11y_traits: mod.AccessibilityTraits = .{},
     /// Draw the theme's freestanding Liquid Glass surface behind this view

@@ -51,6 +51,10 @@ pub const CardNameRecording = @import("card_name.zig").CardNameRecording;
 pub const SectionSearch = @import("section_search.zig").SectionSearch;
 /// One section the sidebar's search keeps, and what in it matched.
 pub const SectionMatch = @import("section_search.zig").SectionMatch;
+/// What the gallery's sidebar lists: the sections, or the components.
+pub const SidebarListing = @import("section_search.zig").SidebarListing;
+/// A component the gallery's cards name, and the section that shows it.
+pub const SidebarComponent = @import("section_search.zig").SidebarComponent;
 
 // -----------------------------------------------------------------------------
 // Test Fixtures

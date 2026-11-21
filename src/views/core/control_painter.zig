@@ -394,8 +394,9 @@ pub const ControlPainter = struct {
         return .{ .x = rect.maxX() - mod.ControlMetrics.popup_chevron_inset - mod.ControlMetrics.popup_chevron_size, .y = Self.verticalCenter(rect, mod.ControlMetrics.popup_chevron_size), .width = mod.ControlMetrics.popup_chevron_size, .height = mod.ControlMetrics.popup_chevron_size };
     }
 
-    /// Paints a segmented picker: the theme's track, the selected chip, and a
-    /// tap region per segment.
+    /// Paints a segmented picker, its segments in proportion to their labels
+    /// (as macOS sizes them to their content): the theme's track, the selected
+    /// chip, and a tap region per segment.
     ///
     /// - `context`: the context.
     /// - `picker`: the picker.
@@ -409,12 +410,19 @@ pub const ControlPainter = struct {
         const surface = context.surface(display_list);
         // The theme draws the segmented track and the selected-segment chip.
         try context.theme.painter.segmented_track(surface, rect);
-        const segment_width = rect.width / @as(f32, @floatFromInt(count));
         const pixel_size = context.theme.typography.body.size;
-        const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
+        const shaper = renderer.TextShaper.init(context.cache.face);
+        const line_height = shaper.lineHeight(pixel_size);
+        // Segments in proportion to their labels (with the padding), as macOS
+        // sizes them to their content: the width measured, or more when stretched.
+        const natural = Self.segmentsWidth(context, picker.options);
+        const scale = if (natural > 0) rect.width / natural else 0;
         const selected = picker.selection.get();
+        var x = rect.x;
         for (picker.options, 0..) |option, index| {
-            const segment = renderer.Rect{ .x = rect.x + @as(f32, @floatFromInt(index)) * segment_width, .y = rect.y, .width = segment_width, .height = rect.height };
+            const text_width = shaper.measureLineWidth(option, pixel_size);
+            const segment = renderer.Rect{ .x = x, .y = rect.y, .width = Self.segmentWidth(context, option) * scale, .height = rect.height };
+            x += segment.width;
             const is_selected = @as(i64, @intCast(index)) == selected;
             // The theme draws the selection chip and dictates its label color (an
             // accent-filled chip needs `on_accent` text, a pale chip keeps `label`).
@@ -423,7 +431,6 @@ pub const ControlPainter = struct {
                 try context.theme.painter.segmented_selection(surface, segment)
             else
                 context.theme.colors.label;
-            const text_width = renderer.TextShaper.init(context.cache.face).measureLineWidth(option, pixel_size);
             context.drawText(display_list, option, pixel_size, segment_text.multiplyAlpha(opacity), .{
                 .x = segment.x + (segment.width - text_width) / 2,
                 .y = Self.verticalCenter(segment, line_height),
@@ -434,6 +441,28 @@ pub const ControlPainter = struct {
                 .disabled = context.disabled,
             });
         }
+    }
+
+    /// A segmented picker's segment at its natural width: its label in the
+    /// theme's body text and `ControlMetrics.picker_segment_padding` either side.
+    ///
+    /// - `context`: the context.
+    /// - `option`: the segment's label.
+    /// - Returns: the width, in points.
+    pub fn segmentWidth(context: *const mod.Context, option: []const u8) f32 {
+        const width = renderer.TextShaper.init(context.cache.face).measureLineWidth(option, context.theme.typography.body.size);
+        return width + 2 * mod.ControlMetrics.picker_segment_padding;
+    }
+
+    /// A segmented picker's natural width: its segments' natural widths summed.
+    ///
+    /// - `context`: the context.
+    /// - `options`: the segments' labels.
+    /// - Returns: the width, in points.
+    pub fn segmentsWidth(context: *const mod.Context, options: []const []const u8) f32 {
+        var width: f32 = 0;
+        for (options) |option| width += Self.segmentWidth(context, option);
+        return width;
     }
 
     /// Paints a menu-style picker's mark, centered in `box`: a chevron icon,

@@ -21,6 +21,10 @@ pub const ScrollRegion = struct {
     /// A `ScrollViewStateBoth`, which also takes sideways deltas.
     horizontal: bool = false,
 
+    /// Where an up-and-down delta goes instead of `state` (`ScrollStateData.vertical_target`),
+    /// or null for `state`.
+    vertical_target: ?*mod.ScrollState = null,
+
     /// A modal's scrim (`absorbing`): it takes any wheel delta over it, either
     /// way, and moves nothing, so what the modal covers never scrolls behind it.
     absorbs: bool = false,

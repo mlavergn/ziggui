@@ -156,8 +156,16 @@ pub const GraphicsContext = @import("core/module.zig").GraphicsContext;
 pub const CanvasMarkers = @import("core/module.zig").CanvasMarkers;
 /// A `ZoomableImage`'s app-owned zoom, pan and last layout.
 pub const ZoomState = @import("core/module.zig").ZoomState;
+/// The marks an app places on a picture: a segment's two clicks, a marker held under a drag.
+pub const AnnotationState = @import("core/module.zig").AnnotationState;
+/// A segment an `AnnotationState`'s two clicks made.
+pub const AnnotationSegment = @import("core/module.zig").AnnotationSegment;
 /// Where a zoomed picture was laid out, and how its content maps into it.
 pub const ZoomGeometry = @import("core/module.zig").ZoomGeometry;
+/// Which window's frame drew a view (`BuildScope.stamp`, `isLatest`).
+pub const FrameStamp = @import("core/module.zig").FrameStamp;
+/// Whether a part of a view shows (`.automatic`, `.visible`, `.hidden`), as SwiftUI's `Visibility`.
+pub const Visibility = @import("core/module.zig").Visibility;
 /// The build arena, published theme and tokens, viewport, wrap cache and link handler (`BuildScope.shared()`).
 pub const BuildScope = @import("core/module.zig").BuildScope;
 /// The build-time theme colors, `label`, `separator`, `added` and `removed` included.
@@ -440,10 +448,6 @@ pub const Sidebar = @import("containers/module.zig").Sidebar;
 pub const SidebarStyled = @import("containers/module.zig").SidebarStyled;
 /// A vertical group of radio buttons.
 pub const RadioGroup = @import("containers/module.zig").RadioGroup;
-/// One column of a `Table`.
-pub const TableColumn = @import("containers/module.zig").TableColumn;
-/// A multi-column table of text rows.
-pub const Table = @import("containers/module.zig").Table;
 /// A settings form in columns: labels right-aligned in one column, sections divided.
 pub const Form = @import("containers/module.zig").Form;
 /// A group of a `Form`'s rows.
@@ -452,22 +456,36 @@ pub const Section = @import("containers/module.zig").Section;
 pub const LabeledContent = @import("containers/module.zig").LabeledContent;
 /// An app's settings: a toolbar of tabs over the selected page.
 pub const Settings = @import("containers/module.zig").Settings;
-/// A `Table` whose columns the user drags wider or narrower.
-pub const TableResizable = @import("containers/module.zig").TableResizable;
-/// The column widths a user dragged in a `TableResizable`.
-pub const TableColumnCustomization = @import("containers/module.zig").TableColumnCustomization;
 /// The order a column is sorted in (`.forward`, `.reverse`), as SwiftUI's `SortOrder`.
 pub const SortOrder = @import("containers/module.zig").SortOrder;
-/// A `DataTable`'s sort column and direction.
+/// A `Table`'s sort column and order.
 pub const SortColumn = @import("containers/module.zig").SortColumn;
-/// One column of a data table (and of `TableHeader`/`TableRow`).
-pub const DataColumn = @import("containers/module.zig").DataColumn;
-/// A table of view rows with sortable headers.
-pub const DataTable = @import("containers/module.zig").DataTable;
+/// One column of a `Table`.
+pub const TableColumn = @import("containers/module.zig").TableColumn;
+/// What a `Table` selects: nothing, rows or a cell.
+pub const TableSelectionMode = @import("containers/module.zig").TableSelectionMode;
+/// A `Table` cell, by position.
+pub const TableCell = @import("containers/module.zig").TableCell;
+/// A ⇧-range of a `Table`'s rows, by position.
+pub const TableSpan = @import("containers/module.zig").TableSpan;
+/// A `Table`'s row IDs, type-erased.
+pub const TableIdSource = @import("containers/module.zig").TableIdSource;
+/// What a `Table` keeps between frames (`handleKey`, `invalidate`, the selection).
+pub const TableState = @import("containers/module.zig").TableState;
+/// How a `Table` lays out, selects, sorts and draws its header.
+pub const TableOptions = @import("containers/module.zig").TableOptions;
+/// How a `Table` lays its rows out: `.scrolling` or `.fitted`.
+pub const TableLayout = @import("containers/module.zig").TableLayout;
+/// A `Table`'s context over rows of text, and the cell function that reads them.
+pub const TableRows = @import("containers/module.zig").TableRows;
+/// A table: a header over rows built while in view (or laid inline), with sortable, resizable columns and selection.
+pub const Table = @import("containers/module.zig").Table;
 /// The colors a `SelectableRow`'s content is drawn in (`selectionText`).
 pub const SelectableRowStyle = @import("containers/module.zig").SelectableRowStyle;
 /// A list row showing its selection and whether its list has the focus.
 pub const SelectableRow = @import("containers/module.zig").SelectableRow;
+/// A `SelectableRow` of an icon, a title and a trailing value (`LabeledContent`).
+pub const SelectableLabeledRow = @import("containers/module.zig").SelectableLabeledRow;
 /// A finished reorder: `from`, `to` (`apply` makes it on a slice).
 pub const ReorderMove = @import("containers/module.zig").ReorderMove;
 /// What a list of `ReorderableRow`s drags (`dropIndex`, `isDragging`, `takeMove`, `cancel`).
@@ -558,10 +576,6 @@ pub const SelectableDiffViewWithActions = @import("panes/module.zig").Selectable
 pub const HunkAction = @import("panes/module.zig").HunkAction;
 /// The lines selected in a `SelectableDiffView`, kept by the app.
 pub const DiffSelection = @import("panes/module.zig").DiffSelection;
-/// A table's header row.
-pub const TableHeader = @import("panes/module.zig").TableHeader;
-/// One table row.
-pub const TableRow = @import("panes/module.zig").TableRow;
 
 // -----------------------------------------------------------------------------
 // Split views (split/)

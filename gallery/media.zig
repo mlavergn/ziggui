@@ -18,6 +18,8 @@ const InfoHalf = enum {
 
     /// How the window draws and the media player (the Media Video panel).
     video,
+    /// Both halves at once: drawing, the player and the audio outputs.
+    system,
     /// The audio outputs (the Media Audio panel).
     audio,
 };
@@ -38,6 +40,12 @@ pub const Media = struct {
 
     /// Whether the audio output menu is shown.
     output_menu: ziggui.State(bool),
+
+    /// The controls card's state, beside the standard controls' own.
+    accessory_controls: ziggui.VideoPlayerControlsState = .{},
+
+    /// Whether the controls card's chapter menu is shown.
+    chapter_menu: ziggui.State(bool),
 
     /// Owns `report` and its strings.
     report_arena: std.heap.ArenaAllocator,
@@ -98,6 +106,7 @@ pub const Media = struct {
             .allocator = allocator,
             .player = ziggui.Player.init(allocator),
             .output_menu = ziggui.State(bool).init(allocator, false),
+            .chapter_menu = ziggui.State(bool).init(allocator, false),
             .report_arena = std.heap.ArenaAllocator.init(allocator),
             .audio_player = ziggui.Player.init(allocator),
             .audio_output_menu = ziggui.State(bool).init(allocator, false),
@@ -111,6 +120,7 @@ pub const Media = struct {
     pub fn deinit(self: *Self) void {
         self.player.deinit();
         self.output_menu.deinit();
+        self.chapter_menu.deinit();
         self.report_arena.deinit();
         self.audio_player.deinit();
         self.audio_output_menu.deinit();
@@ -129,8 +139,43 @@ pub const Media = struct {
             gallery.Card.view(theme, "VideoPlayer: the platform player draws the picture, ziggui the controls over it", "ziggui.VideoPlayer · ziggui.VideoPlayerControls · ziggui.Player", self.picture(8).frameHeight(300)),
             buttons,
             ziggui.Text(Self.describe(observation, "No item. Load sample stream plays Apple's HLS example (over the network).")).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
+            self.accessoriesCard(theme),
             self.infoCard(theme, "VideoInfoView: how the window draws and the media player", "ziggui.VideoInfoView · ziggui.SystemInfo", .video),
+            self.infoCard(theme, "SystemInfoView: drawing, the player and the audio outputs, an app's System Info sheet", "ziggui.SystemInfoView · ziggui.SystemReport", .system),
         }).spacing(16);
+    }
+
+    /// The controls card: the same player's standard controls with an app's
+    /// own buttons among them, a bookmark button at the top trailing corner
+    /// and a chapter menu in the transport bar, over a plain ground (one
+    /// `VideoPlayer` a player: the picture shows in the card above).
+    ///
+    /// - `self`: the panel.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    fn accessoriesCard(self: *Self, theme: ziggui.Theme) ziggui.View {
+        const allocator = ziggui.BuildScope.shared().allocator();
+        const ignore = ziggui.Callback.init(Self, self, Self.noted);
+        const chapters = allocator.dupe(ziggui.View, &.{
+            ziggui.MenuItem("Opening", ignore),
+            ziggui.MenuItem("The middle", ignore),
+            ziggui.MenuItem("Credits", ignore),
+        }) catch @panic("oom");
+        const accessories: ziggui.VideoPlayerControlsAccessories = .{
+            .top_trailing = allocator.dupe(ziggui.View, &.{ziggui.VideoPlayerControlButton(.bookmark, ignore)}) catch @panic("oom"),
+            .transport = allocator.dupe(ziggui.View, &.{ziggui.VideoPlayerControlMenu(.listVideo, &self.chapter_menu, chapters)}) catch @panic("oom"),
+        };
+        return gallery.Card.view(theme, "VideoPlayerControlsWith: an app's own buttons among the standard controls", "ziggui.VideoPlayerControlsWith · ziggui.VideoPlayerControlButton · ziggui.VideoPlayerControlMenu", ziggui.ZStack(.{
+            ziggui.RoundedRectangle(ziggui.Color.black, 8).frameMaxWidth().frameMaxHeight(),
+            ziggui.VideoPlayerControlsWith(&self.player, &self.accessory_controls, accessories),
+        }).frameHeight(170));
+    }
+
+    /// A tap on one of the controls card's own buttons, which do nothing here.
+    ///
+    /// - `self`: the panel.
+    fn noted(self: *Self) void {
+        _ = self;
     }
 
     /// The Media Audio panel: the audio bar over its own `Player`, the
@@ -253,6 +298,7 @@ pub const Media = struct {
         const body = if (self.report) |*report| switch (half) {
             .video => ziggui.VideoInfoView(report),
             .audio => ziggui.AudioInfoView(report, self.audio_player.audioOutput()),
+            .system => ziggui.SystemInfoView(report, self.player.audioOutput()),
         } else ziggui.Text("The system could not be read.");
         return ziggui.VStack(.{
             gallery.Card.view(theme, title, names, body),

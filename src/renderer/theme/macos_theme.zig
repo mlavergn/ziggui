@@ -495,7 +495,7 @@ test "macos: prominent and destructive buttons are tinted glass" {
     try std.testing.expect((try MacosTheme.painter.button(surface, rect, .destructive, .{})).approxEql(MacosTheme.light.colors.on_accent, 0.001));
 }
 
-test "macos: popover panels are deep-frosted glass; modals are opaque" {
+test "macos: popover windows are deep-frosted glass; modals are opaque" {
     var display_list = mod.DisplayList.init(std.testing.allocator);
     defer display_list.deinit();
     const surface = mod.Surface{ .display_list = &display_list, .palette = &MacosTheme.dark.colors, .metrics = &MacosTheme.dark.metrics, .scheme = .dark };

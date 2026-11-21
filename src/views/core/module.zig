@@ -163,8 +163,16 @@ pub const GraphicsContext = @import("graphics_context.zig").GraphicsContext;
 pub const CanvasMarkers = @import("canvas_markers.zig").CanvasMarkers;
 /// A `ZoomableImage`'s app-owned zoom, pan and last layout.
 pub const ZoomState = @import("zoom_state.zig").ZoomState;
+/// The marks an app places on a picture: a segment's two clicks, a marker held under a drag.
+pub const AnnotationState = @import("annotation_state.zig").AnnotationState;
+/// A segment an `AnnotationState`'s two clicks made.
+pub const AnnotationSegment = @import("annotation_state.zig").AnnotationSegment;
 /// Where a zoomed picture was laid out, and how its content maps into it.
 pub const ZoomGeometry = @import("zoom_state.zig").ZoomGeometry;
+/// Which window's frame drew a view (`BuildScope.stamp`, `isLatest`).
+pub const FrameStamp = @import("frame_stamp.zig").FrameStamp;
+/// Whether a part of a view shows (`.automatic`, `.visible`, `.hidden`), as SwiftUI's `Visibility`.
+pub const Visibility = @import("visibility.zig").Visibility;
 
 // -----------------------------------------------------------------------------
 // Building, lowering, painting, rendering
@@ -308,6 +316,9 @@ test {
     _ = @import("graphics_context.zig");
     _ = @import("canvas_markers.zig");
     _ = @import("zoom_state.zig");
+    _ = @import("annotation_state.zig");
+    _ = @import("frame_stamp.zig");
+    _ = @import("visibility.zig");
     _ = @import("build_scope.zig");
     _ = @import("build_tokens.zig");
     _ = @import("wrap_cache.zig");

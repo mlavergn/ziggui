@@ -703,6 +703,22 @@ pub const View = struct {
         return view;
     }
 
+    /// Names this view's accessibility node with a stable identifier that
+    /// tests and UI automation find it by (SwiftUI's
+    /// `accessibilityIdentifier`), whatever its label says or the language it
+    /// says it in. It never reaches a screen reader. It applies to the node
+    /// the view emits (a control, a text); a view that emits none, a stack,
+    /// passes it to none.
+    ///
+    /// - `self`: the view.
+    /// - `identifier`: the identifier; empty for none.
+    /// - Returns: the view.
+    pub fn accessibilityIdentifier(self: *const Self, identifier: []const u8) Self {
+        var view = self.*;
+        view.modifiers.a11y_identifier = identifier;
+        return view;
+    }
+
     /// Hides this view and its subtree from the accessibility tree.
     ///
     /// - `self`: the view.

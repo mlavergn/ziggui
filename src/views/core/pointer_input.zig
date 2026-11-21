@@ -365,8 +365,12 @@ pub const PointerInput = struct {
     }
 
     /// Routes a wheel delta to the top-most scroll region containing `point`
-    /// (back-to-front, like `tap`). A modal's absorbing region (`ScrollRegion.absorbing`)
-    /// takes it outside its holes and moves nothing; inside one, it goes on behind.
+    /// (back-to-front, like `tap`): its `vertical_target` when it names one (a
+    /// table's header scrolls the table's rows), else its own position. A
+    /// region whose content fits, with nothing to scroll up or down, passes the
+    /// delta on to what is behind it. A modal's absorbing region
+    /// (`ScrollRegion.absorbing`) takes it outside its holes and moves nothing;
+    /// inside one, it goes on behind.
     ///
     /// - `self`: the pointer input.
     /// - `regions`: the frame's scroll regions.
@@ -382,8 +386,11 @@ pub const PointerInput = struct {
             if (region.rect.contains(point)) {
                 if (region.stops(point)) return true;
                 if (region.absorbs) continue;
-                region.state.scrollBy(delta_y * scroll_speed);
-                Self.showScrollbars(region.state);
+                const target = region.vertical_target orelse region.state;
+                // Content that fits moves nothing: the delta goes on to what is behind.
+                if (target.viewport_height > 0 and target.maxOffset() <= 0) continue;
+                target.scrollBy(delta_y * scroll_speed);
+                Self.showScrollbars(target);
                 return true;
             }
         }
@@ -414,6 +421,8 @@ pub const PointerInput = struct {
             if (!region.rect.contains(point)) continue;
             if (region.stops(point)) return true;
             if (!region.horizontal) continue;
+            // Content as narrow as the viewport moves nothing: the delta goes on to what is behind.
+            if (region.state.viewport_width > 0 and region.state.maxOffsetX() <= 0) continue;
             // Positive x is to the right: the content moves left, so the offset grows.
             region.state.scrollByX(-delta_x * scroll_speed);
             Self.showScrollbars(region.state);
@@ -423,10 +432,11 @@ pub const PointerInput = struct {
     }
 
     /// What the pointer should look like at `point`: while a drag runs, the
-    /// look of the region that armed it (a divider's resize, else the arrow;
-    /// the I-beam while selecting text); otherwise the style of the top-most
-    /// region under it (`View.pointerStyle`), else the I-beam over a text
-    /// field, an editor or selectable text, else the arrow.
+    /// look of the region that armed it (a divider's resize, the closed hand
+    /// for an open one, else the arrow; the I-beam while selecting text);
+    /// otherwise the style of the top-most region under it
+    /// (`View.pointerStyle`), else the I-beam over a text field, an editor or
+    /// selectable text, else the arrow.
     ///
     /// - `self`: the pointer input.
     /// - `regions`: the frame's hit regions.
@@ -434,7 +444,10 @@ pub const PointerInput = struct {
     /// - Returns: the pointer's look.
     pub fn pointerStyleAt(self: *const Self, regions: []const mod.HitRegion, point: renderer.Point) mod.PointerStyle {
         if (mod.TextSelection.shared().current) |span| if (span.dragging) return .horizontalText;
-        if (self.area_drag != null) return self.press_style orelse .default;
+        if (self.area_drag != null) {
+            const style = self.press_style orelse return .default;
+            return if (style == .grabIdle) .grabActive else style;
+        }
         var index = regions.len;
         while (index > 0) {
             index -= 1;
@@ -914,4 +927,49 @@ test "pointer: a region's pointer style shows over it and through the drag it ar
     try std.testing.expectEqual(mod.PointerStyle.columnResize, input.pointerStyleAt(&regions, .{ .x = 10, .y = 10 }));
     input.endDrag();
     try std.testing.expectEqual(mod.PointerStyle.default, input.pointerStyleAt(&regions, .{ .x = 10, .y = 10 }));
+}
+
+test "pointer: an open hand closes while the drag it arms runs" {
+    const Probe = struct {
+        const Self = @This();
+
+        /// Arms a drag that does nothing, as a picture's press does.
+        fn press(_: ?*anyopaque) void {
+            PointerInput.shared().armDrag(.{ .function = Self.moved });
+        }
+
+        /// A drag's move that does nothing.
+        fn moved(_: ?*anyopaque, _: f32, _: f32) void {}
+    };
+    const input = PointerInput.shared();
+    defer input.endDrag();
+    const regions = [_]mod.HitRegion{
+        .{ .rect = .{ .x = 0, .y = 0, .width = 100, .height = 100 }, .action = .{ .callback = .{ .function = Probe.press } }, .disabled = false, .pointer_style = .grabIdle },
+    };
+    try std.testing.expectEqual(mod.PointerStyle.grabIdle, input.pointerStyleAt(&regions, .{ .x = 10, .y = 10 }));
+    try std.testing.expect(input.tap(&regions, .{ .x = 10, .y = 10 }));
+    try std.testing.expectEqual(mod.PointerStyle.grabActive, input.pointerStyleAt(&regions, .{ .x = 150, .y = 10 }));
+    input.endDrag();
+    try std.testing.expectEqual(mod.PointerStyle.grabIdle, input.pointerStyleAt(&regions, .{ .x = 10, .y = 10 }));
+}
+
+test "pointer: a scroll view whose content fits passes the wheel on, and a header's goes to its target" {
+    var page = mod.ScrollState{ .content_height = 1000, .viewport_height = 400 };
+    var short = mod.ScrollState{ .content_height = 50, .viewport_height = 100, .content_width = 100, .viewport_width = 100 };
+    var rows = mod.ScrollState{ .content_height = 2000, .viewport_height = 300 };
+    var header = mod.ScrollState{ .content_height = 24, .viewport_height = 24 };
+    const regions = [_]mod.ScrollRegion{
+        .{ .rect = .{ .x = 0, .y = 0, .width = 400, .height = 400 }, .state = &page },
+        .{ .rect = .{ .x = 0, .y = 0, .width = 100, .height = 100 }, .state = &short, .horizontal = true },
+        .{ .rect = .{ .x = 200, .y = 0, .width = 200, .height = 24 }, .state = &header, .vertical_target = &rows },
+    };
+    const input = PointerInput.shared();
+    // Over the short view, up and down and across, the page behind takes the wheel.
+    try std.testing.expect(input.scrollBoth(&regions, .{ .x = 50, .y = 50 }, 1, -1));
+    try std.testing.expect(page.offset > 0);
+    try std.testing.expectEqual(@as(f32, 0), short.offset_x);
+    // Over the header, the rows it names scroll, and its own position stays.
+    try std.testing.expect(input.scroll(&regions, .{ .x = 300, .y = 12 }, -1));
+    try std.testing.expect(rows.offset > 0);
+    try std.testing.expectEqual(@as(f32, 0), header.offset);
 }

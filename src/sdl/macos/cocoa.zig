@@ -1,6 +1,6 @@
 //! The bits of AppKit SDL does not expose, reached through the Objective-C
 //! runtime: the unified title bar, the menu bar, template tray icons, the
-//! status item and the frosted popover panel. macOS only; nothing here is
+//! status item and the frosted popover window. macOS only; nothing here is
 //! analyzed on other targets, as every call site is behind `os_tag == .macos`.
 
 const std = @import("std");
@@ -71,6 +71,33 @@ pub const Cocoa = struct {
             const view = mod.ObjectiveC.send(mod.Id, ns_window, "contentView", .{}) orelse continue;
             Self.templateIn(view, button_class);
         }
+    }
+
+    /// The system's open or closed hand (`NSCursor.openHandCursor`,
+    /// `closedHandCursor`) as an SDL color cursor: its 1x image with a 2x one
+    /// for Retina, its hot spot where AppKit puts it. SDL has no grab cursors
+    /// of its own (`PointerStyle.grabIdle`, `grabActive`).
+    ///
+    /// - `closed`: the closed hand, for a drag that is running.
+    /// - Returns: the cursor, which the caller destroys (`SDL_DestroyCursor`),
+    ///   or null when AppKit or SDL cannot make it.
+    pub fn handCursor(closed: bool) ?*sdl_c.SDL_Cursor {
+        const pool = mod.ObjectiveC.pushPool();
+        defer mod.ObjectiveC.popPool(pool);
+        const cursor = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSCursor"), if (closed) "closedHandCursor" else "openHandCursor", .{}) orelse return null;
+        const image = mod.ObjectiveC.send(mod.Id, cursor, "image", .{}) orelse return null;
+        const size = mod.ObjectiveC.send(mod.CGSize, image, "size", .{});
+        const hot_spot = mod.ObjectiveC.send(mod.CGPoint, cursor, "hotSpot", .{});
+        // Written so a NaN fails; a cursor is a few dozen points across.
+        if (!(size.width >= 1 and size.width <= 128 and size.height >= 1 and size.height <= 128)) return null;
+        if (!(hot_spot.x >= 0 and hot_spot.x <= size.width and hot_spot.y >= 0 and hot_spot.y <= size.height)) return null;
+        const base = Self.cursorSurface(image, size, 1) orelse return null;
+        defer sdl_c.SDL_DestroySurface(base);
+        if (Self.cursorSurface(image, size, 2)) |retina| {
+            defer sdl_c.SDL_DestroySurface(retina);
+            if (!sdl_c.SDL_AddSurfaceAlternateImage(base, retina)) log.info("no Retina image for the hand cursor: {s}", .{sdl_c.SDL_GetError()});
+        }
+        return sdl_c.SDL_CreateColorCursor(base, @intFromFloat(hot_spot.x), @intFromFloat(hot_spot.y));
     }
 
     /// Puts a frosted NSVisualEffectView behind SDL's content view, so the tray
@@ -315,6 +342,51 @@ pub const Cocoa = struct {
             bytes_per_row,
             bits_per_pixel,
         });
+    }
+
+    /// An image drawn into a new SDL surface at a scale, in straight RGBA.
+    ///
+    /// - `image`: the `NSImage`.
+    /// - `size`: its size, in points (at most 128 a side).
+    /// - `scale`: pixels per point: 1, or 2 for Retina.
+    /// - Returns: the surface, which the caller destroys, or null when AppKit
+    ///   or SDL cannot make it.
+    fn cursorSurface(image: mod.Id, size: mod.CGSize, scale: f64) ?*sdl_c.SDL_Surface {
+        const pixels_wide: i64 = @intFromFloat(@ceil(size.width * scale));
+        const pixels_high: i64 = @intFromFloat(@ceil(size.height * scale));
+        // Premultiplied, the only kind AppKit draws into (NSGraphicsContext).
+        const representation = Self.bitmapRepresentation(mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSBitmapImageRep"), "alloc", .{}), null, pixels_wide, pixels_high, 8, 4, 1, 0, mod.ObjectiveC.string("NSDeviceRGBColorSpace"), 0, pixels_wide * 4, 32) orelse return null;
+        defer mod.ObjectiveC.release(representation);
+        // Sized in points, so the image draws at `scale` pixels a point.
+        mod.ObjectiveC.send(void, representation, "setSize:", .{size});
+        const context_class = mod.ObjectiveC.class("NSGraphicsContext");
+        const context = mod.ObjectiveC.send(mod.Id, context_class, "graphicsContextWithBitmapImageRep:", .{representation}) orelse return null;
+        mod.ObjectiveC.send(void, context_class, "saveGraphicsState", .{});
+        mod.ObjectiveC.send(void, context_class, "setCurrentContext:", .{context});
+        // NSCompositingOperationCopy, at full opacity.
+        mod.ObjectiveC.send(void, image, "drawInRect:fromRect:operation:fraction:", .{ mod.CGRect{ .size = size }, mod.CGRect{}, @as(u64, 1), @as(f64, 1) });
+        mod.ObjectiveC.send(void, context_class, "restoreGraphicsState", .{});
+        const raw = mod.ObjectiveC.send([*c]u8, representation, "bitmapData", .{});
+        if (raw == null) return null;
+        const source: [*]const u8 = @ptrCast(raw);
+        const surface = sdl_c.SDL_CreateSurface(@intCast(pixels_wide), @intCast(pixels_high), sdl_c.SDL_PIXELFORMAT_ABGR8888) orelse return null;
+        const destination: [*]u8 = @ptrCast(surface.*.pixels orelse {
+            sdl_c.SDL_DestroySurface(surface);
+            return null;
+        });
+        const width: usize = @intCast(pixels_wide);
+        const pitch: usize = @intCast(surface.*.pitch);
+        for (0..@intCast(pixels_high)) |y| {
+            for (0..width) |x| {
+                const from = source[(y * width + x) * 4 ..][0..4];
+                const to = destination[y * pitch + x * 4 ..][0..4];
+                const alpha: u32 = from[3];
+                // SDL's surfaces hold straight alpha: undo AppKit's premultiplying.
+                for (0..3) |channel| to[channel] = if (alpha == 0) 0 else @intCast(@min(255, @as(u32, from[channel]) * 255 / alpha));
+                to[3] = from[3];
+            }
+        }
+        return surface;
     }
 
     /// The index of `menu`'s item whose key equivalent is `key`, or -1.

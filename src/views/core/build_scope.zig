@@ -31,18 +31,23 @@ pub const BuildScope = struct {
     selection_counts: std.AutoHashMapUnmanaged(u64, u32) = .empty,
 
     /// The main window's frame being built (or last built), counted by `begin`
-    /// from 1 (a tray panel's `beginSecondary` leaves it): what a view stamps
+    /// from 1 (a popover window's `beginPopoverWindow` leaves it): what a view stamps
     /// its state with when it paints, so the event loop can tell a view the
     /// last frame drew from one scrolled or switched away (`ZoomState.contains`).
     frame_number: u64 = 0,
 
+    /// The popover window's frame being built (or last built), counted by
+    /// `beginPopoverWindow` from 1 and stepped by `forgetPopoverWindow` as the popover window
+    /// hides: `frame_number`'s counterpart for a view the popover window drew.
+    popover_window_frame_number: u64 = 0,
+
     /// How many stateless scroll views the frame has built so far, for
-    /// `scrollViewKey`; `begin` and `beginSecondary` empty it.
+    /// `scrollViewKey`; `begin` and `beginPopoverWindow` empty it.
     scroll_count: u32 = 0,
 
-    /// Whether the frame being built is a second window's (`beginSecondary`),
+    /// Whether the frame being built is a second window's (`beginPopoverWindow`),
     /// so its scroll views keep positions apart from the main window's.
-    secondary: bool = false,
+    popover_window: bool = false,
 
     /// The current thread's scope.
     threadlocal var shared_scope: Self = .{};
@@ -74,20 +79,51 @@ pub const BuildScope = struct {
     /// - `arena`: the arena view constructors allocate from.
     pub fn begin(self: *Self, arena: std.mem.Allocator) void {
         self.frame_number +%= 1;
-        self.secondary = false;
+        self.popover_window = false;
         self.open(arena);
     }
 
-    /// Opens the build arena for a second window's frame (the tray panel the
+    /// Opens the build arena for a second window's frame (the popover window the
     /// SDL loop draws after the main window), as `begin` does, but leaves
     /// `frame_number`, which counts only the main window's frames: a view the
     /// main window drew stays the one its next events land on.
     ///
     /// - `self`: the scope.
     /// - `arena`: the arena view constructors allocate from.
-    pub fn beginSecondary(self: *Self, arena: std.mem.Allocator) void {
-        self.secondary = true;
+    pub fn beginPopoverWindow(self: *Self, arena: std.mem.Allocator) void {
+        self.popover_window_frame_number +%= 1;
+        self.popover_window = true;
         self.open(arena);
+    }
+
+    /// The second window (the popover window) was hidden: what its last frame
+    /// drew shows no more, so `isLatest` turns false for it until the popover window
+    /// draws it again.
+    ///
+    /// - `self`: the scope.
+    pub fn forgetPopoverWindow(self: *Self) void {
+        self.popover_window_frame_number +%= 1;
+    }
+
+    /// The frame being built, in the window being drawn, for a view's state
+    /// to keep (`isLatest`).
+    ///
+    /// - `self`: the scope.
+    /// - Returns: the stamp.
+    pub fn stamp(self: *const Self) mod.FrameStamp {
+        return .{ .popover_window = self.popover_window, .number = if (self.popover_window) self.popover_window_frame_number else self.frame_number };
+    }
+
+    /// Whether a stamp is its window's last frame: what that frame drew is
+    /// still on show, so the events that follow may reach it. A view the
+    /// main window drew stays latest through the popover window's frames, and one the
+    /// popover window drew through the main window's.
+    ///
+    /// - `self`: the scope.
+    /// - `frame`: the stamp a view kept.
+    /// - Returns: true while that window has not drawn (or hidden) since.
+    pub fn isLatest(self: *const Self, frame: mod.FrameStamp) bool {
+        return frame.number == (if (frame.popover_window) self.popover_window_frame_number else self.frame_number);
     }
 
     /// Closes the build arena.
@@ -147,7 +183,7 @@ pub const BuildScope = struct {
     pub fn scrollViewKey(self: *Self) u64 {
         const ordinal = self.scroll_count;
         self.scroll_count += 1;
-        return (@as(u64, @intFromBool(self.secondary)) << 32) | ordinal;
+        return (@as(u64, @intFromBool(self.popover_window)) << 32) | ordinal;
     }
 
     /// Formats a string in the build arena (for state-derived text).
@@ -335,4 +371,33 @@ test "a token provider's tokens reach tokens(), and clearing it restores fromThe
     scope.setTokenProvider(null);
     scope.setTheme(renderer.MacosTheme.light);
     try std.testing.expectEqual(mod.BuildTokens.fromTheme(renderer.MacosTheme.light).warning, scope.tokens().warning);
+}
+
+test "a frame stamp stays latest through the other window's frames, until its own window draws or the popover window hides" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const scope = BuildScope.shared();
+    const saved_main = scope.frame_number;
+    const saved_popover = scope.popover_window_frame_number;
+    defer {
+        scope.frame_number = saved_main;
+        scope.popover_window_frame_number = saved_popover;
+        scope.popover_window = false;
+    }
+
+    scope.begin(arena.allocator());
+    const main_frame = scope.stamp();
+    scope.end();
+    scope.beginPopoverWindow(arena.allocator());
+    const popover_frame = scope.stamp();
+    scope.end();
+    try std.testing.expect(popover_frame.popover_window and !main_frame.popover_window);
+    // Each window's frame leaves the other's stamps latest.
+    try std.testing.expect(scope.isLatest(main_frame) and scope.isLatest(popover_frame));
+    scope.begin(arena.allocator());
+    scope.end();
+    try std.testing.expect(!scope.isLatest(main_frame) and scope.isLatest(popover_frame));
+    // A hidden popover window shows nothing it drew.
+    scope.forgetPopoverWindow();
+    try std.testing.expect(!scope.isLatest(popover_frame));
 }

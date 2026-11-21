@@ -1,5 +1,5 @@
 //! A plain status icon whose click runs a callback, so the app can open its
-//! own popover panel: an NSStatusItem on macOS, a notification-area icon on
+//! own popover window: an NSStatusItem on macOS, a notification-area icon on
 //! Windows and a StatusNotifierItem on Linux.
 
 const std = @import("std");
@@ -65,7 +65,7 @@ pub const StatusItem = struct {
     }
 
     /// Linux: runs the click callback for a click the D-Bus thread handed
-    /// over, anchoring the panel where it happened. The event loop calls it
+    /// over, anchoring the popover window where it happened. The event loop calls it
     /// each iteration.
     ///
     /// - `self`: the status item.
@@ -73,10 +73,10 @@ pub const StatusItem = struct {
         if (mod.os_tag != .linux) return;
         const at = mod.StatusNotifier.shared().takeClick() orelse return;
         const callback = self.linux_callback orelse return;
-        const panel = mod.Panel.shared();
-        if (!panel.statusClickCounts()) return;
-        panel.click_at = at;
-        defer panel.click_at = null;
+        const popover_window = mod.PopoverWindow.shared();
+        if (!popover_window.statusClickCounts()) return;
+        popover_window.click_at = at;
+        defer popover_window.click_at = null;
         callback.call();
     }
 };

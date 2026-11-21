@@ -41,6 +41,9 @@ pub const ControlMetrics = struct {
     /// A segmented control's track inset around its segments (and between
     /// them).
     pub const segment_track_inset: f32 = 2;
+    /// The room either side of a segmented picker's label: each segment is its
+    /// label's width and this twice, as macOS sizes segments to their content.
+    pub const picker_segment_padding: f32 = 20;
     /// An icon segmented control's segment width.
     pub const icon_segment_width: f32 = 32;
     /// A slider's height.

@@ -306,7 +306,8 @@ pub const Context = struct {
     /// Appends an accessibility node for `view` (no-op when the a11y sink is
     /// off). The label defaults to `default_label` unless the view carries an
     /// explicit `.accessibilityLabel(...)` override; its traits
-    /// (`.accessibilityAddTraits`) make it a button and mark it selected.
+    /// (`.accessibilityAddTraits`) make it a button and mark it selected, and
+    /// its `.accessibilityIdentifier` names it.
     ///
     /// - `self`: the context.
     /// - `view`: the view.
@@ -324,6 +325,7 @@ pub const Context = struct {
             .label = view.modifiers.a11y_label orelse default_label,
             .value = value,
             .selected = traits.is_selected,
+            .identifier = view.modifiers.a11y_identifier,
         });
     }
 

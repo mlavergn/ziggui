@@ -4,6 +4,7 @@
 const std = @import("std");
 const log = std.log.scoped(.ziggui_mouse_event);
 const mod = @import("module.zig");
+const renderer = @import("renderer");
 const sdl_c = @import("sdl_c");
 
 /// What a `MouseEvent` reports.
@@ -58,29 +59,30 @@ pub const MouseEvent = struct {
     /// `SDL_KMOD_*` mask.
     modifiers: u16 = 0,
 
-    /// The mouse event an SDL event is, in region points.
+    /// The mouse event an SDL event is, in the points of the window it came from.
     ///
     /// - `event`: the SDL event.
+    /// - `scale`: that window's event scale (`App.event_scale`, `PopoverWindow.event_scale`).
+    /// - `hover`: the pointer over that window, where a pinch acts; null when elsewhere.
     /// - Returns: the mouse event, or null when it is not one.
-    pub fn fromSdl(event: *const sdl_c.SDL_Event) ?Self {
-        const app = mod.App.shared();
+    pub fn fromSdl(event: *const sdl_c.SDL_Event, scale: f32, hover: ?renderer.Point) ?Self {
         const modifiers: u16 = @intCast(sdl_c.SDL_GetModState());
         return switch (event.type) {
             sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN, sdl_c.SDL_EVENT_MOUSE_BUTTON_UP => blk: {
-                const point = app.eventPoint(event.button.x, event.button.y);
+                const point: renderer.Point = .{ .x = event.button.x * scale, .y = event.button.y * scale };
                 break :blk .{ .kind = if (event.type == sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN) .down else .up, .x = point.x, .y = point.y, .button = event.button.button, .clicks = event.button.clicks, .modifiers = modifiers };
             },
             sdl_c.SDL_EVENT_MOUSE_MOTION => blk: {
-                const point = app.eventPoint(event.motion.x, event.motion.y);
+                const point: renderer.Point = .{ .x = event.motion.x * scale, .y = event.motion.y * scale };
                 break :blk .{ .kind = .motion, .x = point.x, .y = point.y, .held = (event.motion.state & sdl_c.SDL_BUTTON_LMASK) != 0, .modifiers = modifiers };
             },
             sdl_c.SDL_EVENT_MOUSE_WHEEL => blk: {
-                const point = app.eventPoint(event.wheel.mouse_x, event.wheel.mouse_y);
+                const point: renderer.Point = .{ .x = event.wheel.mouse_x * scale, .y = event.wheel.mouse_y * scale };
                 break :blk .{ .kind = .wheel, .x = point.x, .y = point.y, .delta_y = event.wheel.y, .delta_x = event.wheel.x, .modifiers = modifiers };
             },
             // A pinch has no position of its own: it acts where the pointer rests.
             sdl_c.SDL_EVENT_PINCH_UPDATE => blk: {
-                const point = app.hover_point orelse break :blk null;
+                const point = hover orelse break :blk null;
                 break :blk .{ .kind = .pinch, .x = point.x, .y = point.y, .scale = event.pinch.scale, .modifiers = modifiers };
             },
             else => null,
@@ -104,4 +106,33 @@ test {
     std.testing.refAllDecls(@This());
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "a mouse event is in the points of the window it came from, at that window's scale" {
+    var event = std.mem.zeroes(sdl_c.SDL_Event);
+    event.type = sdl_c.SDL_EVENT_MOUSE_WHEEL;
+    event.wheel.mouse_x = 30;
+    event.wheel.mouse_y = 40;
+    event.wheel.y = 1;
+    // A window drawn at twice SDL's coordinates (a display of another scale).
+    const wheel = MouseEvent.fromSdl(&event, 2, null).?;
+    try std.testing.expectEqual(MouseEventKind.wheel, wheel.kind);
+    try std.testing.expectEqual(@as(f32, 60), wheel.x);
+    try std.testing.expectEqual(@as(f32, 80), wheel.y);
+
+    // A pinch acts where the pointer rests over its window, and is nothing with no pointer there.
+    event = std.mem.zeroes(sdl_c.SDL_Event);
+    event.type = sdl_c.SDL_EVENT_PINCH_UPDATE;
+    event.pinch.scale = 1.5;
+    const pinch = MouseEvent.fromSdl(&event, 2, .{ .x = 12, .y = 34 }).?;
+    try std.testing.expectEqual(@as(f32, 12), pinch.x);
+    try std.testing.expectEqual(@as(f32, 1.5), pinch.scale);
+    try std.testing.expectEqual(null, MouseEvent.fromSdl(&event, 2, null));
+}
+
+test "the popover window converts its events with its own scale" {
+    var popover_window: mod.PopoverWindow = .{ .event_scale = 0.5 };
+    const point = popover_window.eventPoint(100, 60);
+    try std.testing.expectEqual(@as(f32, 50), point.x);
+    try std.testing.expectEqual(@as(f32, 30), point.y);
 }

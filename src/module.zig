@@ -383,8 +383,16 @@ pub const GraphicsContext = views.GraphicsContext;
 pub const CanvasMarkers = views.CanvasMarkers;
 /// A `ZoomableImage`'s app-owned zoom, pan and last layout.
 pub const ZoomState = views.ZoomState;
+/// The marks an app places on a picture: a segment's two clicks, a marker held under a drag.
+pub const AnnotationState = views.AnnotationState;
+/// A segment an `AnnotationState`'s two clicks made.
+pub const AnnotationSegment = views.AnnotationSegment;
 /// Where a zoomed picture was laid out, and how its content maps into it.
 pub const ZoomGeometry = views.ZoomGeometry;
+/// Which window's frame drew a view (`BuildScope.stamp`, `isLatest`).
+pub const FrameStamp = views.FrameStamp;
+/// Whether a part of a view shows (`.automatic`, `.visible`, `.hidden`), as SwiftUI's `Visibility`.
+pub const Visibility = views.Visibility;
 /// The build arena, published theme and tokens, viewport, wrap cache and link
 /// handler: `BuildScope.shared().begin(arena)`/`end()`, `allocator()`,
 /// `setTheme(theme)`, `theme()`, `tokens()`, `viewport()`, `print(...)`.
@@ -646,10 +654,6 @@ pub const Sidebar = views.Sidebar;
 pub const SidebarStyled = views.SidebarStyled;
 /// A vertical group of radio buttons.
 pub const RadioGroup = views.RadioGroup;
-/// One column of a `Table`.
-pub const TableColumn = views.TableColumn;
-/// A multi-column table of text rows.
-pub const Table = views.Table;
 /// A settings form in columns: labels right-aligned in one column, sections divided.
 pub const Form = views.Form;
 /// A group of a `Form`'s rows.
@@ -658,22 +662,36 @@ pub const Section = views.Section;
 pub const LabeledContent = views.LabeledContent;
 /// An app's settings: a toolbar of tabs over the selected page.
 pub const Settings = views.Settings;
-/// A `Table` whose columns the user drags wider or narrower.
-pub const TableResizable = views.TableResizable;
-/// The column widths a user dragged in a `TableResizable`.
-pub const TableColumnCustomization = views.TableColumnCustomization;
 /// The order a column is sorted in (`.forward`, `.reverse`), as SwiftUI's `SortOrder`.
 pub const SortOrder = views.SortOrder;
-/// A `DataTable`'s sort column and direction.
+/// A `Table`'s sort column and order.
 pub const SortColumn = views.SortColumn;
-/// One column of a data table (and of `TableHeader`/`TableRow`).
-pub const DataColumn = views.DataColumn;
-/// A table of view rows with sortable headers.
-pub const DataTable = views.DataTable;
+/// One column of a `Table`.
+pub const TableColumn = views.TableColumn;
+/// What a `Table` selects: nothing, rows or a cell.
+pub const TableSelectionMode = views.TableSelectionMode;
+/// A `Table` cell, by position.
+pub const TableCell = views.TableCell;
+/// A ⇧-range of a `Table`'s rows, by position.
+pub const TableSpan = views.TableSpan;
+/// A `Table`'s row IDs, type-erased.
+pub const TableIdSource = views.TableIdSource;
+/// What a `Table` keeps between frames (`handleKey`, `invalidate`, the selection).
+pub const TableState = views.TableState;
+/// How a `Table` lays out, selects, sorts and draws its header.
+pub const TableOptions = views.TableOptions;
+/// How a `Table` lays its rows out: `.scrolling` or `.fitted`.
+pub const TableLayout = views.TableLayout;
+/// A `Table`'s context over rows of text, and the cell function that reads them.
+pub const TableRows = views.TableRows;
+/// A table: a header over rows built while in view (or laid inline), with sortable, resizable columns and selection.
+pub const Table = views.Table;
 /// The colors a `SelectableRow`'s content is drawn in (`selectionText`).
 pub const SelectableRowStyle = views.SelectableRowStyle;
 /// A list row showing its selection and whether its list has the focus.
 pub const SelectableRow = views.SelectableRow;
+/// A `SelectableRow` of an icon, a title and a trailing value (`LabeledContent`).
+pub const SelectableLabeledRow = views.SelectableLabeledRow;
 /// A finished reorder: `from`, `to` (`apply` makes it on a slice).
 pub const ReorderMove = views.ReorderMove;
 /// What a list of `ReorderableRow`s drags: `ReorderState.init()`, `dropIndex`, `isDragging`, `takeMove`, `cancel`.
@@ -758,10 +776,10 @@ pub const MouseEvent = if (config.with_sdl) sdl.MouseEvent else void;
 pub const MouseEventKind = if (config.with_sdl) sdl.MouseEventKind else void;
 /// The OS light/dark preference (app build only).
 pub const SystemTheme = if (config.with_sdl) sdl.SystemTheme else void;
-/// The popover panel window a status-item click opens (app build only).
-pub const Panel = if (config.with_sdl) sdl.Panel else void;
-/// What the popover panel shows and how big it is (app build only).
-pub const PanelSpecification = if (config.with_sdl) sdl.PanelSpecification else void;
+/// The popover window a status-item click opens (app build only).
+pub const PopoverWindow = if (config.with_sdl) sdl.PopoverWindow else void;
+/// What the popover window shows and how big it is (app build only).
+pub const PopoverWindowSpecification = if (config.with_sdl) sdl.PopoverWindowSpecification else void;
 /// The system clipboard and the OS URL handler (app build only).
 pub const Clipboard = if (config.with_sdl) sdl.Clipboard else void;
 /// Shows a local file in the system's file manager (app build only).
@@ -836,10 +854,6 @@ pub const SelectableDiffViewWithActions = views.SelectableDiffViewWithActions;
 pub const HunkAction = views.HunkAction;
 /// The lines selected in a `SelectableDiffView`, kept by the app beside the diff's `ScrollState`.
 pub const DiffSelection = views.DiffSelection;
-/// A table's header row.
-pub const TableHeader = views.TableHeader;
-/// One table row.
-pub const TableRow = views.TableRow;
 
 // -----------------------------------------------------------------------------
 // Split views

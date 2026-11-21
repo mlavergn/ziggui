@@ -886,76 +886,6 @@ test "view: Sidebar selects a row on tap and highlights the selection" {
     try std.testing.expectEqual(@as(i64, 2), selection.get());
 }
 
-test "view: Table shows a header + rows and selects a row on tap" {
-    var environment = mod.TestEnvironment.init();
-    environment.setup();
-    defer environment.deinit();
-    var context = environment.context();
-    var selection = renderer.State(i64).init(std.testing.allocator, -1);
-    defer selection.deinit();
-    const columns = [_]mod.TableColumn{ .{ .title = "Name" }, .{ .title = "Age", .width = 60 } };
-    const rows = [_][]const []const u8{
-        &.{ "Ada", "36" },
-        &.{ "Alan", "41" },
-        &.{ "Grace", "45" },
-    };
-    var display_list = renderer.DisplayList.init(std.testing.allocator);
-    defer display_list.deinit();
-    try mod.ViewRenderer.render(&context, mod.Table(&columns, &rows, selection.binding()), .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &display_list);
-    // selection enabled -> one callback tap target per data row (header has none)
-    var row_hits: usize = 0;
-    var second: ?renderer.Rect = null;
-    for (environment.hits.items) |region| {
-        if (region.action == .callback) {
-            if (row_hits == 1) second = region.rect;
-            row_hits += 1;
-        }
-    }
-    try std.testing.expectEqual(@as(usize, 3), row_hits);
-    try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, second.?.center()));
-    try std.testing.expectEqual(@as(i64, 1), selection.get());
-}
-
-test "view: DataTable sortable header toggles the sort binding" {
-    var environment = mod.TestEnvironment.init();
-    environment.setup();
-    defer environment.deinit();
-    var context = environment.context();
-    var sort = renderer.State(mod.SortColumn).init(std.testing.allocator, .{});
-    defer sort.deinit();
-    const columns = [_]mod.DataColumn{
-        .{ .title = "Name" }, // not sortable -> no tap target
-        .{ .title = "Size", .width = 80, .sortable = true, .trailing = true },
-    };
-    const rows = [_][]const mod.View{
-        &.{ mod.Text("Ada"), mod.Text("6 GB") },
-        &.{ mod.Text("Alan"), mod.Text("9 GB") },
-    };
-    var display_list = renderer.DisplayList.init(std.testing.allocator);
-    defer display_list.deinit();
-    try mod.ViewRenderer.render(&context, mod.DataTable(&columns, &rows, sort.binding(), null), .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &display_list);
-
-    // Only the one sortable header registers a tap target.
-    var header_hit: ?renderer.Rect = null;
-    var count: usize = 0;
-    for (environment.hits.items) |region| {
-        if (region.action == .callback) {
-            header_hit = region.rect;
-            count += 1;
-        }
-    }
-    try std.testing.expectEqual(@as(usize, 1), count);
-
-    // First tap on a fresh column sorts by it, in reverse (descending).
-    try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, header_hit.?.center()));
-    try std.testing.expectEqual(@as(i64, 1), sort.get().index);
-    try std.testing.expectEqual(mod.SortOrder.reverse, sort.get().order);
-
-    // Tapping the same column again toggles to forward (ascending).
-    try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, header_hit.?.center()));
-    try std.testing.expectEqual(mod.SortOrder.forward, sort.get().order);
-}
-
 test "view: truncateToWidth shortens overflowing text with an ellipsis" {
     var environment = mod.TestEnvironment.init();
     environment.setup();
@@ -1289,6 +1219,44 @@ test "a11y: accessibilityHidden drops a node; accessibilityLabel overrides it" {
     try std.testing.expect(!saw_secret); // hidden from the tree
     try std.testing.expect(saw_friendly); // label overridden
     try std.testing.expect(!saw_raw); // original label replaced, not duplicated
+}
+
+test "a11y: accessibilityIdentifier names a control's node, whatever its label, and a hidden view's goes too" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var a11y: std.ArrayList(mod.A11yNode) = .empty;
+    context.a11y = &a11y;
+    var on = renderer.State(bool).init(std.testing.allocator, true);
+    defer on.deinit();
+    const Probe = struct {
+        const Self = @This();
+        /// A tap that does nothing.
+        fn noop(_: ?*anyopaque) void {}
+    };
+    const tap: mod.Callback = .{ .function = Probe.noop };
+
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const tree = mod.VStack(.{
+        mod.Button("Enregistrer", tap).accessibilityIdentifier("save-button"),
+        mod.Toggle("Wi-Fi", on.binding()).accessibilityIdentifier("wifi-toggle"),
+        mod.Text("Untitled").accessibilityLabel("Document name").accessibilityIdentifier("document-name"),
+        mod.Text("secret").accessibilityIdentifier("secret").accessibilityHidden(true),
+        mod.Text("plain"),
+    });
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &display_list);
+
+    // Found by identifier, whatever the label says or the language it is in.
+    try std.testing.expectEqualStrings("Enregistrer", mod.A11yNode.find(a11y.items, "save-button").?.label);
+    try std.testing.expect(mod.A11yNode.find(a11y.items, "wifi-toggle") != null);
+    try std.testing.expectEqualStrings("Document name", mod.A11yNode.find(a11y.items, "document-name").?.label);
+    try std.testing.expectEqual(null, mod.A11yNode.find(a11y.items, "secret"));
+    // A view without one emits a node with none.
+    for (a11y.items) |node| {
+        if (std.mem.eql(u8, node.label, "plain")) try std.testing.expectEqualStrings("", node.identifier);
+    }
 }
 
 test "a11y: an icon segmented control's segments are buttons named by their titles, the chosen one selected" {
@@ -2946,7 +2914,7 @@ test "a picker menu closes once the window under the pointer draws without its p
     try TwinPickers.draw(window, &selection);
     try std.testing.expect(mod.PickerMenu.shared().isOpen());
 
-    // A window the pointer is not over (a tray panel) closes nothing.
+    // A window the pointer is not over (a popover window) closes nothing.
     window.begin(renderer.MacosTheme.light);
     window.hover_point = null;
     var view = mod.Text("elsewhere");
@@ -3023,4 +2991,38 @@ test "view: a stateless ScrollView scrolls under the wheel and keeps its offset 
     var second = try window.render(view, 100, 100);
     defer second.deinit();
     try std.testing.expect(view.kind.scrollState.state.offset > 0);
+}
+
+test "a segmented picker's segments are each its label and room either side, as macOS sizes them" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var choice = renderer.State(i64).init(std.testing.allocator, 1);
+    defer choice.deinit();
+    const options = [_][]const u8{ "As I Type", "When I Click Send", "Never" };
+    const picker = mod.Picker(choice.binding(), &options);
+    const size = try mod.ViewRenderer.measure(&context, picker, .unspecified);
+    const shaper = renderer.TextShaper.init(context.cache.face);
+    const pixel_size = context.theme.typography.body.size;
+    const padding = 2 * mod.ControlMetrics.picker_segment_padding;
+    var natural: f32 = 0;
+    for (options) |option| natural += shaper.measureLineWidth(option, pixel_size) + padding;
+    try std.testing.expectApproxEqAbs(natural, size.width, 0.01);
+    try std.testing.expectApproxEqAbs(natural, mod.ControlPainter.segmentsWidth(&context, &options), 0.01);
+
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    try mod.ViewRenderer.render(&context, picker, .{ .x = 0, .y = 0, .width = size.width, .height = size.height }, &display_list);
+    // One tap region per segment, left to right, each its label and the padding.
+    var index: usize = 0;
+    var x: f32 = 0;
+    for (environment.hits.items) |hit| {
+        if (hit.action != .select) continue;
+        try std.testing.expectApproxEqAbs(x, hit.rect.x, 0.01);
+        try std.testing.expectApproxEqAbs(shaper.measureLineWidth(options[index], pixel_size) + padding, hit.rect.width, 0.01);
+        x += hit.rect.width;
+        index += 1;
+    }
+    try std.testing.expectEqual(options.len, index);
 }

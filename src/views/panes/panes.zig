@@ -403,24 +403,6 @@ const ListBody = struct {
     }
 };
 
-/// The layout `TableHeader` and `TableRow` share.
-const Table = struct {
-    const Self = @This();
-
-    /// The horizontal padding of a row, and the spacing between its cells.
-    const pad: f32 = 8;
-
-    /// `content` sized and aligned for `column`.
-    ///
-    /// - `content`: the cell's view.
-    /// - `column`: the cell's column.
-    /// - Returns: the cell.
-    fn cell(content: mod.View, column: mod.DataColumn) mod.View {
-        const framed = if (column.width) |width| content.frameWidth(width) else content.frameMaxWidth();
-        return if (column.trailing) framed.frameAlign(.trailing) else framed.frameAlign(.leading);
-    }
-};
-
 /// A vertical list of `count` equal rows that builds only the rows in view:
 /// thousands of rows cost what a screenful does.
 ///
@@ -564,47 +546,6 @@ fn diffList(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollSt
     }
     model.indexHunks(mod.RowRange.visible(lines.len, mod.diff_row_height, scroll));
     return VirtualListBoth(DiffModel, model, lines.len, mod.diff_row_height, scroll, DiffModel.row, if (lines.len > 0) model.widest else null);
-}
-
-/// A table's header row, matching `TableRow`'s cells: put it over a
-/// `VirtualList` of `TableRow`s for a long, selectable table.
-///
-/// - `columns`: the columns.
-/// - Returns: the header row.
-pub fn TableHeader(columns: []const mod.DataColumn) mod.View {
-    const tokens = mod.BuildScope.shared().tokens();
-    const cells = mod.BuildScope.shared().allocator().alloc(mod.View, columns.len) catch @panic("oom");
-    for (columns, 0..) |column, column_index| {
-        cells[column_index] = Table.cell(mod.Text(column.title).font(.subheadline).foreground(tokens.secondary_label).truncated(), column);
-    }
-    return mod.StackBuilder.fromSlice(.horizontal, Table.pad, .center, cells)
-        .paddingInsets(.{ .top = 6, .leading = Table.pad, .bottom = 6, .trailing = Table.pad })
-        .frameMaxWidth();
-}
-
-/// One table row, its cells sized to the columns as `TableHeader` sizes its
-/// titles. A selected row is filled with the selection color; otherwise odd
-/// rows are striped.
-///
-/// - `columns`: the columns.
-/// - `cells`: one view per column (tinted text, an icon); missing ones are empty.
-/// - `index`: the row's index, for striping.
-/// - `selected`: whether the row is selected.
-/// - Returns: the row.
-pub fn TableRow(columns: []const mod.DataColumn, cells: []const mod.View, index: usize, selected: bool) mod.View {
-    const tokens = mod.BuildScope.shared().tokens();
-    const children = mod.BuildScope.shared().allocator().alloc(mod.View, columns.len) catch @panic("oom");
-    for (columns, 0..) |column, column_index| children[column_index] = Table.cell(if (column_index < cells.len) cells[column_index] else mod.Empty(), column);
-    var row = mod.StackBuilder.fromSlice(.horizontal, Table.pad, .center, children)
-        .paddingInsets(.{ .top = 0, .leading = Table.pad, .bottom = 0, .trailing = Table.pad })
-        .frameMaxWidth()
-        .frameMaxHeight();
-    if (selected) {
-        row = row.background(tokens.selection.withAlpha(0.22));
-    } else if (index % 2 == 1) {
-        row = row.background(tokens.row_stripe);
-    }
-    return row;
 }
 
 // -----------------------------------------------------------------------------
@@ -1125,18 +1066,4 @@ test "a DiffView reads a diff whole once, until the diff changes" {
     lines[8].text = "the longest line of the rebuilt diff";
     model.indexHunks(.{ .start = 0, .end = lines.len });
     try std.testing.expectEqual(@as(usize, 8), model.widest);
-}
-
-test "a table row stripes odd rows and fills a selected one" {
-    const window = try mod.TestWindow.create(std.testing.allocator);
-    defer window.destroy();
-    const columns = [_]mod.DataColumn{ .{ .title = "Name" }, .{ .title = "Size", .width = 60, .trailing = true } };
-    window.begin(renderer.MacosTheme.light);
-    const even = TableRow(&columns, &.{ mod.Text("a"), mod.Text("1") }, 0, false);
-    const odd = TableRow(&columns, &.{ mod.Text("b"), mod.Text("2") }, 1, false);
-    const header = TableHeader(&columns);
-    window.end();
-    try std.testing.expect(even.modifiers.background == null);
-    try std.testing.expect(odd.modifiers.background != null);
-    try std.testing.expect(header.kind == .stack);
 }

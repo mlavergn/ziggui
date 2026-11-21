@@ -158,7 +158,7 @@ pub const Section = enum {
             .images => .image,
             .layout => .boxes,
             .lists => .list,
-            .table => .folder,
+            .table => .table,
             .navigation => .send,
             .presentations => .layers,
             .menus => .menu,
@@ -171,7 +171,7 @@ pub const Section = enum {
             .mediaWeb => .globe,
             .mediaNative => .pictureInPicture2,
             .chat => .messageSquare,
-            .diffs => .table,
+            .diffs => .gitCompare,
         };
     }
 
@@ -184,27 +184,27 @@ pub const Section = enum {
     /// - Returns: its lines, each names separated by ` · `.
     pub fn names(self: *const Self) []const []const u8 {
         return switch (self.*) {
-            .text => &.{ "ziggui.Text", "ziggui.WrappedText", "ziggui.HighlightedText · ziggui.TextRange", "ziggui.Label", "ziggui.TextField", "ziggui.SearchField" },
+            .text => &.{ "ziggui.Text", "ziggui.WrappedText", "ziggui.RichText · ziggui.RichTextSpaced · ziggui.RichTextPreformatted", "ziggui.HighlightedText · ziggui.TextRange", "ziggui.Label", "ziggui.TextField", "ziggui.SearchField" },
             .textEditor => &.{ "ziggui.TextEditor", "ziggui.TextEditor · ziggui.FindBar · ziggui.FindCount · ziggui.FindActions" },
-            .controls => &.{ "ziggui.Button · ziggui.ButtonRoled · ziggui.IconButton", "ziggui.ButtonKeyed", "ziggui.Toggle", "ziggui.Slider · ziggui.ProgressView", "ziggui.Spinner · ziggui.LoadingDots", "ziggui.Stepper", "ziggui.Badge", "ziggui.KeyCap" },
+            .controls => &.{ "ziggui.Button · ziggui.ButtonRoled · ziggui.IconButton · ziggui.ButtonIcon · ziggui.ButtonIconRoled", "ziggui.ButtonKeyed", "ziggui.Toggle", "ziggui.Slider · ziggui.ProgressView", "ziggui.Spinner · ziggui.LoadingDots", "ziggui.Stepper", "ziggui.Badge", "ziggui.KeyCap" },
             .pickers => &.{ "ziggui.Picker · ziggui.Form · .pickerStyle(.automatic)", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu)", "ziggui.RadioGroup", "ziggui.SegmentedControl", "ziggui.IconSegmentedControl" },
-            .images => &.{ "ziggui.Image · .scaledToFit()", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", "CanvasMarkers.crosshair · .ring · .halo · .reticle · .pill · .chip · .callout · .nearest", "ziggui.ZoomableImage · ZoomState · CanvasMarkers · .onDrag", "ziggui.Rectangle · ziggui.RoundedRectangle · ziggui.Circle · ziggui.Capsule · ziggui.Ellipse", "ziggui.LinearGradient", "ziggui.Icon · ziggui.LazyVGrid" },
-            .layout => &.{ "ziggui.HStack · ziggui.Spacer · ziggui.ZStack", "ziggui.FlowStack", "ziggui.LazyVGrid", "ziggui.LazyHGrid", "ziggui.Divider · ziggui.VDivider", "ziggui.GeometryReader", ".scrollIndicators · ziggui.ScrollIndicatorVisibility" },
-            .lists => &.{ "ziggui.PaneHeader", "ziggui.SelectableRow", "ziggui.ReorderableRow", "ziggui.OutlineState · ziggui.OutlineRow", "ziggui.EditableText · ziggui.EditableTextState", "ziggui.CheckList · ziggui.CheckRow", "ziggui.TableHeader · ziggui.TableRow · ziggui.VirtualList" },
-            .table => &.{"ziggui.TableResizable · ziggui.TableColumnCustomization"},
-            .navigation => &.{ "ziggui.TabView · ziggui.ScrollView", "ziggui.HSplitView · ziggui.VSplitView", "ziggui.NavigationLinkIcon · ziggui.NavigationPath", "ziggui.NavigationSplitViewInset · ziggui.SidebarStyled" },
-            .presentations => &.{ ".sheet · .alert", "ziggui.Menu", ".popover", ".popover · .popoverPassthrough", ".onHover", "ziggui.HoverPopover" },
-            .menus => &.{ "ziggui.MenuBar", "ziggui.KeyHintBar", "ziggui.App.setKeyUpHandler · ziggui.Toggle" },
-            .windows => &.{ "ziggui.TitleBar · ziggui.MenuBar · ziggui.WindowButtons", "ziggui.WindowChrome.topBar", "ziggui.WindowChrome.topBarLeading · ziggui.IconSegmentedControl", "ziggui.WindowChrome.topBarLeading", "ziggui.Canvas · Theme.drawTitleBar · .modalPassthrough", "ziggui.StatusLine" },
+            .images => &.{ "ziggui.Image · .scaledToFit()", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", "CanvasMarkers.crosshair · .ring · .halo · .reticle · .pill · .chip · .callout · .nearest", "ziggui.ZoomableImage · ZoomState · AnnotationState · CanvasMarkers", "ziggui.Rectangle · ziggui.RoundedRectangle · ziggui.Circle · ziggui.Capsule · ziggui.Ellipse", "ziggui.LinearGradient", "ziggui.Icon · ziggui.LazyVGrid" },
+            .layout => &.{ "ziggui.HStack · ziggui.VStack · ziggui.ZStack · ziggui.Spacer · ziggui.MinSpacer · ziggui.ForEach · ziggui.Empty", "ziggui.FlowStack", "ziggui.LazyVGrid", "ziggui.LazyHGrid", "ziggui.Divider · ziggui.VDivider", "ziggui.GeometryReader", "ziggui.ScrollView · ziggui.ScrollViewState · ziggui.ScrollViewStateBoth · ziggui.ScrollViewOffset", ".scrollIndicators · ziggui.ScrollIndicatorVisibility" },
+            .lists => &.{ "ziggui.PaneHeader", "ziggui.SelectableRow", "ziggui.SelectableLabeledRow", "ziggui.ReorderableRow", "ziggui.OutlineState · ziggui.OutlineRow", "ziggui.DisclosureGroup · ziggui.DisclosureGroupAccessory", "ziggui.EditableText · ziggui.EditableTextState", "ziggui.CheckList · ziggui.CheckRow", "ziggui.List", "ziggui.PaneTitle · ziggui.EmptyState", "ziggui.VirtualListBoth", "ziggui.VirtualList" },
+            .table => &.{ "ziggui.Table · ziggui.TableColumn", "ziggui.TableState · ziggui.TableOptions · ziggui.SortColumn", "TableOptions.header_accessory · .empty", "TableOptions.highlighted · .row_height", "ziggui.TableRows · ziggui.TableLayout", "ziggui.Visibility · TableOptions.column_headers", "ziggui.TableSelectionMode · ziggui.TableCell" },
+            .navigation => &.{ "ziggui.TabView", "ziggui.HSplitView · ziggui.VSplitView", "ziggui.NavigationLinkIcon · ziggui.NavigationPath", "ziggui.NavigationLink · ziggui.NavigationBackButton", "ziggui.NavigationSplitView · ziggui.Sidebar", "ziggui.NavigationSplitViewInset · ziggui.SidebarStyled" },
+            .presentations => &.{ ".sheet · .alert", "ziggui.ConfirmAlert · ziggui.Confirm", ".popover", ".popover · .popoverPassthrough", ".onHover", "ziggui.HoverPopover" },
+            .menus => &.{ "ziggui.MenuBar", "ziggui.Menu", "ziggui.ContextMenu", "ziggui.MenuList · ziggui.MenuItem", "ziggui.App.setKeyUpHandler · ziggui.Toggle" },
+            .windows => &.{ "ziggui.TitleBar · ziggui.MenuBar · ziggui.WindowButtons", "ziggui.WindowChrome.topBar", "ziggui.WindowChrome.topBarLeading · ziggui.IconSegmentedControl", "ziggui.WindowChrome.topBarLeading", "ziggui.Canvas · Theme.drawTitleBar · .modalPassthrough", "ziggui.StatusLine", "ziggui.KeyHintBar", "ziggui.NoticeBar" },
             .effects => &.{ "ziggui.Animator · ziggui.ProgressView", ".glassEffect", ".opacity · .border · .cornerRadius", ".backgroundMaterial(.regular)" },
-            .forms => &.{ "ziggui.SettingRow", "ziggui.KeyValueEditor", "ziggui.TokenField", "ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker · ziggui.ThemePicker" },
+            .forms => &.{ "ziggui.SettingRow", "ziggui.LabeledField · ziggui.FieldChrome", "ziggui.KeyValueEditor", "ziggui.TokenField", "ziggui.ThemeFamilyPicker", "ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker · ziggui.ThemePicker" },
             .files => &.{ "ziggui.FileBrowser · FileBrowserState.shows_file", "ziggui.FileDialog.openFile · .saveFile · .takeResult" },
             .mediaAudio => &.{ "ziggui.AudioPlayerControls · ziggui.AudioPlayerControlsState · ziggui.Player", "ziggui.AudioInfoView · ziggui.AudioOutputs" },
-            .mediaVideo => &.{ "ziggui.VideoPlayer · ziggui.VideoPlayerControls · ziggui.Player", "ziggui.VideoInfoView · ziggui.SystemInfo" },
+            .mediaVideo => &.{ "ziggui.VideoPlayer · ziggui.VideoPlayerControls · ziggui.Player", "ziggui.VideoPlayerControlsWith · ziggui.VideoPlayerControlButton · ziggui.VideoPlayerControlMenu", "ziggui.VideoInfoView · ziggui.SystemInfo", "ziggui.SystemInfoView · ziggui.SystemReport" },
             .mediaWeb => &.{"ziggui.WebView · ziggui.WebPage · ziggui.WebPageMessageCallback"},
             .mediaNative => &.{"ziggui.NativeView"},
-            .chat => &.{ "ziggui.StatusMark", "ziggui.Chip", "ziggui.Bubble · ziggui.DisclosureGroup · ziggui.DisclosureGroupAccessory · ziggui.CodeBlock · ziggui.Quote" },
-            .diffs => &.{"ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection"},
+            .chat => &.{ "ziggui.StatusMark", "ziggui.Chip", "ziggui.Bubble · ziggui.CodeBlock · ziggui.Quote" },
+            .diffs => &.{ "ziggui.DiffView · ziggui.DiffLine", "ziggui.SelectableDiffView", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection" },
         };
     }
 
@@ -216,7 +216,7 @@ pub const Section = enum {
     /// - Returns: true for the panels that fill.
     pub fn fills(self: *const Self) bool {
         return switch (self.*) {
-            .table, .textEditor, .navigation, .mediaWeb => true,
+            .textEditor, .navigation, .mediaWeb => true,
             else => false,
         };
     }
@@ -230,6 +230,13 @@ pub const Section = enum {
         const last: i64 = Self.items.len - 1;
         return @fromBackingInt(@intCast(std.math.clamp(index, 0, last)));
     }
+};
+
+/// The window's top-bar switch for the sidebar's list: the sections by
+/// label, or every component the cards name.
+const listing_segments = [_]ziggui.IconSegment{
+    .{ .icon = .list, .title = "Sections" },
+    .{ .icon = .boxes, .title = "Components" },
 };
 
 /// The Windows section's top band's segmented control's segments, as ziggit's switch has them.
@@ -267,14 +274,14 @@ const swatch_row_height: f32 = 22;
 /// arrow keys reveal a row from the list's height (`Gallery.revealSidebarRow`).
 const sidebar_row_spacing: f32 = 2;
 
-/// The Lists section's table rows' columns.
-const file_columns = [_]ziggui.DataColumn{
-    .{ .title = "Name" },
-    .{ .title = "Kind", .width = 90 },
-    .{ .title = "Size", .width = 70, .trailing = true },
+/// The Table section's 10,000-row table's columns: Name shares the card's width.
+const file_columns = [_]ziggui.TableColumn{
+    .{ .title = "Name", .sortable = true, .min_width = 120 },
+    .{ .title = "Kind", .width = 90, .sortable = true },
+    .{ .title = "Size", .width = 70, .trailing = true, .help = "A made-up size" },
 };
 
-/// How many rows the Lists section's virtual list holds.
+/// How many rows the Lists section's virtual list and large table each hold.
 const file_count: usize = 10_000;
 
 /// The height of one of the Lists section's table rows, in points.
@@ -444,10 +451,31 @@ pub const Gallery = struct {
     thought_open: bool = true,
 
     /// The Lists section's virtual list position.
-    files_scroll: ziggui.ScrollState = .{},
+    rows_scroll: ziggui.ScrollState = .{},
 
     /// The Lists section's selected table row.
-    file_selected: usize = 2,
+    row_selected: usize = 2,
+
+    /// The Diffs section's read-only diff position.
+    plain_diff_scroll: ziggui.ScrollState = .{},
+
+    /// The Diffs section's line-selecting diff position.
+    lines_diff_scroll: ziggui.ScrollState = .{},
+
+    /// The Diffs section's line-selecting diff's selection.
+    lines_selection: ziggui.DiffSelection = .{},
+
+    /// The Lists section's wide virtual list position, both ways.
+    wide_scroll: ziggui.ScrollState = .{},
+
+    /// The Table section's large table: its scroll, sort, widths and selection.
+    files: ziggui.TableState,
+
+    /// The large table's file last opened (a double click or Return), or null.
+    files_opened: ?usize = null,
+
+    /// How many of the large table's rows are selected, counted as the selection changes.
+    files_selected: usize = 0,
 
     /// The Diffs section's diff position.
     diff_scroll: ziggui.ScrollState = .{},
@@ -502,7 +530,7 @@ pub const Gallery = struct {
         var kit = try gallery.Kit.init(allocator);
         errdefer kit.deinit();
         const web = try gallery.WebPanel.init(allocator);
-        const self = Self{
+        var self = Self{
             .allocator = allocator,
             .section = ziggui.State(i64).init(allocator, 0),
             .dark = ziggui.State(bool).init(allocator, false),
@@ -517,7 +545,11 @@ pub const Gallery = struct {
             .settings = gallery.SettingsPanel.init(allocator),
             .web = web,
             .search = gallery.SectionSearch.init(allocator),
+            .files = ziggui.TableState.init(allocator),
         };
+        // The third file starts selected, so the card shows a selection.
+        try self.files.ids.put(allocator, 2, {});
+        self.files_selected = 1;
         return self;
     }
 
@@ -525,6 +557,7 @@ pub const Gallery = struct {
     ///
     /// - `self`: the gallery to tear down.
     pub fn deinit(self: *Self) void {
+        self.files.deinit();
         self.search.deinit();
         self.web.deinit();
         self.settings.deinit();
@@ -565,12 +598,60 @@ pub const Gallery = struct {
         // sheet and alerts (the quit question).
         self.media.syncFullScreen();
         if (self.media.expanded) return self.showcase.presentations(self.media.expandedView(), active_theme);
-        const root = ziggui.NavigationSplitView(
-            self.sidebar(active_theme),
-            self.detail(active_theme),
-            active_theme.colors.sidebar_background orelse active_theme.colors.secondary_background,
-        );
+        const root = ziggui.VStack(.{
+            self.topBar(active_theme),
+            ziggui.Divider(),
+            ziggui.NavigationSplitView(
+                self.sidebar(active_theme),
+                self.detail(active_theme),
+                active_theme.colors.sidebar_background orelse active_theme.colors.secondary_background,
+            ),
+        }).spacing(0);
         return self.showcase.presentations(root, active_theme);
+    }
+
+    /// The window's top band: the sidebar's list switch (sections or
+    /// components) after the inset, the title centred. On macOS the band is
+    /// the unified title bar, the traffic lights in its inset.
+    ///
+    /// - `self`: the gallery.
+    /// - `active_theme`: the theme this frame draws with.
+    /// - Returns: the band.
+    fn topBar(self: *Self, active_theme: ziggui.Theme) ziggui.View {
+        const title = ziggui.Text("ziggui Gallery").font(.headline).foreground(active_theme.colors.label).truncated();
+        return ziggui.WindowChrome.topBarLeading(
+            ziggui.IconSegmentedControl(self.listingBinding(), &listing_segments),
+            ziggui.IconSegment.controlWidth(listing_segments.len),
+            title,
+            gallery.is_macos,
+        );
+    }
+
+    /// The top bar's switch: which list the sidebar shows.
+    ///
+    /// - `self`: the gallery.
+    /// - Returns: the binding, 0 for the sections, 1 for the components.
+    fn listingBinding(self: *Self) ziggui.Binding(i64) {
+        return .{ .context = self, .get_fn = Self.listingIndex, .set_fn = Self.chooseListing };
+    }
+
+    /// The list the sidebar shows (`listingBinding`'s reader).
+    ///
+    /// - `context`: the gallery.
+    /// - Returns: 0 for the sections, 1 for the components.
+    fn listingIndex(context: *anyopaque) i64 {
+        const self: *Self = @ptrCast(@alignCast(context));
+        return if (self.search.listing == .components) 1 else 0;
+    }
+
+    /// Switches the sidebar's list (`listingBinding`'s writer), the section
+    /// shown kept and its row scrolled into view once drawn.
+    ///
+    /// - `context`: the gallery.
+    /// - `index`: 0 for the sections, 1 for the components.
+    fn chooseListing(context: *anyopaque, index: i64) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        if (self.search.setListing(if (index == 1) .components else .sections)) self.reveal_pending = true;
     }
 
     /// The Menus & Commands section's menus, each entry's action recording its title
@@ -637,6 +718,7 @@ pub const Gallery = struct {
                 return false;
             } else self.sidebarKeyDown(keycode, modifiers),
             .lists => self.kit.editableKeyDown(keycode, modifiers) or self.sidebarKeyDown(keycode, modifiers),
+            .table => self.tableKeyDown(keycode, modifiers) or self.sidebarKeyDown(keycode, modifiers),
             else => self.sidebarKeyDown(keycode, modifiers),
         };
     }
@@ -651,6 +733,11 @@ pub const Gallery = struct {
         // A press on a modal's scrim lands on nothing behind it.
         if (self.presentsModal()) return;
         if (Section.at(self.section.get()) == .files and Self.listContains(&self.kit.files.scroll, point)) self.kit.files_have_keys = true;
+        // A Table section's table holds the keys from a press on its rows until a
+        // press elsewhere (a fitted one, which scrolls nothing, from a tap on a cell).
+        if (Section.at(self.section.get()) == .table) {
+            for (self.tables()) |table| table.focused = Self.listContains(&table.scroll, point);
+        }
     }
 
     /// The Images & Drawing section's picture zoom, for the event loop's pinches
@@ -709,12 +796,12 @@ pub const Gallery = struct {
         self.thought_open = !self.thought_open;
     }
 
-    /// Selects a row of the Diffs section's table.
+    /// Selects a row of the Lists section's table rows.
     ///
     /// - `self`: the gallery.
     /// - `index`: the row.
-    pub fn selectFile(self: *Self, index: usize) void {
-        self.file_selected = index;
+    pub fn selectRowAt(self: *Self, index: usize) void {
+        self.row_selected = index;
     }
 
     /// Selects a hunk of the Diffs section's diff.
@@ -839,27 +926,27 @@ pub const Gallery = struct {
     /// - Returns: the panel's view.
     fn panel(self: *Self, section: Section, active_theme: ziggui.Theme) ziggui.View {
         return switch (section) {
-            .text => Self.cards(.{ self.showcase.typeScaleCard(active_theme), self.showcase.wrappedTextCard(active_theme), self.showcase.highlightedTextCard(active_theme), self.showcase.labelCard(active_theme), self.showcase.textFieldCard(active_theme), self.kit.searchFieldCard(active_theme) }),
+            .text => Self.cards(.{ self.showcase.typeScaleCard(active_theme), self.showcase.wrappedTextCard(active_theme), self.showcase.richTextCard(active_theme), self.showcase.highlightedTextCard(active_theme), self.showcase.labelCard(active_theme), self.showcase.textFieldCard(active_theme), self.kit.searchFieldCard(active_theme) }),
             .textEditor => self.editor.body(active_theme),
             .controls => Self.cards(.{ self.showcase.buttonsCard(active_theme), self.kit.buttonKeyedCard(active_theme), self.showcase.togglesCard(active_theme), self.showcase.sliderCard(active_theme), self.showcase.progressCard(active_theme), self.showcase.stepperCard(active_theme), self.kit.badgeCard(active_theme), self.kit.keyCapCard(active_theme) }),
             .pickers => Self.cards(.{ self.pickers.panel(active_theme), self.showcase.radioGroupCard(active_theme), self.kit.segmentedControlCard(active_theme), self.kit.iconSegmentedControlCard(active_theme) }),
             .images => Self.cards(.{ self.showcase.canvasPanel(active_theme), self.showcase.shapesCard(active_theme), self.showcase.gradientCard(active_theme), self.showcase.iconGalleryCard(active_theme) }),
-            .layout => Self.cards(.{ self.showcase.stacksCard(active_theme), self.showcase.flowStackCard(active_theme), self.showcase.verticalGridCard(active_theme), self.showcase.horizontalGridCard(active_theme), self.showcase.dividersCard(active_theme), self.showcase.geometryPanel(active_theme), self.showcase.scrollIndicatorsCard(active_theme) }),
-            .lists => Self.cards(.{ self.kit.rowsPanel(active_theme), self.kit.reorderPanel(active_theme), self.kit.outlinePanel(active_theme), self.kit.editablePanel(active_theme), self.kit.checkListCard(active_theme), self.tableRowsCard(active_theme) }),
-            .table => self.showcase.tablePanel(active_theme, section.label()),
+            .layout => Self.cards(.{ self.showcase.stacksCard(active_theme), self.showcase.flowStackCard(active_theme), self.showcase.verticalGridCard(active_theme), self.showcase.horizontalGridCard(active_theme), self.showcase.dividersCard(active_theme), self.showcase.geometryPanel(active_theme), self.showcase.scrollViewsCard(active_theme), self.showcase.scrollIndicatorsCard(active_theme) }),
+            .lists => Self.cards(.{ self.kit.rowsPanel(active_theme), self.kit.reorderPanel(active_theme), self.kit.outlinePanel(active_theme), self.kit.disclosureCard(active_theme), self.kit.editablePanel(active_theme), self.kit.checkListCard(active_theme), self.kit.listCard(active_theme), self.kit.paneCard(active_theme), self.wideListCard(active_theme), self.virtualListCard(active_theme) }),
+            .table => Self.cards(.{ self.showcase.tableCard(active_theme), self.manyRowsTableCard(active_theme), self.showcase.filterTableCard(active_theme), self.showcase.highlightTableCard(active_theme), self.showcase.fittedTableCard(active_theme), self.showcase.headerlessTableCard(active_theme), self.showcase.cellTableCard(active_theme) }),
             .navigation => self.showcase.navigationPanel(active_theme, section.label(), Self.cards(.{ self.showcase.tabViewCard(active_theme), self.splitPanel(active_theme) })),
-            .presentations => Self.cards(.{ self.showcase.modalCard(active_theme), self.showcase.menuCard(active_theme), self.showcase.popoverCard(active_theme), self.showcase.passthroughCard(active_theme), self.showcase.onHoverCard(active_theme), self.hoverPanel(active_theme) }),
-            .menus => Self.cards(.{ self.menuBarPanel(active_theme), self.kit.keyHintBarCard(active_theme), self.showcase.keyUpsCard(active_theme) }),
-            .windows => Self.cards(.{ self.titleBarPanel(active_theme), self.topBarPanel(active_theme), self.showcase.customTitleBarCard(active_theme), Self.statusLinePanel(active_theme) }),
+            .presentations => Self.cards(.{ self.showcase.modalCard(active_theme), self.showcase.confirmAlertCard(active_theme), self.showcase.popoverCard(active_theme), self.showcase.passthroughCard(active_theme), self.showcase.onHoverCard(active_theme), self.hoverPanel(active_theme) }),
+            .menus => Self.cards(.{ self.menuBarPanel(active_theme), self.showcase.menuCard(active_theme), self.showcase.contextMenuCard(active_theme), self.showcase.menuListCard(active_theme), self.showcase.keyUpsCard(active_theme) }),
+            .windows => Self.cards(.{ self.titleBarPanel(active_theme), self.topBarPanel(active_theme), self.showcase.customTitleBarCard(active_theme), Self.statusLinePanel(active_theme), self.kit.keyHintBarCard(active_theme), self.noticeBarCard(active_theme) }),
             .effects => Self.cards(.{ self.showcase.effectsPanel(active_theme), self.showcase.materialCard(active_theme) }),
-            .forms => Self.cards(.{ self.kit.settingRowCard(active_theme), self.kit.keyValueEditorCard(active_theme), self.kit.tokenFieldCard(active_theme), self.settings.panel(active_theme, self.theme_family.binding(), self.accent.binding()) }),
+            .forms => Self.cards(.{ self.kit.settingRowCard(active_theme), self.kit.labeledFieldCard(active_theme), self.kit.keyValueEditorCard(active_theme), self.kit.tokenFieldCard(active_theme), self.themeFamilyCard(active_theme), self.settings.panel(active_theme, self.theme_family.binding(), self.accent.binding()) }),
             .files => self.kit.filesPanel(active_theme),
             .mediaAudio => self.media.audioPanel(active_theme),
             .mediaVideo => self.media.videoPanel(active_theme),
             .mediaWeb => self.web.panel(active_theme, section.label()),
             .mediaNative => self.media.nativePanel(active_theme),
             .chat => self.chatPanel(active_theme),
-            .diffs => self.diffCard(active_theme),
+            .diffs => Self.cards(.{ self.diffViewCard(active_theme), self.selectableDiffCard(active_theme), self.diffCard(active_theme) }),
         };
     }
 
@@ -914,7 +1001,7 @@ pub const Gallery = struct {
                 ziggui.Chip("screenshot.png · 84 KB", .image, null),
                 ziggui.Spacer(),
             }).spacing(8)),
-            gallery.Card.view(active_theme, "Transcript", "ziggui.Bubble · ziggui.DisclosureGroup · ziggui.DisclosureGroupAccessory · ziggui.CodeBlock · ziggui.Quote", ziggui.VStack(.{
+            gallery.Card.view(active_theme, "Transcript", "ziggui.Bubble · ziggui.CodeBlock · ziggui.Quote", ziggui.VStack(.{
                 Self.leading(ziggui.Bubble(ziggui.WrappedText("List the files and explain the build."), active_theme.colors.accent.withAlpha(0.16))),
                 ziggui.DisclosureGroup(
                     ziggui.Text("Thought for 4 seconds").font(.footnote).foreground(active_theme.colors.secondary_label),
@@ -936,16 +1023,55 @@ pub const Gallery = struct {
         }).spacing(16);
     }
 
-    /// The table rows card: a header over a virtual list of 10,000 rows.
+    /// The virtual list card: 10,000 selectable rows, only those in view built.
     ///
     /// - `self`: the gallery.
     /// - `active_theme`: the theme this frame draws with.
     /// - Returns: the card.
-    fn tableRowsCard(self: *Self, active_theme: ziggui.Theme) ziggui.View {
-        return gallery.Card.view(active_theme, "Table rows over a virtual list (10,000 rows)", "ziggui.TableHeader · ziggui.TableRow · ziggui.VirtualList", ziggui.VStack(.{
-            ziggui.TableHeader(&file_columns),
-            ziggui.VirtualList(Self, self, file_count, file_row_height, &self.files_scroll, Self.fileRow).frameHeight(150),
-        }).spacing(0));
+    fn virtualListCard(self: *Self, active_theme: ziggui.Theme) ziggui.View {
+        return gallery.Card.view(active_theme, "A virtual list: 10,000 rows, only those in view built", "ziggui.VirtualList", ziggui.VirtualList(Self, self, file_count, file_row_height, &self.rows_scroll, Self.fileRow).frameHeight(150));
+    }
+
+    /// The wide list card: 1,000 long lines, built only while in view, that
+    /// scroll sideways too.
+    ///
+    /// - `self`: the gallery.
+    /// - `active_theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    fn wideListCard(self: *Self, active_theme: ziggui.Theme) ziggui.View {
+        return gallery.Card.view(active_theme, "A virtual list that scrolls sideways too (1,000 long lines)", "ziggui.VirtualListBoth", ziggui.VirtualListBoth(Self, self, 1000, file_row_height, &self.wide_scroll, Self.wideRow, 0)
+            .frameMaxWidth().frameHeight(130).background(active_theme.colors.secondary_background).cornerRadius(6));
+    }
+
+    /// One line of the wide list card, longer than the card is wide.
+    ///
+    /// - `self`: the gallery.
+    /// - `index`: the line.
+    /// - Returns: the line.
+    fn wideRow(self: *const Self, index: usize) ziggui.View {
+        _ = self;
+        const line = ziggui.BuildScope.shared().allocator().print("{d:0>4}  a line too long for the card, so the list scrolls sideways to show the rest of it, gutter and all", .{index}) catch @panic("oom");
+        return ziggui.Text(line).mono().padding(4);
+    }
+
+    /// The 10,000-row table card: sortable by name and kind, columns that
+    /// drag wider, and rows selected by ID with ⌘ and ⇧ and the keys.
+    ///
+    /// - `self`: the gallery.
+    /// - `active_theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    fn manyRowsTableCard(self: *Self, active_theme: ziggui.Theme) ziggui.View {
+        const allocator = ziggui.BuildScope.shared().allocator();
+        const opened = if (self.files_opened) |file| allocator.print(" · opened file-{d:0>5}.zig", .{file}) catch @panic("oom") else "";
+        const status = allocator.print("{d} selected{s}", .{ self.files_selected, opened }) catch @panic("oom");
+        const table = ziggui.Table(Self, self, &file_columns, file_count, Self.fileCell, Self.fileId, &self.files, .{
+            .on_activate = ziggui.IndexCallback.init(Self, self, Self.openFile),
+            .on_selection = ziggui.Callback.init(Self, self, Self.countSelectedFiles),
+        });
+        return gallery.Card.view(active_theme, "10,000 rows: sort, drag a column edge, ⌘/⇧-click, ↑↓, ⌘A; a double click or Return opens", "ziggui.TableState · ziggui.TableOptions · ziggui.SortColumn", ziggui.VStack(.{
+            table.frameHeight(180),
+            ziggui.Text(status).font(.footnote).foreground(active_theme.colors.secondary_label),
+        }).spacing(8).alignment(.leading));
     }
 
     /// The diff card: a selectable diff with links on its hunk headers.
@@ -964,25 +1090,177 @@ pub const Gallery = struct {
         }).spacing(0).frameHeight(diff_rows_shown * ziggui.diff_row_height));
     }
 
-    /// Row `index` of the Diffs section's table.
+    /// The read-only diff card.
+    ///
+    /// - `self`: the gallery.
+    /// - `active_theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    fn diffViewCard(self: *Self, active_theme: ziggui.Theme) ziggui.View {
+        const on_hunk = ziggui.IndexCallback.init(Self, self, Self.selectHunk);
+        return gallery.Card.view(active_theme, "DiffView: a diff to read (tap a row for its hunk)", "ziggui.DiffView · ziggui.DiffLine", ziggui.VStack(.{
+            ziggui.DiffView(&sample_diff, self.hunk_selected, &self.plain_diff_scroll, on_hunk),
+        }).spacing(0).frameHeight(diff_rows_shown * ziggui.diff_row_height));
+    }
+
+    /// The line-selecting diff card: whole lines selected by a press and a
+    /// drag, ⌘C copying them.
+    ///
+    /// - `self`: the gallery.
+    /// - `active_theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    fn selectableDiffCard(self: *Self, active_theme: ziggui.Theme) ziggui.View {
+        const on_hunk = ziggui.IndexCallback.init(Self, self, Self.selectHunk);
+        return gallery.Card.view(active_theme, "SelectableDiffView: whole lines selected by a drag (⌘C copies)", "ziggui.SelectableDiffView", ziggui.VStack(.{
+            ziggui.SelectableDiffView(&sample_diff, self.hunk_selected, &self.lines_diff_scroll, on_hunk, &self.lines_selection),
+        }).spacing(0).frameHeight(diff_rows_shown * ziggui.diff_row_height));
+    }
+
+    /// The notice bar card: the window's notice strip, busy with what it
+    /// does, then saying what went wrong with the action that fixes it.
+    ///
+    /// - `self`: the gallery.
+    /// - `active_theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    fn noticeBarCard(self: *Self, active_theme: ziggui.Theme) ziggui.View {
+        const ground = ziggui.BuildScope.shared().tokens().bar_background;
+        return gallery.Card.view(active_theme, "NoticeBar: the window's notice strip, busy, then a problem and its action", "ziggui.NoticeBar", ziggui.VStack(.{
+            ziggui.NoticeBar(true, "Fetching origin…", false, null, "").frameMaxWidth().frameHeight(28).background(ground).cornerRadius(6),
+            ziggui.NoticeBar(false, "Push rejected: the remote has work this branch lacks.", true, ziggui.Callback.init(Self, self, Self.noticeActed), "Pull").frameMaxWidth().frameHeight(28).background(ground).cornerRadius(6),
+        }).spacing(8));
+    }
+
+    /// The notice bar card's action, which does nothing here.
+    ///
+    /// - `self`: the gallery.
+    fn noticeActed(self: *Self) void {
+        _ = self;
+    }
+
+    /// The theme family card: the families as mini renderings, bound to the
+    /// gallery's own theme, as the sidebar's switcher is.
+    ///
+    /// - `self`: the gallery.
+    /// - `active_theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    fn themeFamilyCard(self: *Self, active_theme: ziggui.Theme) ziggui.View {
+        return gallery.Card.view(active_theme, "ThemeFamilyPicker: the families as mini renderings, for a sidebar", "ziggui.ThemeFamilyPicker", ziggui.HStack(.{
+            ziggui.ThemeFamilyPicker(self.theme_family.binding(), self.accent.binding()),
+            ziggui.Spacer(),
+        }));
+    }
+
+    /// The file at a position of the Table section's large table, in its
+    /// sort: by name (the files' own order) or by kind (the tests, every third
+    /// file, first), either way round.
+    ///
+    /// - `self`: the gallery.
+    /// - `position`: the row's position in the table.
+    /// - Returns: the file's index.
+    fn fileAt(self: *const Self, position: usize) usize {
+        const sort = self.files.sort;
+        const at = if (sort.index >= 0 and sort.order == .reverse) file_count - 1 - position else position;
+        if (sort.index != 1) return at;
+        const tests = (file_count + 2) / 3;
+        if (at < tests) return at * 3;
+        const source = at - tests;
+        return source / 2 * 3 + 1 + source % 2;
+    }
+
+    /// A cell of the Table section's large table.
+    ///
+    /// - `self`: the gallery.
+    /// - `position`: the row's position.
+    /// - `column`: the column.
+    /// - Returns: the cell.
+    fn fileCell(self: *const Self, position: usize, column: usize) ziggui.View {
+        const text = Self.fileText(self.fileAt(position), column);
+        // The kind's secondary color turns on-accent on a selected row, as its other text does.
+        if (column != 1) return text;
+        return text.foreground(ziggui.SelectableRowStyle.secondaryText(self.files.isRowSelected(position), true));
+    }
+
+    /// Row `index` of the Lists section's virtual list: the file's name, and
+    /// its size at the trailing edge, selectable.
     ///
     /// - `self`: the gallery.
     /// - `index`: the row.
     /// - Returns: the row.
     fn fileRow(self: *const Self, index: usize) ziggui.View {
+        // `selectRowAt` takes `*Self`; the list's rows only read the gallery.
+        const select = ziggui.IndexCallback.init(Self, @constCast(self), Self.selectRowAt);
+        const content = ziggui.HStack(.{ Self.fileText(index, 0), ziggui.Spacer(), Self.fileText(index, 2) });
+        return ziggui.SelectableRow(content, index == self.row_selected, true, select.bind(index));
+    }
+
+    /// What a made-up file shows in a column: its name, its kind (every third
+    /// a test) or its size.
+    ///
+    /// - `index`: the file.
+    /// - `column`: 0 the name, 1 the kind, else the size.
+    /// - Returns: the cell's text.
+    fn fileText(index: usize, column: usize) ziggui.View {
         const allocator = ziggui.BuildScope.shared().allocator();
-        const name = allocator.print("file-{d:0>5}.zig", .{index}) catch @panic("oom");
-        const size = allocator.print("{d} KB", .{(index * 37) % 512 + 1}) catch @panic("oom");
-        const kind = if (index % 3 == 0) "Test" else "Source";
-        const cells = allocator.dupe(ziggui.View, &.{
-            ziggui.Text(name).truncated(),
-            ziggui.Text(kind).foreground(ziggui.BuildScope.shared().tokens().secondary_label),
-            ziggui.Text(size).mono(),
-        }) catch @panic("oom");
-        // `select` takes `*Self`; the list's rows only read the gallery.
-        const select = ziggui.IndexCallback.init(Self, @constCast(self), Self.selectFile);
-        return ziggui.TableRow(&file_columns, cells, index, index == self.file_selected)
-            .onTap(select.bind(index));
+        return switch (column) {
+            0 => ziggui.Text(allocator.print("file-{d:0>5}.zig", .{index}) catch @panic("oom")).truncated(),
+            1 => ziggui.Text(if (index % 3 == 0) "Test" else "Source").foreground(ziggui.BuildScope.shared().tokens().secondary_label),
+            else => ziggui.Text(allocator.print("{d} KB", .{(index * 37) % 512 + 1}) catch @panic("oom")).mono(),
+        };
+    }
+
+    /// A row's ID in the Table section's large table: its file's index, so a
+    /// selection keeps its files through a re-sort.
+    ///
+    /// - `self`: the gallery.
+    /// - `position`: the row's position.
+    /// - Returns: the ID.
+    fn fileId(self: *const Self, position: usize) u64 {
+        return self.fileAt(position);
+    }
+
+    /// The Table section's keys, given to the table that holds them.
+    ///
+    /// - `self`: the gallery.
+    /// - `keycode`: the event's `SDL_Keycode`.
+    /// - `modifiers`: its `SDL_Keymod` mask.
+    /// - Returns: true when the table used the key.
+    fn tableKeyDown(self: *Self, keycode: u32, modifiers: u16) bool {
+        // A focused text field (a filter under a header) keeps its keys, as in the Files section.
+        if (ziggui.Focus.shared().focused()) |field| {
+            // A key that may change a filter reaches the table first, between frames, while
+            // its last frame's rows still answer for IDs: a ⇧-range is kept by them.
+            if (self.showcase.ownsPeopleFilter(field)) self.showcase.people_table.invalidate();
+            return false;
+        }
+        const key = ziggui.Key.fromSdl(keycode, modifiers, gallery.is_macos) orelse return false;
+        for (self.tables()) |table| if (table.focused) return table.handleKey(key);
+        return false;
+    }
+
+    /// The Table section's tables that keep a state, so take the keyboard.
+    ///
+    /// - `self`: the gallery.
+    /// - Returns: their states.
+    fn tables(self: *Self) [4]*ziggui.TableState {
+        return .{ &self.showcase.table, &self.files, &self.showcase.people_table, &self.showcase.cell_table };
+    }
+
+    /// Notes the large table's file opened by a double click or Return.
+    ///
+    /// - `self`: the gallery.
+    /// - `position`: the row's position.
+    fn openFile(self: *Self, position: usize) void {
+        self.files_opened = self.fileAt(position);
+    }
+
+    /// Counts the large table's selected rows, as its selection changes.
+    ///
+    /// - `self`: the gallery.
+    fn countSelectedFiles(self: *Self) void {
+        var count: usize = 0;
+        for (0..file_count) |position| {
+            if (self.files.isRowSelected(position)) count += 1;
+        }
+        self.files_selected = count;
     }
 
     /// The Navigation section's split views': an `HSplitView` whose trailing pane is a `VSplitView`.
@@ -1117,7 +1395,7 @@ pub const Gallery = struct {
         }
         self.painted_list = key;
         const items = ziggui.BuildScope.shared().allocator().alloc(ziggui.SidebarItem, rows.len) catch @panic("oom");
-        for (rows, items) |row, *item| item.* = .{ .label = row.section.label(), .icon = row.section.icon(), .detail = row.detail };
+        for (rows, items) |row, *item| item.* = .{ .label = row.component orelse row.section.label(), .icon = row.section.icon(), .detail = row.detail };
         // Scrolls when the window is too short for every row.
         return ziggui.ScrollViewState(&self.sidebar_scroll, ziggui.Sidebar(items, self.sidebarSelection()))
             .frameMaxWidth()
@@ -1134,6 +1412,7 @@ pub const Gallery = struct {
         if (!self.search.refresh()) return;
         const rows = self.search.shown();
         if (rows.len > 0 and self.search.rowOf(Section.at(self.section.get())) == null) {
+            self.search.choose(0);
             self.section.set(@backingInt(rows[0].section));
             self.entered_by_keys = true;
         }
@@ -1181,6 +1460,7 @@ pub const Gallery = struct {
         const shown = Section.at(self.section.get());
         const position: i64 = if (self.search.rowOf(shown)) |row| @intCast(row) else -1;
         const row: usize = @intCast(std.math.clamp(position + step, 0, @as(i64, @intCast(rows.len - 1))));
+        self.search.choose(row);
         if (rows[row].section != shown) {
             self.section.set(@backingInt(rows[row].section));
             self.entered_by_keys = true;
@@ -1246,6 +1526,7 @@ pub const Gallery = struct {
         const rows = self.search.shown();
         if (rows.len == 0) return;
         const row: usize = @intCast(std.math.clamp(index, 0, @as(i64, @intCast(rows.len - 1))));
+        self.search.choose(row);
         self.section.set(@backingInt(rows[row].section));
     }
 
@@ -1531,8 +1812,11 @@ test "the panel callbacks fold the tool call and select a row and a hunk" {
     try std.testing.expect(shown.tool_open);
     shown.toggleThought();
     try std.testing.expect(!shown.thought_open);
-    shown.selectFile(7);
-    try std.testing.expectEqual(@as(usize, 7), shown.file_selected);
+    shown.selectRowAt(7);
+    try std.testing.expectEqual(@as(usize, 7), shown.row_selected);
+    try std.testing.expect(shown.files.isSelectedId(2));
+    shown.files.select(7);
+    try std.testing.expect(shown.files.isRowSelected(7));
     shown.selectHunk(2);
     try std.testing.expectEqual(@as(usize, 2), shown.hunk_selected);
 }
@@ -1597,9 +1881,9 @@ test "an accent draws the theme as the apps do; the first keeps the theme's own"
     try std.testing.expectEqual(ziggui.Accent.graphite.color(), shown.theme().colors.accent);
 }
 
-test "the panels that fill the pane are the table, the text editor, navigation and the web view" {
-    try std.testing.expect(!Section.controls.fills());
-    try std.testing.expect(Section.table.fills() and Section.textEditor.fills() and Section.navigation.fills() and Section.mediaWeb.fills());
+test "the panels that fill the pane are the text editor, navigation and the web view" {
+    try std.testing.expect(!Section.controls.fills() and !Section.table.fills());
+    try std.testing.expect(Section.textEditor.fills() and Section.navigation.fills() and Section.mediaWeb.fills());
 }
 
 test "the showcase and editor sections draw with every overlay presented" {
@@ -1856,7 +2140,7 @@ test "the arrow keys walk the sidebar's rows, unless a field, the File Browser's
     try std.testing.expectEqual(Rows.of(.files) + 1, Rows.of(Section.at(shown.section.get())));
 }
 
-test "every names line a section draws is in its search index" {
+test "every names line a section draws is in its search index, and every line there is drawn" {
     const allocator = std.testing.allocator;
     var shown = try Gallery.init(allocator);
     defer shown.deinit();
@@ -1869,6 +2153,12 @@ test "every names line a section draws is in its search index" {
         shown.section.set(@intCast(index));
         lines.clearRetainingCapacity();
         try Frame.draw(&shown);
+        // A card shown once the section is used counts as drawn: the
+        // Editor's find bar (⌘F, `--find`).
+        if (section == .textEditor) {
+            shown.editor.showMatch("greeting");
+            try Frame.draw(&shown);
+        }
         try std.testing.expect(lines.items.len > 0);
         for (lines.items) |line| {
             const listed = for (section.names()) |name| {
@@ -1876,6 +2166,14 @@ test "every names line a section draws is in its search index" {
             } else false;
             if (!listed) std.debug.print("{s} draws \"{s}\", missing from Section.names\n", .{ section.label(), line });
             try std.testing.expect(listed);
+        }
+        // And the other way: no names line a card no longer draws.
+        for (section.names()) |name| {
+            const drawn = for (lines.items) |line| {
+                if (std.mem.eql(u8, name, line)) break true;
+            } else false;
+            if (!drawn) std.debug.print("{s} lists \"{s}\" in Section.names, but no card draws it\n", .{ section.label(), name });
+            try std.testing.expect(drawn);
         }
     }
 }
@@ -1911,4 +2209,116 @@ test "typing in the sidebar's search shows the first match and keeps the field's
     try std.testing.expectEqual(found, Section.at(shown.section.get()));
     try std.testing.expectEqual(Section.sorted.len, shown.search.shown().len);
     try std.testing.expectEqual(@as(?*ziggui.TextFieldState, null), ziggui.Focus.shared().focused());
+}
+
+/// Finds `ziggui`'s view constructors, for the test that every one is on a card.
+const ViewConstructors = struct {
+    const Self = @This();
+
+    /// The public declarations of `ziggui` that make a view: functions,
+    /// named in PascalCase, that return a `ziggui.View`.
+    ///
+    /// - Returns: their names.
+    fn names() []const []const u8 {
+        comptime {
+            @setEvalBranchQuota(200_000);
+            var found: []const []const u8 = &.{};
+            for (@typeInfo(ziggui).@"struct".decl_names) |name| {
+                if (!std.ascii.isUpper(name[0])) continue;
+                const Declared = @TypeOf(@field(ziggui, name));
+                if (@typeInfo(Declared) != .@"fn") continue;
+                const returned = @typeInfo(Declared).@"fn".return_type orelse continue;
+                if (returned != ziggui.View) continue;
+                found = found ++ .{name};
+            }
+            const result = found;
+            return result;
+        }
+    }
+
+    /// Whether a card's names line names a component: `ziggui.<name>` among
+    /// its ` · `-separated names.
+    ///
+    /// - `line`: the names line.
+    /// - `name`: the component's name.
+    /// - Returns: true when the line names it.
+    fn lineNames(line: []const u8, name: []const u8) bool {
+        var parts = std.mem.splitSequence(u8, line, " · ");
+        while (parts.next()) |part| {
+            if (std.mem.startsWith(u8, part, "ziggui.") and std.mem.eql(u8, part["ziggui.".len..], name)) return true;
+        }
+        return false;
+    }
+};
+
+test "every view constructor ziggui offers is named on a gallery card" {
+    var missing: usize = 0;
+    inline for (comptime ViewConstructors.names()) |name| {
+        const shown = for (0..Section.items.len) |index| {
+            const names = Section.at(@intCast(index)).names();
+            if (for (names) |line| {
+                if (ViewConstructors.lineNames(line, name)) break true;
+            } else false) break true;
+        } else false;
+        if (!shown) {
+            std.debug.print("ziggui.{s} is on no gallery card\n", .{name});
+            missing += 1;
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 0), missing);
+}
+
+test "the top bar's switch lists the components; a tap or a key on one shows its section and keeps that row selected" {
+    const allocator = std.testing.allocator;
+    var shown = try Gallery.init(allocator);
+    defer shown.deinit();
+    shown.listingBinding().set(1);
+    try std.testing.expectEqual(gallery.SidebarListing.components, shown.search.listing);
+    try std.testing.expectEqual(@as(i64, 1), shown.listingBinding().get());
+
+    // A tap on ziggui.TableState's row shows Table, and that row stays selected.
+    const rows = shown.search.shown();
+    const state_row = for (rows, 0..) |row, index| {
+        if (std.mem.eql(u8, row.component.?, "ziggui.TableState")) break index;
+    } else unreachable;
+    shown.sidebarSelection().set(@intCast(state_row));
+    try std.testing.expectEqual(Section.table, Section.at(shown.section.get()));
+    try std.testing.expectEqual(@as(i64, @intCast(state_row)), shown.sidebarSelection().get());
+
+    // ↓ walks to the next component, selected even where it is in the section shown.
+    shown.stepRow(1);
+    try std.testing.expectEqual(@as(i64, @intCast(state_row + 1)), shown.sidebarSelection().get());
+    try std.testing.expectEqual(rows[state_row + 1].section, Section.at(shown.section.get()));
+
+    // Back to the sections: the section shown keeps its row.
+    shown.listingBinding().set(0);
+    try std.testing.expectEqual(gallery.SidebarListing.sections, shown.search.listing);
+    try std.testing.expect(shown.sidebarSelection().get() >= 0);
+}
+
+test "a key typed into a table's filter keeps a ⇧-range selected by its people" {
+    const allocator = std.testing.allocator;
+    var shown = try Gallery.init(allocator);
+    defer shown.deinit();
+    shown.section.set(@backingInt(Section.table));
+    const first = try ziggui.Screenshot.render(allocator, &shown, Gallery.body, .{ .width = gallery.test_width, .height = gallery.test_height, .theme = shown.theme() });
+    allocator.free(first);
+
+    // Margaret Hamilton (4) through Barbara Liskov (6) selected as a ⇧-range.
+    const people = &shown.showcase.people_table;
+    people.select(4);
+    people.extend(6);
+    // A key reaches the Role filter, which then keeps only the engineers.
+    const filter = &shown.showcase.people_filters[1];
+    ziggui.Focus.shared().set(filter);
+    defer ziggui.Focus.shared().clear();
+    try std.testing.expect(!shown.keyDown('e', 0));
+    try filter.setText("engineer");
+    const second = try ziggui.Screenshot.render(allocator, &shown, Gallery.body, .{ .width = gallery.test_width, .height = gallery.test_height, .theme = shown.theme() });
+    allocator.free(second);
+
+    // Margaret Hamilton, the one engineer of the range, is still selected, now first.
+    try std.testing.expectEqual(@as(usize, 2), shown.showcase.people_shown_count);
+    try std.testing.expect(people.isRowSelected(0));
+    try std.testing.expect(!people.isRowSelected(1));
 }

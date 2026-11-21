@@ -32,10 +32,6 @@ pub const SelectableDiffViewWithActions = @import("panes.zig").SelectableDiffVie
 pub const HunkAction = @import("hunk_action.zig").HunkAction;
 /// The lines selected in a `SelectableDiffView`, kept by the app.
 pub const DiffSelection = @import("diff_selection.zig").DiffSelection;
-/// A table's header row.
-pub const TableHeader = @import("panes.zig").TableHeader;
-/// One table row.
-pub const TableRow = @import("panes.zig").TableRow;
 
 // -----------------------------------------------------------------------------
 // From the views module
@@ -48,8 +44,6 @@ pub const DisplayText = @import("../module.zig").DisplayText;
 pub const BuildTokens = @import("../module.zig").BuildTokens;
 /// A tap handler (`init` wraps a method, `action` a function, `select` a selection), from the views module.
 pub const Callback = @import("../module.zig").Callback;
-/// One column of a data table (and of `TableHeader`/`TableRow`), from the views module.
-pub const DataColumn = @import("../module.zig").DataColumn;
 /// A view that draws nothing (from the views module).
 pub const Empty = @import("../module.zig").Empty;
 /// Children side by side (from the views module).

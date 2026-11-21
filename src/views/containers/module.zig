@@ -92,10 +92,6 @@ pub const Sidebar = @import("sidebar.zig").Sidebar;
 pub const SidebarStyled = @import("sidebar.zig").SidebarStyled;
 /// A vertical group of radio buttons.
 pub const RadioGroup = @import("radio_group.zig").RadioGroup;
-/// One column of a `Table`.
-pub const TableColumn = @import("table_column.zig").TableColumn;
-/// A multi-column table of text rows.
-pub const Table = @import("table.zig").Table;
 /// A settings form in columns: labels right-aligned in one column, sections divided.
 pub const Form = @import("form.zig").Form;
 /// A group of a `Form`'s rows.
@@ -104,22 +100,36 @@ pub const Section = @import("form.zig").Section;
 pub const LabeledContent = @import("form.zig").LabeledContent;
 /// An app's settings: a toolbar of tabs over the selected page.
 pub const Settings = @import("settings.zig").Settings;
-/// A `Table` whose columns the user drags wider or narrower.
-pub const TableResizable = @import("table.zig").TableResizable;
-/// The column widths a user dragged in a `TableResizable`.
-pub const TableColumnCustomization = @import("table_column_customization.zig").TableColumnCustomization;
 /// The order a column is sorted in (`.forward`, `.reverse`), as SwiftUI's `SortOrder`.
 pub const SortOrder = @import("sort_order.zig").SortOrder;
-/// A `DataTable`'s sort column and order.
+/// A `Table`'s sort column and order.
 pub const SortColumn = @import("sort_column.zig").SortColumn;
-/// One column of a data table (and of `TableHeader`/`TableRow`).
-pub const DataColumn = @import("data_column.zig").DataColumn;
-/// A table of view rows with sortable headers.
-pub const DataTable = @import("data_table.zig").DataTable;
+/// One column of a `Table`.
+pub const TableColumn = @import("table_column.zig").TableColumn;
+/// What a `Table` selects: nothing, rows or a cell.
+pub const TableSelectionMode = @import("table_state.zig").TableSelectionMode;
+/// A `Table` cell, by position.
+pub const TableCell = @import("table_state.zig").TableCell;
+/// A ⇧-range of a `Table`'s rows, by position.
+pub const TableSpan = @import("table_state.zig").TableSpan;
+/// A `Table`'s row IDs, type-erased.
+pub const TableIdSource = @import("table_state.zig").TableIdSource;
+/// What a `Table` keeps between frames (`handleKey`, `invalidate`, the selection).
+pub const TableState = @import("table_state.zig").TableState;
+/// How a `Table` lays out, selects, sorts and draws its header.
+pub const TableOptions = @import("table_options.zig").TableOptions;
+/// How a `Table` lays its rows out: `.scrolling` or `.fitted`.
+pub const TableLayout = @import("table_options.zig").TableLayout;
+/// A `Table`'s context over rows of text, and the cell function that reads them.
+pub const TableRows = @import("table_rows.zig").TableRows;
+/// A table: a header over rows built while in view (or laid inline), with sortable, resizable columns and selection.
+pub const Table = @import("table.zig").Table;
 /// The colors a `SelectableRow`'s content is drawn in (`selectionText`).
 pub const SelectableRowStyle = @import("selectable_row_style.zig").SelectableRowStyle;
 /// A list row showing its selection and whether its list has the focus.
 pub const SelectableRow = @import("selectable_row.zig").SelectableRow;
+/// A `SelectableRow` of an icon, a title and a trailing value (`LabeledContent`).
+pub const SelectableLabeledRow = @import("selectable_row.zig").SelectableLabeledRow;
 /// A finished reorder: `from`, `to` (`apply` makes it on a slice).
 pub const ReorderMove = @import("reorder_state.zig").ReorderMove;
 /// What a list of `ReorderableRow`s drags (`dropIndex`, `isDragging`, `takeMove`, `cancel`).
@@ -153,6 +163,18 @@ pub const Binding = @import("../module.zig").Binding;
 pub const Callback = @import("../module.zig").Callback;
 /// What `View.onDrag` calls (from the views module).
 pub const DragCallback = @import("../module.zig").DragCallback;
+/// A `VirtualList` that also scrolls sideways (from the views module).
+pub const VirtualListBoth = @import("../module.zig").VirtualListBoth;
+/// A handler that takes a row's index (from the views module).
+pub const IndexCallback = @import("../module.zig").IndexCallback;
+/// A key press, platform-neutral (from the views module).
+pub const Key = @import("../module.zig").Key;
+/// Which window's frame drew a view (from the views module).
+pub const FrameStamp = @import("../module.zig").FrameStamp;
+/// Whether a part of a view shows (from the views module).
+pub const Visibility = @import("../module.zig").Visibility;
+/// The hover hint `View.help` shows (from the views module).
+pub const HelpTip = @import("../module.zig").HelpTip;
 /// Routes pointer events to a frame's regions (from the views module).
 pub const PointerInput = @import("../module.zig").PointerInput;
 /// The icon font's glyph names (from the views module).
@@ -214,14 +236,14 @@ test {
     _ = @import("sidebar.zig");
     _ = @import("radio_group.zig");
     _ = @import("table_column.zig");
+    _ = @import("table_options.zig");
+    _ = @import("table_state.zig");
+    _ = @import("table_rows.zig");
     _ = @import("table.zig");
     _ = @import("form.zig");
     _ = @import("settings.zig");
-    _ = @import("table_column_customization.zig");
     _ = @import("sort_order.zig");
     _ = @import("sort_column.zig");
-    _ = @import("data_column.zig");
-    _ = @import("data_table.zig");
     _ = @import("selectable_row_style.zig");
     _ = @import("selectable_row.zig");
     _ = @import("reorder_state.zig");

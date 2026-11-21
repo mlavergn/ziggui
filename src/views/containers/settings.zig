@@ -15,7 +15,7 @@ const SettingsToolbar = struct {
     const Self = @This();
 
     /// One tab: its symbol over its title, in the accent while selected on a
-    /// rounded ground, lit under the pointer otherwise.
+    /// rounded ground, lit under the pointer otherwise, with its hint.
     ///
     /// - `tab`: the tab.
     /// - `index`: its index.
@@ -32,7 +32,8 @@ const SettingsToolbar = struct {
             .paddingInsets(.{ .top = 5, .leading = 9, .bottom = 4, .trailing = 9 })
             .frameMinWidth(64)
             .cornerRadius(7)
-            .onTap(mod.Callback.select(selection, @intCast(index)));
+            .onTap(mod.Callback.select(selection, @intCast(index)))
+            .help(tab.help);
         button = if (selected) button.background(tokens.quaternary_fill) else button.hoverFill(tokens.hover);
         return button;
     }
@@ -103,4 +104,30 @@ test "settings shows the selected tab's page, and a tap on another tab selects i
     }
     try std.testing.expect(window.tap(.{ .x = second.?.midX(), .y = second.?.midY() }));
     try std.testing.expectEqual(@as(i64, 1), selection.get());
+}
+
+test "a settings tab offers its hint under the pointer" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var selection = renderer.State(i64).init(std.testing.allocator, 0);
+    defer selection.deinit();
+    window.begin(renderer.MacosTheme.light);
+    const tabs = [_]mod.Tab{
+        .{ .label = "General", .icon = .settings, .content = mod.Text("general page"), .help = "Startup and appearance" },
+        .{ .label = "Advanced", .icon = .slidersHorizontal, .content = mod.Text("advanced page") },
+    };
+    const view = Settings(selection.binding(), &tabs);
+    window.end();
+    var first_frame = try window.render(view, 400, 200);
+    first_frame.deinit();
+    // The tab buttons are the only tap regions; the first is the leftmost.
+    var first: ?renderer.Rect = null;
+    for (window.hits.items) |hit| {
+        if (first == null or hit.rect.x < first.?.x) first = hit.rect;
+    }
+    window.hover_point = .{ .x = first.?.midX(), .y = first.?.midY() };
+    defer window.hover_point = null;
+    var frame = try window.render(view, 400, 200);
+    defer frame.deinit();
+    try std.testing.expectEqualStrings("Startup and appearance", mod.HelpTip.shared().offer_now.?.text);
 }

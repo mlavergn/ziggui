@@ -253,6 +253,11 @@ pub const ScrollStateData = struct {
     /// The content is laid out at its own width and scrolls sideways too
     /// (`ScrollViewStateBoth`).
     horizontal: bool = false,
+
+    /// Where an up-and-down wheel delta over the view goes instead of
+    /// `state`: a position shown elsewhere (a table's header hands it to the
+    /// table's rows), or null for `state`.
+    vertical_target: ?*mod.ScrollState = null,
 };
 
 /// A `GeometryReader`'s content builder and its context.

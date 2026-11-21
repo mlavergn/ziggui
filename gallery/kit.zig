@@ -42,6 +42,14 @@ const reorder_start = [sample_items.len]usize{ 0, 1, 2, 3, 4 };
 /// The space between the sample lists' rows.
 const row_spacing: f32 = 2;
 
+/// The Lists section's labeled rows: an icon or none, a title, and its value.
+const labeled_rows = [_]struct { ?ziggui.IconName, []const u8, []const u8 }{
+    .{ .mapPin, "Pole 12", "app capture" },
+    .{ .camera, "Site photos", "3 photos" },
+    .{ .fileText, "Survey notes", "" },
+    .{ null, "Untitled", "draft" },
+};
+
 /// The distance from one Reorder row's top to the next's: a 28pt
 /// `SelectableRow` and the rows' spacing.
 const reorder_pitch: f32 = 28 + row_spacing;
@@ -119,6 +127,8 @@ pub const Kit = struct {
 
     /// The Lists section's rows card's selected row.
     row_selection: ziggui.State(i64),
+    /// The Lists section's labeled rows card's selected row.
+    labeled_selected: usize = 0,
 
     /// The Lists section's reorder cards's selected row, by item, so it follows a moved row.
     reorder_selection: ziggui.State(i64),
@@ -160,6 +170,12 @@ pub const Kit = struct {
     /// A row the Lists section's rename card starts renaming as it next builds
     /// (`--rename`): after the frame's section change, which drops the keyboard.
     rename_on_show: ?usize = null,
+
+    /// Whether the Lists section's first disclosure group shows its content.
+    disclosure_open: bool = true,
+
+    /// Whether the Lists section's disclosure group with an accessory shows its content.
+    accessory_open: bool = false,
 
     /// The Files section's folder: `fixtures/file_browser` at start.
     files: ziggui.FileBrowserState,
@@ -402,7 +418,72 @@ pub const Kit = struct {
                 Self.sampleList(&rows_order, &self.row_selection, true, null),
                 Self.sampleList(&rows_order, &self.row_selection, false, null),
             }).spacing(16).alignment(.top)),
+            gallery.Card.view(theme, "SelectableLabeledRow: a title with its value at the trailing edge", "ziggui.SelectableLabeledRow", self.labeledList()),
         }).spacing(16);
+    }
+
+    /// The labeled rows card's list: each row's icon and title, its value
+    /// at the trailing edge, the selected row in a focused list.
+    ///
+    /// - `self`: the kit.
+    /// - Returns: the list.
+    fn labeledList(self: *Self) ziggui.View {
+        const rows = ziggui.BuildScope.shared().allocator().alloc(ziggui.View, labeled_rows.len) catch @panic("oom");
+        for (labeled_rows, rows, 0..) |entry, *row, index| {
+            const tapped = ziggui.Callback.tagged(Self, self, Self.labeledTapped, index);
+            row.* = ziggui.SelectableLabeledRow(entry[0], entry[1], entry[2], index == self.labeled_selected, true, tapped);
+        }
+        return ziggui.StackBuilder.fromSlice(.vertical, row_spacing, .leading, rows).frameMaxWidth();
+    }
+
+    /// The labeled field card: a label over a field drawn in the chrome a
+    /// composed field draws around itself, with help under it.
+    ///
+    /// - `self`: the kit.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    pub fn labeledFieldCard(self: *Self, theme: ziggui.Theme) ziggui.View {
+        _ = self;
+        const field = ziggui.FieldChrome(ziggui.Text("https://mcp.deepwiki.com/mcp").truncated().padding(6).frameMaxWidth().frameAlign(.leading));
+        return gallery.Card.view(theme, "LabeledField, around a field drawn in FieldChrome", "ziggui.LabeledField · ziggui.FieldChrome", ziggui.LabeledField("Server", field, "Where the client connects; only https is allowed.").frameMaxWidth());
+    }
+
+    /// The List card: rows in a scrolling list with hairlines between them.
+    ///
+    /// - `self`: the kit.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    pub fn listCard(self: *Self, theme: ziggui.Theme) ziggui.View {
+        _ = self;
+        return gallery.Card.view(theme, "List: rows with hairlines between them", "ziggui.List", ziggui.List(.{
+            ziggui.Text("Wi-Fi").frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("Bluetooth").frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("Network").frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("Notifications").frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("Sound").frameMaxWidth().frameAlign(.leading),
+        }).frameMaxWidth().frameHeight(150));
+    }
+
+    /// The pane card: a pane's title over a divider, accented while the pane
+    /// has the focus, with a trailing action, over what the empty pane says.
+    ///
+    /// - `self`: the kit.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    pub fn paneCard(self: *Self, theme: ziggui.Theme) ziggui.View {
+        const call = ziggui.Callback.init(Self, self, Self.saved);
+        return gallery.Card.view(theme, "A pane's title, and what an empty pane says", "ziggui.PaneTitle · ziggui.EmptyState", ziggui.VStack(.{
+            ziggui.PaneTitle("Inbox", true, ziggui.Button("Refresh", call)),
+            ziggui.EmptyState("No messages", "New mail shows up here."),
+        }).spacing(0).frameMaxWidth().frameHeight(170).background(theme.colors.window_background).cornerRadius(theme.metrics.corner_radius));
+    }
+
+    /// A click on a row of the Lists section's labeled rows card: selects it.
+    ///
+    /// - `self`: the kit.
+    /// - `index`: the row.
+    fn labeledTapped(self: *Self, index: usize) void {
+        self.labeled_selected = index;
     }
 
     /// The Lists section's reorder cards: a list whose rows drag up and down, and one held
@@ -513,6 +594,45 @@ pub const Kit = struct {
                 ziggui.Text(said).foreground(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
             }).spacing(10).frameMaxWidth()),
         }).spacing(16);
+    }
+
+    /// The DisclosureGroup card: a header whose chevron folds its content
+    /// away, and one with an accessory (a count) at its trailing edge.
+    ///
+    /// - `self`: the kit.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    pub fn disclosureCard(self: *Self, theme: ziggui.Theme) ziggui.View {
+        const secondary = theme.colors.secondary_label;
+        return gallery.Card.view(theme, "DisclosureGroup: tap a header to fold its content away", "ziggui.DisclosureGroup · ziggui.DisclosureGroupAccessory", ziggui.VStack(.{
+            ziggui.DisclosureGroup(
+                ziggui.Text("Advanced"),
+                self.disclosure_open,
+                ziggui.Callback.init(Self, self, Self.toggleDisclosure),
+                ziggui.WrappedText("Content shown while the group is open, folded away under its header otherwise.").foreground(secondary),
+            ),
+            ziggui.DisclosureGroupAccessory(
+                ziggui.Text("Downloads"),
+                ziggui.Badge("3", .neutral),
+                self.accessory_open,
+                ziggui.Callback.init(Self, self, Self.toggleAccessory),
+                ziggui.VStack(.{ ziggui.Text("report.pdf"), ziggui.Text("photo.jpg"), ziggui.Text("notes.txt") }).spacing(4).alignment(.leading),
+            ),
+        }).spacing(10).alignment(.leading));
+    }
+
+    /// Opens or folds the DisclosureGroup card's first group.
+    ///
+    /// - `self`: the kit.
+    fn toggleDisclosure(self: *Self) void {
+        self.disclosure_open = !self.disclosure_open;
+    }
+
+    /// Opens or folds the DisclosureGroup card's group with an accessory.
+    ///
+    /// - `self`: the kit.
+    fn toggleAccessory(self: *Self) void {
+        self.accessory_open = !self.accessory_open;
     }
 
     /// The CheckList card: a choice as macOS lists one, the chosen row checked;

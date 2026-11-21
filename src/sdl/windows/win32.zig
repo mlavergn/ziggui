@@ -228,10 +228,10 @@ pub const Win32 = struct {
         const self = Self.shared();
         if (message == Self.WM_TRAYICON) {
             // Version 4: the event is in the low word of lParam. Either button
-            // opens the panel, which carries everything the menu did.
+            // opens the popover window, which carries everything the menu did.
             switch (@as(u16, @truncate(@as(usize, @bitCast(lparam))))) {
                 Self.NIN_SELECT, Self.NIN_KEYSELECT, Self.WM_CONTEXTMENU => if (self.status_callback) |callback| {
-                    if (!mod.Panel.shared().statusClickCounts()) return 0;
+                    if (!mod.PopoverWindow.shared().statusClickCounts()) return 0;
                     callback.call();
                     mod.App.shared().wake();
                 },

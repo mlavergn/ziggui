@@ -1,5 +1,5 @@
 //! The event loop `App.run` drives: SDL's start-up, the main window (and the
-//! optional popover panel), the per-frame build, raster and present, the
+//! optional popover window), the per-frame build, raster and present, the
 //! event dispatch, and the idle and busy waits between frames.
 
 const std = @import("std");
@@ -57,7 +57,7 @@ const WheelDelta = struct {
     y: f32,
 };
 
-/// Everything one `draw` needs for one window (the main window or the panel),
+/// Everything one `draw` needs for one window (the main window or the popover window),
 /// shared by the main loop and the resize watch (which run on the same
 /// thread, never concurrently).
 ///
@@ -79,20 +79,23 @@ fn WindowFrame(comptime AppState: type) type {
         ///
         /// - Returns: the view tree.
         body: *const fn (*AppState) views.View,
-        /// Non-null for a panel frame: that body replaces the main window's.
+        /// Non-null for a popover window frame: that body replaces the main window's.
         ///
-        /// - Returns: the panel's view tree.
-        panel_body: ?*const fn (*AppState) views.View = null,
-        /// Where this frame's hover point lives (main window or panel).
+        /// - Returns: the popover window's view tree.
+        popover_body: ?*const fn (*AppState) views.View = null,
+        /// Where this frame's hover point lives (main window or popover window).
         hover: ?*?renderer.Point = null,
+        /// Where this window's event scale goes as it draws (`App.event_scale`,
+        /// `PopoverWindow.event_scale`): each window converts its own events.
+        event_scale: *f32,
         /// Where this frame's press point lives (the main window only).
         press: ?*?renderer.Point = null,
         /// Where this frame's `onHover` regions go (the main window only).
         hover_regions: ?*std.ArrayList(views.HoverRegion) = null,
         /// Resize the window to the view tree's content height each frame
-        /// (the tray popover: no scrollbars, like Swift's auto-sizing panel).
+        /// (the popover window: no scrollbars, like Swift's auto-sizing popover window).
         auto_height: bool = false,
-        /// Transparent panel frame: clear to alpha 0 and paint a translucent
+        /// Transparent popover window frame: clear to alpha 0 and paint a translucent
         /// rounded background, so corners reveal the desktop behind it.
         transparent: bool = false,
         /// Collect this frame's `VideoPlayer` regions and put the platform
@@ -171,7 +174,7 @@ fn WindowFrame(comptime AppState: type) type {
             // macOS); `supersample` cancels out since it doesn't change the
             // design space.
             const pixel_density = float_pixel_width / @as(f32, @floatFromInt(logical_width));
-            app.event_scale = pixel_density / base_scale;
+            self.event_scale.* = pixel_density / base_scale;
             // The framebuffer/scene is the oversampled device size; present
             // downscales it to the window's actual pixel size.
             var scaled_width: u32 = @intFromFloat(@round(float_pixel_width * supersample));
@@ -192,10 +195,10 @@ fn WindowFrame(comptime AppState: type) type {
             views.BuildScope.shared().setViewport(point_width, point_height);
             app.caret_drawn = app.caretPhaseOn(sdl_c.SDL_GetTicks());
             views.Focus.shared().setCaretVisible(app.caret_drawn);
-            // The panel's build leaves the frame count the main window's, so a
+            // The popover window's build leaves the frame count the main window's, so a
             // view it drew still takes the events that follow (`ZoomState.contains`).
-            if (self.panel_body != null) views.BuildScope.shared().beginSecondary(arena) else views.BuildScope.shared().begin(arena);
-            const root = if (self.panel_body) |panel_body| panel_body(self.state) else self.body(self.state);
+            if (self.popover_body != null) views.BuildScope.shared().beginPopoverWindow(arena) else views.BuildScope.shared().begin(arena);
+            const root = if (self.popover_body) |popover_body| popover_body(self.state) else self.body(self.state);
             views.BuildScope.shared().end();
 
             // Reset to empty (not clearRetainingCapacity): the previous buffer was
@@ -223,8 +226,8 @@ fn WindowFrame(comptime AppState: type) type {
             var native_regions: std.ArrayList(views.NativeRegion) = .empty;
             if (self.presents_native) context.native_regions = &native_regions;
 
-            // Auto-height panel: measure the tree and resize the window to it,
-            // clamped to the screen's usable height. Swift's MenuBarExtra panel
+            // Auto-height popover window: measure the tree and resize the window to it,
+            // clamped to the screen's usable height. Swift's MenuBarExtra popover window
             // sizes itself to its content; matching that keeps the footer
             // visible instead of scrolling inside a fixed frame.
             if (self.auto_height) autoHeight: {
@@ -243,7 +246,7 @@ fn WindowFrame(comptime AppState: type) type {
                 point_height = @as(f32, @floatFromInt(grown_pixel_height)) / base_scale;
                 scaled_width = @intFromFloat(@round(@as(f32, @floatFromInt(grown_pixel_width)) * supersample));
                 scaled_height = @intFromFloat(@round(@as(f32, @floatFromInt(grown_pixel_height)) * supersample));
-                // Keep the bottom edge on screen when the panel grew.
+                // Keep the bottom edge on screen when the popover window grew.
                 if (sdl_c.SDL_GetDisplayUsableBounds(display, &bounds)) {
                     var window_x: c_int = 0;
                     var window_y: c_int = 0;
@@ -267,15 +270,15 @@ fn WindowFrame(comptime AppState: type) type {
             var display_list = renderer.DisplayList.init(arena);
             if (self.transparent) {
                 // The frosted NSVisualEffectView behind the SDL content view is
-                // the panel's own chrome (Swift's MenuBarExtra popover). Painting
+                // the popover window's own chrome (Swift's MenuBarExtra popover). Painting
                 // an opaque-ish window-background fill here would cover that
                 // frost with a flat gray rectangle, so only the hairline rim is
                 // drawn: every other pixel stays transparent and lets the
                 // material show through.
                 // Appended before renderScaled, which scales only the view's commands, so scale it here.
-                // Only macOS has glass behind the window; elsewhere the panel is a solid card.
-                if (mod.os_tag != .macos) display_list.fillRoundedRect(.{ .x = 0, .y = 0, .width = point_width * scale, .height = point_height * scale }, 12 * scale, theme.colors.window_background) catch |err| log.debug("panel card not drawn [{t}]", .{err});
-                display_list.strokeRoundedRect(.{ .x = 0.5 * scale, .y = 0.5 * scale, .width = (point_width - 1) * scale, .height = (point_height - 1) * scale }, 12 * scale, scale, theme.colors.separator) catch |err| log.debug("panel rim not drawn [{t}]", .{err});
+                // Only macOS has glass behind the window; elsewhere the popover window is a solid card.
+                if (mod.os_tag != .macos) display_list.fillRoundedRect(.{ .x = 0, .y = 0, .width = point_width * scale, .height = point_height * scale }, 12 * scale, theme.colors.window_background) catch |err| log.debug("popover window card not drawn [{t}]", .{err});
+                display_list.strokeRoundedRect(.{ .x = 0.5 * scale, .y = 0.5 * scale, .width = (point_width - 1) * scale, .height = (point_height - 1) * scale }, 12 * scale, scale, theme.colors.separator) catch |err| log.debug("popover window rim not drawn [{t}]", .{err});
             } else {
                 // No background fill command here: the framebuffer's `clear` below paints
                 // the window background with a fast @memset, so emitting a full-window
@@ -316,15 +319,15 @@ fn WindowFrame(comptime AppState: type) type {
                 self.framebuffer.toRgba8(self.rgba.*);
                 for (underlays) |underlay| underlay.composite(self.rgba.*, scaled_width, scaled_height, scale);
 
-                // Debug: ZIGGUI_PANEL_DUMP=<path> writes the transparent (panel)
+                // Debug: ZIGGUI_POPOVER_WINDOW_DUMP=<absolute path> writes the transparent (popover window)
                 // frame's RGBA buffer once per size: u32 w, u32 h, then w*h*4
                 // bytes. For offline analysis of what the app actually drew.
                 if (self.transparent) {
-                    if (sdl_c.SDL_getenv("ZIGGUI_PANEL_DUMP")) |path_sentinel| {
+                    if (sdl_c.SDL_getenv("ZIGGUI_POPOVER_WINDOW_DUMP")) |path_sentinel| {
                         const size_key: u64 = @as(u64, @intCast(scaled_width)) << 32 | @as(u64, @intCast(scaled_height));
-                        const panel = mod.Panel.shared();
-                        if (panel.dump_written != size_key) {
-                            panel.dump_written = size_key;
+                        const popover_window = mod.PopoverWindow.shared();
+                        if (popover_window.dump_written != size_key) {
+                            popover_window.dump_written = size_key;
                             const path = std.mem.span(@as([*:0]const u8, @ptrCast(path_sentinel)));
                             var threaded = std.Io.Threaded.init(self.allocator, .{});
                             defer threaded.deinit();
@@ -333,10 +336,10 @@ fn WindowFrame(comptime AppState: type) type {
                                 var header: [8]u8 = undefined;
                                 std.mem.writeInt(u32, header[0..4], @intCast(scaled_width), .little);
                                 std.mem.writeInt(u32, header[4..8], @intCast(scaled_height), .little);
-                                file.writeStreamingAll(io, header[0..]) catch |err| log.debug("panel dump header not written [{t}]", .{err});
-                                file.writeStreamingAll(io, self.rgba.*) catch |err| log.debug("panel dump pixels not written [{t}]", .{err});
+                                file.writeStreamingAll(io, header[0..]) catch |err| log.debug("popover window dump header not written [{t}]", .{err});
+                                file.writeStreamingAll(io, self.rgba.*) catch |err| log.debug("popover window dump pixels not written [{t}]", .{err});
                                 file.close(io);
-                            } else |_| {}
+                            } else |err| log.warn("popover window dump not written to {s}: {s}", .{ path, @errorName(err) });
                         }
                     }
                 }
@@ -393,7 +396,24 @@ fn WindowFrame(comptime AppState: type) type {
     };
 }
 
-/// Dispatches SDL events against one frame's regions: to the panel or the
+/// The popover window's mouse handler, type-erased for the event router:
+/// the loop's trampoline, which calls the specification's `mouse` with the
+/// app's state.
+const PopoverMouse = struct {
+    const Self = @This();
+
+    /// The event loop.
+    context: *anyopaque,
+
+    /// Calls the popover window's handler.
+    ///
+    /// - `context`: the event loop.
+    /// - `event`: the mouse event, in the popover window's points.
+    /// - Returns: true when the handler took it.
+    function: *const fn (context: *anyopaque, event: mod.MouseEvent) bool,
+};
+
+/// Dispatches SDL events against one frame's regions: to the popover window or the
 /// main window, the app's handlers first, then focus, taps, drags, hovers,
 /// wheels, typing and key editing.
 const EventRouter = struct {
@@ -405,6 +425,9 @@ const EventRouter = struct {
     hits: []const views.HitRegion,
     /// The main window's scroll regions from the last frame.
     scrolls: []const views.ScrollRegion,
+    /// The popover window's mouse handler (`PopoverWindowSpecification.mouse`),
+    /// type-erased, or null for none.
+    popover_mouse: ?PopoverMouse = null,
 
     /// Waits up to `timeout_ms` for an event, then handles it and every event
     /// already queued (draining the queue even after a timeout).
@@ -501,8 +524,8 @@ const EventRouter = struct {
             sdl_c.SDL_EVENT_TEXT_INPUT => event.text.windowID,
             else => return false,
         };
-        const panel = mod.Panel.shared();
-        if (panel.id != 0 and window_id == panel.id) return false;
+        const popover_window = mod.PopoverWindow.shared();
+        if (popover_window.id != 0 and window_id == popover_window.id) return false;
         return mod.NativeBackend.hasFocus();
     }
 
@@ -539,6 +562,35 @@ const EventRouter = struct {
         }
     }
 
+    /// Whether an event happened in the popover window: a press or release,
+    /// motion, wheel, pinch, key or text there, or its own window event.
+    ///
+    /// - `event`: the event.
+    /// - `popover_window_id`: the popover window's SDL id, 0 with none.
+    /// - Returns: true when it is the popover window's.
+    fn isPopoverWindowEvent(event: *const sdl_c.SDL_Event, popover_window_id: sdl_c.SDL_WindowID) bool {
+        return popover_window_id != 0 and switch (event.type) {
+            sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN, sdl_c.SDL_EVENT_MOUSE_BUTTON_UP => event.button.windowID == popover_window_id,
+            sdl_c.SDL_EVENT_MOUSE_MOTION => event.motion.windowID == popover_window_id,
+            sdl_c.SDL_EVENT_MOUSE_WHEEL => event.wheel.windowID == popover_window_id,
+            sdl_c.SDL_EVENT_KEY_DOWN, sdl_c.SDL_EVENT_KEY_UP => event.key.windowID == popover_window_id,
+            sdl_c.SDL_EVENT_TEXT_INPUT => event.text.windowID == popover_window_id,
+            sdl_c.SDL_EVENT_PINCH_BEGIN, sdl_c.SDL_EVENT_PINCH_UPDATE, sdl_c.SDL_EVENT_PINCH_END => event.pinch.windowID == popover_window_id,
+            sdl_c.SDL_EVENT_WINDOW_FOCUS_LOST, sdl_c.SDL_EVENT_WINDOW_CLOSE_REQUESTED, sdl_c.SDL_EVENT_WINDOW_MOUSE_LEAVE => event.window.windowID == popover_window_id,
+            else => false,
+        };
+    }
+
+    /// A position SDL reported, in the points of the window it came from.
+    ///
+    /// - `on_popover_window`: whether it came from the popover window.
+    /// - `x`: SDL's x, in that window's coordinates.
+    /// - `y`: SDL's y.
+    /// - Returns: the point.
+    fn pointIn(on_popover_window: bool, x: f32, y: f32) renderer.Point {
+        return if (on_popover_window) mod.PopoverWindow.shared().eventPoint(x, y) else mod.App.shared().eventPoint(x, y);
+    }
+
     /// Handles one event.
     ///
     /// - `self`: the router.
@@ -547,32 +599,27 @@ const EventRouter = struct {
         // The toolkit's wake only cut the wait short; `wait` runs its work.
         if (mod.NativeBackend.isWake(event.type)) return;
         const app = mod.App.shared();
-        const panel = mod.Panel.shared();
+        const popover_window = mod.PopoverWindow.shared();
         // With frame logging on, also log which events wake the loop (each wake
         // costs a full rebuild+raster) so redraw storms can be attributed.
         if (app.frame_log) std.debug.print("[ziggui] event 0x{x}\n", .{event.type});
-        const on_panel = panel.id != 0 and switch (event.type) {
-            sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN, sdl_c.SDL_EVENT_MOUSE_MOTION, sdl_c.SDL_EVENT_MOUSE_WHEEL, sdl_c.SDL_EVENT_KEY_DOWN, sdl_c.SDL_EVENT_KEY_UP, sdl_c.SDL_EVENT_TEXT_INPUT => switch (event.type) {
-                sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN => event.button.windowID == panel.id,
-                sdl_c.SDL_EVENT_MOUSE_MOTION => event.motion.windowID == panel.id,
-                sdl_c.SDL_EVENT_MOUSE_WHEEL => event.wheel.windowID == panel.id,
-                sdl_c.SDL_EVENT_KEY_DOWN, sdl_c.SDL_EVENT_KEY_UP => event.key.windowID == panel.id,
-                else => event.text.windowID == panel.id,
-            },
-            sdl_c.SDL_EVENT_WINDOW_FOCUS_LOST, sdl_c.SDL_EVENT_WINDOW_CLOSE_REQUESTED, sdl_c.SDL_EVENT_WINDOW_MOUSE_LEAVE => event.window.windowID == panel.id,
-            else => false,
-        };
+        const on_popover_window = Self.isPopoverWindowEvent(event, popover_window.id);
         // A release ends the press and any drag whoever takes it: an app's
         // handler that consumes it must not leave a button drawn pressed.
         if (event.type == sdl_c.SDL_EVENT_MOUSE_BUTTON_UP) {
             if (event.button.button == sdl_c.SDL_BUTTON_LEFT) app.press_point = null;
             views.PointerInput.shared().endDrag();
         }
-        if (!on_panel and !views.TextContextMenu.shared().isOpen()) if (app.mouse_handler) |handler| if (mod.MouseEvent.fromSdl(event)) |mouse| if (handler(mouse)) return;
+        // Each window's mouse handler hears only its own window's events, in its points.
+        if (!views.TextContextMenu.shared().isOpen()) {
+            if (on_popover_window) {
+                if (self.popover_mouse) |handler| if (mod.MouseEvent.fromSdl(event, popover_window.event_scale, popover_window.hover)) |mouse| if (handler.function(handler.context, mouse)) return;
+            } else if (app.mouse_handler) |handler| if (mod.MouseEvent.fromSdl(event, app.event_scale, app.hover_point)) |mouse| if (handler(mouse)) return;
+        }
         // A platform view holding the keyboard, or under the pointer, owns the event.
-        if (!on_panel and Self.nativeOwns(event)) return;
-        const target_hits: []const views.HitRegion = if (on_panel) panel.hits else self.hits;
-        const target_scrolls: []const views.ScrollRegion = if (on_panel) panel.scrolls else self.scrolls;
+        if (!on_popover_window and Self.nativeOwns(event)) return;
+        const target_hits: []const views.HitRegion = if (on_popover_window) popover_window.hits else self.hits;
+        const target_scrolls: []const views.ScrollRegion = if (on_popover_window) popover_window.scrolls else self.scrolls;
         switch (event.type) {
             sdl_c.SDL_EVENT_KEY_DOWN, sdl_c.SDL_EVENT_TEXT_INPUT, sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN => app.blink_epoch = sdl_c.SDL_GetTicks(),
             else => {},
@@ -580,27 +627,27 @@ const EventRouter = struct {
         switch (event.type) {
             // A quit handler may refuse (see `App.setQuitHandler`).
             sdl_c.SDL_EVENT_QUIT => app.hooks.requestQuit(self.running),
-            // Clicking anywhere else dismisses the popover, like a native panel.
-            sdl_c.SDL_EVENT_WINDOW_FOCUS_LOST => if (on_panel) panel.hide() else {
+            // Clicking anywhere else dismisses the popover, like a native popover window.
+            sdl_c.SDL_EVENT_WINDOW_FOCUS_LOST => if (on_popover_window) popover_window.hide() else {
                 // A release outside a window that lost focus may never arrive.
                 app.press_point = null;
                 if (app.focus_handler) |handler| handler(false);
             },
-            sdl_c.SDL_EVENT_WINDOW_FOCUS_GAINED => if (event.window.windowID != panel.id) if (app.focus_handler) |handler| handler(true),
+            sdl_c.SDL_EVENT_WINDOW_FOCUS_GAINED => if (event.window.windowID != popover_window.id) if (app.focus_handler) |handler| handler(true),
             // The flags are read as the event is handled, after a maximize's
             // own resize has set them, so only a restored frame is kept.
-            sdl_c.SDL_EVENT_WINDOW_MOVED, sdl_c.SDL_EVENT_WINDOW_RESIZED => if (event.window.windowID != panel.id) if (app.window) |window| app.noteWindowFrame(window),
+            sdl_c.SDL_EVENT_WINDOW_MOVED, sdl_c.SDL_EVENT_WINDOW_RESIZED => if (event.window.windowID != popover_window.id) if (app.window) |window| app.noteWindowFrame(window),
             // The close button: hide-to-tray when configured, else quit. (⌘Q still
             // sends SDL_EVENT_QUIT.)
-            sdl_c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => if (on_panel) panel.hide() else if (app.hide_on_close) app.hideWindow() else {
+            sdl_c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => if (on_popover_window) popover_window.hide() else if (app.hide_on_close) app.hideWindow() else {
                 app.hooks.requestQuit(self.running);
             },
             sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
                 // A press hides the hover hint until the pointer rests on another view.
                 views.HelpTip.shared().press();
-                const point = app.eventPoint(event.button.x, event.button.y);
+                const point = Self.pointIn(on_popover_window, event.button.x, event.button.y);
                 // The button under it draws pressed until the release.
-                if (!on_panel and event.button.button == sdl_c.SDL_BUTTON_LEFT) app.press_point = point;
+                if (!on_popover_window and event.button.button == sdl_c.SDL_BUTTON_LEFT) app.press_point = point;
                 if (event.button.button == sdl_c.SDL_BUTTON_RIGHT) {
                     // Right-click pops the text context menu when over an editable
                     // field; elsewhere it just dismisses any open menu.
@@ -631,8 +678,8 @@ const EventRouter = struct {
             },
             // Drag the mouse with the left button held to extend a text selection.
             sdl_c.SDL_EVENT_MOUSE_MOTION => {
-                const motion_point = app.eventPoint(event.motion.x, event.motion.y);
-                if (on_panel) panel.hover = motion_point else {
+                const motion_point = Self.pointIn(on_popover_window, event.motion.x, event.motion.y);
+                if (on_popover_window) popover_window.hover = motion_point else {
                     // `onHover` callbacks fire on crossing a region's edge.
                     _ = views.PointerInput.shared().hover(app.hover_regions.items, app.hover_point, motion_point);
                     app.hover_point = motion_point; // drives Modifiers.hover_fill highlights
@@ -645,19 +692,19 @@ const EventRouter = struct {
                 }
                 app.setPointerStyle(views.PointerInput.shared().pointerStyleAt(target_hits, motion_point));
             },
-            sdl_c.SDL_EVENT_WINDOW_MOUSE_LEAVE => if (on_panel) {
-                panel.hover = null;
+            sdl_c.SDL_EVENT_WINDOW_MOUSE_LEAVE => if (on_popover_window) {
+                popover_window.hover = null;
             } else {
                 _ = views.PointerInput.shared().hover(app.hover_regions.items, app.hover_point, null);
                 app.hover_point = null;
             },
-            sdl_c.SDL_EVENT_KEY_UP => if (!on_panel) app.hooks.keyUp(event.key.key, @intCast(event.key.mod)),
+            sdl_c.SDL_EVENT_KEY_UP => if (!on_popover_window) app.hooks.keyUp(event.key.key, @intCast(event.key.mod)),
             sdl_c.SDL_EVENT_DROP_FILE => {
                 if (app.drop_handler) |handler| if (event.drop.data != null) handler(std.mem.span(event.drop.data));
             },
             sdl_c.SDL_EVENT_MOUSE_WHEEL => {
                 const delta = Self.wheelDeltas(event.wheel.x, event.wheel.y, @intCast(sdl_c.SDL_GetModState()));
-                _ = views.PointerInput.shared().scrollBoth(target_scrolls, app.eventPoint(event.wheel.mouse_x, event.wheel.mouse_y), delta.x, delta.y);
+                _ = views.PointerInput.shared().scrollBoth(target_scrolls, Self.pointIn(on_popover_window, event.wheel.mouse_x, event.wheel.mouse_y), delta.x, delta.y);
             },
             sdl_c.SDL_EVENT_TEXT_INPUT => {
                 // Text a key the picker menu took would type goes nowhere.
@@ -672,8 +719,8 @@ const EventRouter = struct {
                 // A text event follows its key-down: the menu notes each key it takes.
                 views.PickerMenu.shared().noteKey(false);
                 // Escape dismisses the popover before anything else sees the key.
-                if (on_panel and event.key.key == sdl_c.SDLK_ESCAPE) {
-                    panel.hide();
+                if (on_popover_window and event.key.key == sdl_c.SDLK_ESCAPE) {
+                    popover_window.hide();
                     return;
                 }
                 // An open picker menu takes the keys, as a platform menu does while
@@ -783,7 +830,7 @@ const EventRouter = struct {
 };
 
 /// The event loop for one app state type: SDL, the main window and its
-/// renderer (GPU, else software), the optional popover panel, the fonts,
+/// renderer (GPU, else software), the optional popover window, the fonts,
 /// arenas and pixel buffers its frames reuse. `create` starts SDL and opens
 /// the windows, `run` loops until a quit, and `destroy` tears everything down
 /// in reverse.
@@ -804,8 +851,8 @@ pub fn EventLoop(comptime AppState: type) type {
         ///
         /// - Returns: the view tree.
         body: *const fn (*AppState) views.View,
-        /// The popover panel, or null for none.
-        panel: ?mod.PanelSpecification(AppState),
+        /// The popover window, or null for none.
+        popover_window: ?mod.PopoverWindowSpecification(AppState),
 
         /// The main window.
         window: *sdl_c.SDL_Window = undefined,
@@ -814,25 +861,25 @@ pub fn EventLoop(comptime AppState: type) type {
         /// The software path's renderer, or null on the GPU path.
         sdl_renderer: ?*sdl_c.SDL_Renderer = null,
 
-        // The popover panel (a second, hidden window). It uses its own
+        // The popover window (a second, hidden window). It uses its own
         // SDL_Renderer + CPU raster path, so the main window's GPU backend and
         // swapchain stay untouched.
-        /// The panel's window, or null without a panel.
-        panel_window: ?*sdl_c.SDL_Window = null,
-        /// The panel's renderer.
-        panel_renderer: ?*sdl_c.SDL_Renderer = null,
-        /// The texture the panel's frame is uploaded to.
-        panel_texture: ?*sdl_c.SDL_Texture = null,
-        /// The panel texture's width, in pixels.
-        panel_texture_width: c_int = 0,
-        /// The panel texture's height, in pixels.
-        panel_texture_height: c_int = 0,
-        /// The panel's rasterized frame, reused across frames.
-        panel_framebuffer: renderer.Framebuffer = .empty,
-        /// The panel frame's RGBA8 pixels, reused across frames.
-        panel_rgba: []u8 = &.{},
-        /// The panel's per-frame arena.
-        panel_arena: std.heap.ArenaAllocator = undefined,
+        /// The popover window's window, or null without a popover window.
+        popover_sdl_window: ?*sdl_c.SDL_Window = null,
+        /// The popover window's renderer.
+        popover_renderer: ?*sdl_c.SDL_Renderer = null,
+        /// The texture the popover window's frame is uploaded to.
+        popover_texture: ?*sdl_c.SDL_Texture = null,
+        /// The popover window texture's width, in pixels.
+        popover_texture_width: c_int = 0,
+        /// The popover window texture's height, in pixels.
+        popover_texture_height: c_int = 0,
+        /// The popover window's rasterized frame, reused across frames.
+        popover_framebuffer: renderer.Framebuffer = .empty,
+        /// The popover window frame's RGBA8 pixels, reused across frames.
+        popover_rgba: []u8 = &.{},
+        /// The popover window's per-frame arena.
+        popover_arena: std.heap.ArenaAllocator = undefined,
 
         // Fonts. The bundled monochrome emoji font is wired as a fallback so
         // codepoints Inter lacks (emoji, etc.) still render; it lives for the
@@ -898,22 +945,22 @@ pub fn EventLoop(comptime AppState: type) type {
 
         /// The main window's frame.
         frame: WindowFrame(AppState) = undefined,
-        /// The panel's frame, when there is a panel window.
-        panel_frame: ?WindowFrame(AppState) = null,
-        /// The panel's hit regions from its last frame.
-        panel_hits: std.ArrayList(views.HitRegion) = .empty,
-        /// The panel's scroll regions from its last frame.
-        panel_scrolls: std.ArrayList(views.ScrollRegion) = .empty,
+        /// The popover window's frame, when there is a popover window.
+        popover_frame: ?WindowFrame(AppState) = null,
+        /// The popover window's hit regions from its last frame.
+        popover_hits: std.ArrayList(views.HitRegion) = .empty,
+        /// The popover window's scroll regions from its last frame.
+        popover_scrolls: std.ArrayList(views.ScrollRegion) = .empty,
 
-        /// Starts SDL, opens the main window (and the hidden panel window when
-        /// `panel` is set), and readies the renderer, fonts and buffers. On
+        /// Starts SDL, opens the main window (and the hidden popover window when
+        /// `popover_window` is set), and readies the renderer, fonts and buffers. On
         /// failure everything started so far is torn down again.
         ///
         /// - `allocator`: owns the loop and its resources.
         /// - `state`: the app's state, handed to the bodies.
         /// - `config`: the window and rendering configuration.
         /// - `body`: builds the main window's tree.
-        /// - `panel`: the popover panel, or null for none.
+        /// - `popover_window`: the popover window, or null for none.
         /// - Returns: the loop, which `destroy` frees; propagates SDL start-up
         ///   and allocation failure.
         pub fn create(
@@ -921,12 +968,12 @@ pub fn EventLoop(comptime AppState: type) type {
             state: *AppState,
             config: mod.AppConfig,
             body: *const fn (*AppState) views.View,
-            panel: ?mod.PanelSpecification(AppState),
+            popover_window: ?mod.PopoverWindowSpecification(AppState),
         ) !*Self {
             log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
-            self.* = .{ .allocator = allocator, .state = state, .config = config, .body = body, .panel = panel };
+            self.* = .{ .allocator = allocator, .state = state, .config = config, .body = body, .popover_window = popover_window };
             const app = mod.App.shared();
 
             // A hide-to-tray app must not quit when its last visible window is closed:
@@ -962,9 +1009,9 @@ pub fn EventLoop(comptime AppState: type) type {
                 views.SystemInfo.shared().noteGraphics(.software, std.mem.span(presenter), "", "");
             }
 
-            self.panel_arena = std.heap.ArenaAllocator.init(allocator);
-            errdefer self.closePanel();
-            self.openPanel();
+            self.popover_arena = std.heap.ArenaAllocator.init(allocator);
+            errdefer self.closePopoverWindow();
+            self.openPopoverWindow();
 
             _ = sdl_c.SDL_StartTextInput(self.window);
 
@@ -1027,6 +1074,7 @@ pub fn EventLoop(comptime AppState: type) type {
                 .state = state,
                 .body = body,
                 .hover = &app.hover_point,
+                .event_scale = &app.event_scale,
                 .press = &app.press_point,
                 .hover_regions = &app.hover_regions,
                 .presents_video = mod.VideoBackend.presents,
@@ -1044,26 +1092,27 @@ pub fn EventLoop(comptime AppState: type) type {
             };
             _ = sdl_c.SDL_AddEventWatch(WindowFrame(AppState).resizeWatch, &self.frame);
 
-            if (panel) |panel_specification| {
-                if (self.panel_window) |panel_window| self.panel_frame = .{
+            if (popover_window) |specification| {
+                if (self.popover_sdl_window) |popover_sdl_window| self.popover_frame = .{
                     .allocator = allocator,
-                    .window = panel_window,
-                    .sdl_renderer = self.panel_renderer,
+                    .window = popover_sdl_window,
+                    .sdl_renderer = self.popover_renderer,
                     .gpu_backend = null,
                     .cache = &self.cache,
                     .icon_cache = &self.icon_cache,
                     .config = config,
                     .state = state,
                     .body = body,
-                    .panel_body = panel_specification.body,
-                    .hover = &mod.Panel.shared().hover,
+                    .popover_body = specification.body,
+                    .hover = &mod.PopoverWindow.shared().hover,
+                    .event_scale = &mod.PopoverWindow.shared().event_scale,
                     .auto_height = true,
                     .transparent = true,
-                    .texture = &self.panel_texture,
-                    .texture_width = &self.panel_texture_width,
-                    .texture_height = &self.panel_texture_height,
-                    .framebuffer = &self.panel_framebuffer,
-                    .rgba = &self.panel_rgba,
+                    .texture = &self.popover_texture,
+                    .texture_width = &self.popover_texture_width,
+                    .texture_height = &self.popover_texture_height,
+                    .framebuffer = &self.popover_framebuffer,
+                    .rgba = &self.popover_rgba,
                     .perf_frequency = self.perf_frequency,
                     .statistics = &self.statistics,
                     .resize_arena = &self.resize_arena,
@@ -1101,7 +1150,7 @@ pub fn EventLoop(comptime AppState: type) type {
             self.fonts.destroy();
             self.icon_cache.deinit();
             self.cache.deinit();
-            self.closePanel();
+            self.closePopoverWindow();
             if (self.sdl_renderer) |sdl_renderer| sdl_c.SDL_DestroyRenderer(sdl_renderer);
             if (self.gpu_backend) |*gpu| gpu.deinit();
             views.FrameClock.shared().setWakeHandler(null);
@@ -1116,7 +1165,7 @@ pub fn EventLoop(comptime AppState: type) type {
         /// - `self`: the loop.
         pub fn run(self: *Self) void {
             const app = mod.App.shared();
-            const panel = mod.Panel.shared();
+            const popover_window = mod.PopoverWindow.shared();
             while (self.running) {
                 // Per-frame hook (e.g. refresh the system-tray menu). Runs whether or not
                 // the window is visible, so the tray tracks status even when hidden.
@@ -1125,7 +1174,7 @@ pub fn EventLoop(comptime AppState: type) type {
 
                 // Fresh per-frame region lists (arena-backed via `draw`); discarded at
                 // the next arena reset. The main window is skipped while
-                // hidden-to-tray; the panel draws on its own arena/renderer whenever
+                // hidden-to-tray; the popover window draws on its own arena/renderer whenever
                 // it is shown.
                 var hits: std.ArrayList(views.HitRegion) = .empty;
                 var scrolls: std.ArrayList(views.ScrollRegion) = .empty;
@@ -1133,21 +1182,26 @@ pub fn EventLoop(comptime AppState: type) type {
                 const drew_main = if (main_hidden) false else self.frame.draw(&self.frame_arena, &hits, &scrolls);
                 mod.WindowHitTest.shared().hits = if (drew_main) hits.items else &.{};
 
-                self.panel_hits = .empty;
-                self.panel_scrolls = .empty;
-                const drew_panel = if (self.panel_frame != null and panel.shown)
-                    self.panel_frame.?.draw(&self.panel_arena, &self.panel_hits, &self.panel_scrolls)
+                self.popover_hits = .empty;
+                self.popover_scrolls = .empty;
+                const drew_popover_window = if (self.popover_frame != null and popover_window.shown)
+                    self.popover_frame.?.draw(&self.popover_arena, &self.popover_hits, &self.popover_scrolls)
                 else
                     false;
-                panel.hits = if (drew_panel) self.panel_hits.items else &.{};
-                panel.scrolls = if (drew_panel) self.panel_scrolls.items else &.{};
+                popover_window.hits = if (drew_popover_window) self.popover_hits.items else &.{};
+                popover_window.scrolls = if (drew_popover_window) self.popover_scrolls.items else &.{};
 
                 // Event handling. Hit/scroll regions stay in design points
                 // (renderScaled leaves them unscaled); SDL reports mouse coordinates
                 // in logical window points, so the router converts via
                 // `App.eventPoint` before dispatch (a no-op on macOS).
-                const router = EventRouter{ .running = &self.running, .hits = hits.items, .scrolls = scrolls.items };
-                if (!drew_main and !drew_panel) {
+                const router = EventRouter{
+                    .running = &self.running,
+                    .hits = hits.items,
+                    .scrolls = scrolls.items,
+                    .popover_mouse = if (self.popover_window) |specification| (if (specification.mouse != null) .{ .context = self, .function = Self.popoverMouse } else null) else null,
+                };
+                if (!drew_main and !drew_popover_window) {
                     // Nothing drew: pump events and block efficiently. While a busy
                     // predicate is set (e.g. a generation in flight), wake on a ~60fps
                     // timeout so the frame hook keeps the tray status live. Cap the
@@ -1306,39 +1360,39 @@ pub fn EventLoop(comptime AppState: type) type {
             return false;
         }
 
-        /// Creates the hidden panel window and its renderer, when there is a
-        /// panel; a failure is logged and leaves the app without one.
+        /// Creates the hidden popover window and its renderer, when there is a
+        /// popover window; a failure is logged and leaves the app without one.
         ///
         /// - `self`: the loop.
-        fn openPanel(self: *Self) void {
-            const panel_specification = self.panel orelse return;
-            const panel = mod.Panel.shared();
+        fn openPopoverWindow(self: *Self) void {
+            const specification = self.popover_window orelse return;
+            const popover_window = mod.PopoverWindow.shared();
             // X11: compositors such as COSMIC place managed windows themselves and
             // ignore the position asked for; an override-redirect window goes
-            // where `Panel.show` puts it. The window manager then never focuses
-            // it, so `Panel.show` does.
+            // where `PopoverWindow.show` puts it. The window manager then never focuses
+            // it, so `PopoverWindow.show` does.
             if (mod.os_tag == .linux) _ = sdl_c.SDL_SetHint(sdl_c.SDL_HINT_X11_FORCE_OVERRIDE_REDIRECT, "1");
             defer if (mod.os_tag == .linux) {
                 _ = sdl_c.SDL_ResetHint(sdl_c.SDL_HINT_X11_FORCE_OVERRIDE_REDIRECT);
             };
             const window = sdl_c.SDL_CreateWindow(
                 self.config.title.ptr,
-                @intCast(panel_specification.width),
-                @intCast(panel_specification.height),
+                @intCast(specification.width),
+                @intCast(specification.height),
                 sdl_c.SDL_WINDOW_BORDERLESS | sdl_c.SDL_WINDOW_UTILITY | sdl_c.SDL_WINDOW_ALWAYS_ON_TOP | sdl_c.SDL_WINDOW_HIGH_PIXEL_DENSITY | sdl_c.SDL_WINDOW_TRANSPARENT,
             ) orelse {
-                std.log.warn("ziggui: panel window failed: {s}", .{sdl_c.SDL_GetError()});
+                std.log.warn("ziggui: popover window failed: {s}", .{sdl_c.SDL_GetError()});
                 return;
             };
-            self.panel_window = window;
-            panel.window = window;
-            panel.id = sdl_c.SDL_GetWindowID(window);
-            self.panel_renderer = sdl_c.SDL_CreateRenderer(window, null) orelse sdl_c.SDL_CreateRenderer(window, "software") orelse {
-                std.log.warn("ziggui: panel renderer failed: {s}", .{sdl_c.SDL_GetError()});
+            self.popover_sdl_window = window;
+            popover_window.window = window;
+            popover_window.id = sdl_c.SDL_GetWindowID(window);
+            self.popover_renderer = sdl_c.SDL_CreateRenderer(window, null) orelse sdl_c.SDL_CreateRenderer(window, "software") orelse {
+                std.log.warn("ziggui: popover window renderer failed: {s}", .{sdl_c.SDL_GetError()});
                 sdl_c.SDL_DestroyWindow(window);
-                self.panel_window = null;
-                panel.window = null;
-                panel.id = 0;
+                self.popover_sdl_window = null;
+                popover_window.window = null;
+                popover_window.id = 0;
                 return;
             };
             // Debug: ZIGGUI_NO_FROST=1 leaves the glass off (for bisecting compositing artifacts).
@@ -1346,23 +1400,36 @@ pub fn EventLoop(comptime AppState: type) type {
             _ = sdl_c.SDL_HideWindow(window);
         }
 
-        /// Panel teardown in dependency order: texture, renderer, window, then
+        /// The popover window's mouse handler as the router calls it: the
+        /// specification's `mouse`, with the app's state.
+        ///
+        /// - `context`: the event loop.
+        /// - `event`: the mouse event, in the popover window's points.
+        /// - Returns: true when the handler took it; false with none.
+        fn popoverMouse(context: *anyopaque, event: mod.MouseEvent) bool {
+            const self: *Self = @ptrCast(@alignCast(context));
+            const specification = self.popover_window orelse return false;
+            const handler = specification.mouse orelse return false;
+            return handler(self.state, event);
+        }
+
+        /// Popover window teardown in dependency order: texture, renderer, window, then
         /// its buffers and arena.
         ///
         /// - `self`: the loop.
-        fn closePanel(self: *Self) void {
-            if (self.panel_texture) |texture| sdl_c.SDL_DestroyTexture(texture);
-            if (self.panel_renderer) |panel_renderer| sdl_c.SDL_DestroyRenderer(panel_renderer);
-            if (self.panel_window) |window| {
-                const panel = mod.Panel.shared();
-                panel.window = null;
-                panel.id = 0;
-                panel.shown = false;
+        fn closePopoverWindow(self: *Self) void {
+            if (self.popover_texture) |texture| sdl_c.SDL_DestroyTexture(texture);
+            if (self.popover_renderer) |popover_renderer| sdl_c.SDL_DestroyRenderer(popover_renderer);
+            if (self.popover_sdl_window) |window| {
+                const popover_window = mod.PopoverWindow.shared();
+                popover_window.window = null;
+                popover_window.id = 0;
+                popover_window.shown = false;
                 sdl_c.SDL_DestroyWindow(window);
             }
-            if (self.panel_rgba.len > 0) self.allocator.free(self.panel_rgba);
-            self.panel_framebuffer.deinit();
-            self.panel_arena.deinit();
+            if (self.popover_rgba.len > 0) self.allocator.free(self.popover_rgba);
+            self.popover_framebuffer.deinit();
+            self.popover_arena.deinit();
         }
     };
 }
@@ -1372,4 +1439,20 @@ pub fn EventLoop(comptime AppState: type) type {
 
 test {
     std.testing.refAllDecls(@This());
+}
+
+test "a press, its release and a pinch belong to the window they happened in" {
+    var event = std.mem.zeroes(sdl_c.SDL_Event);
+    event.type = sdl_c.SDL_EVENT_MOUSE_BUTTON_UP;
+    event.button.windowID = 7;
+    try std.testing.expect(EventRouter.isPopoverWindowEvent(&event, 7));
+    try std.testing.expect(!EventRouter.isPopoverWindowEvent(&event, 8));
+    // With no popover window, nothing is its.
+    try std.testing.expect(!EventRouter.isPopoverWindowEvent(&event, 0));
+    event.type = sdl_c.SDL_EVENT_MOUSE_BUTTON_DOWN;
+    try std.testing.expect(EventRouter.isPopoverWindowEvent(&event, 7));
+    event = std.mem.zeroes(sdl_c.SDL_Event);
+    event.type = sdl_c.SDL_EVENT_PINCH_UPDATE;
+    event.pinch.windowID = 7;
+    try std.testing.expect(EventRouter.isPopoverWindowEvent(&event, 7));
 }

@@ -24,6 +24,11 @@ pub const PointerStyle = enum {
 
     /// An up-down resize, over a divider that moves up and down.
     rowResize,
+    /// An open hand, over what a drag moves: a zoomed picture, a canvas. While
+    /// a drag it armed runs, the pointer shows `grabActive`.
+    grabIdle,
+    /// A closed hand, while a drag moves what is under it.
+    grabActive,
 };
 
 // -----------------------------------------------------------------------------

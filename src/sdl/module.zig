@@ -41,10 +41,10 @@ pub const SystemTheme = @import("system_theme.zig").SystemTheme;
 pub const CommandMenu = views.CommandMenu;
 /// One entry of a `CommandMenu`: the core's.
 pub const CommandItem = views.CommandItem;
-/// The popover panel window a status-item click opens.
-pub const Panel = @import("panel.zig").Panel;
-/// What the popover panel shows and how big it is.
-pub const PanelSpecification = @import("panel_specification.zig").PanelSpecification;
+/// The popover window a status-item click opens.
+pub const PopoverWindow = @import("popover_window.zig").PopoverWindow;
+/// What the popover window shows and how big it is.
+pub const PopoverWindowSpecification = @import("popover_window_specification.zig").PopoverWindowSpecification;
 /// The system clipboard and the OS URL handler.
 pub const Clipboard = @import("clipboard.zig").Clipboard;
 /// Shows a local file in the system's file manager.
@@ -195,7 +195,7 @@ test {
     }
     // The generic types, instantiated over the probe state.
     std.testing.refAllDecls(EventLoop(Reach.Probe));
-    std.testing.refAllDecls(PanelSpecification(Reach.Probe));
+    std.testing.refAllDecls(PopoverWindowSpecification(Reach.Probe));
     // Nothing here does I/O to trace.
     _ = log;
 }

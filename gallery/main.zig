@@ -11,7 +11,7 @@ pub const std_options: std.Options = .{
 /// The command line: `ziggui-gallery [--section <n>] [--theme <n>] [--accent <n>]
 /// [--dark] [--menu <n>] [--sheet] [--alert] [--popover] [--passthrough]
 /// [--options-menu] [--picker-menu] [--find] [--dialog] [--select] [--rename]
-/// [--search <text>] [--video <url or path>]
+/// [--search <text>] [--components] [--video <url or path>]
 /// [--screenshot <out.bmp> [--gpu] [--bench <n>]]`.
 ///
 /// `--video` is what the Media Video section's "Load sample stream" plays instead
@@ -34,6 +34,8 @@ pub const std_options: std.Options = .{
 /// (`--section 1`). `--rename` shows the Lists section's renamed row, its
 /// name selected (`--section 6`). `--search` types
 /// its text into the sidebar's search, which shows its first match.
+/// `--components` has the sidebar list every component the cards name, as
+/// the top bar's switch does.
 ///
 /// `--gpu` draws the `--screenshot` frame through the SDL_GPU pipeline,
 /// offscreen (no window), instead of the software rasterizer: the same build,
@@ -86,6 +88,9 @@ const Arguments = struct {
     /// Show the Text Editor section's find bar, its first match selected.
     find: bool = false,
 
+    /// List every component in the sidebar, as the top bar's switch does.
+    components: bool = false,
+
     /// Present the Text Editor section's Open dialog.
     dialog: bool = false,
 
@@ -135,6 +140,8 @@ const Arguments = struct {
                 arguments.picker_menu = true;
             } else if (std.mem.eql(u8, argument, "--find")) {
                 arguments.find = true;
+            } else if (std.mem.eql(u8, argument, "--components")) {
+                arguments.components = true;
             } else if (std.mem.eql(u8, argument, "--dialog")) {
                 arguments.dialog = true;
             } else if (std.mem.eql(u8, argument, "--select")) {
@@ -202,6 +209,7 @@ const Arguments = struct {
         if (self.options_menu) shown.showcase.menu_open.set(true);
         if (self.picker_menu) shown.pickers.openMenu();
         if (self.find) shown.editor.showMatch("greeting");
+        if (self.components) _ = shown.search.setListing(.components);
         if (self.dialog) shown.editor.openDialog();
         if (self.select) shown.editor.selectBetween("const greeting", "// Click");
         if (self.rename) shown.kit.rename_on_show = 1;
@@ -467,6 +475,10 @@ const Window = struct {
             .min_width = 640,
             .min_height = 420,
             .theme = target.theme(),
+            // On macOS the gallery's top band is the title bar, the traffic
+            // lights in its inset, its empty space dragging the window.
+            .unified_titlebar = gallery.is_macos,
+            .drag_band = if (gallery.is_macos) ziggui.WindowChrome.top_bar_height else 0,
         }, gallery.Gallery.body, null);
     }
 

@@ -41,10 +41,11 @@ pub fn SidebarStyled(items: []const mod.SidebarItem, selection: mod.Binding(i64)
             contents[count] = mod.Icon(icon, 16, if (prominent_selected) tokens.on_accent else null);
             count += 1;
         }
-        var title = mod.Text(item.label);
+        // Truncated, so a label too long for the sidebar never pushes its icon out.
+        var title = mod.Text(item.label).truncated();
         if (prominent_selected) title = title.foreground(tokens.on_accent);
         if (item.detail) |detail| {
-            var subtitle = mod.Text(detail).font(.subheadline);
+            var subtitle = mod.Text(detail).font(.subheadline).truncated();
             subtitle = subtitle.foreground(if (prominent_selected) tokens.on_accent.withAlpha(0.75) else tokens.secondary_label);
             contents[count] = mod.StackBuilder.make(.vertical, 2, .leading, .{ title, subtitle });
         } else {

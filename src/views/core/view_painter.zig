@@ -368,7 +368,7 @@ pub const ViewPainter = struct {
         try Self.paint(&inner, scroll.content.*, try renderer.LayoutEngine.shared().arrange(context.arena, node, content_rect), display_list);
         context.clipInput(marks, rect);
         if (context.scroll_regions) |regions| {
-            try regions.append(context.arena, .{ .rect = rect, .state = state, .horizontal = scroll.horizontal });
+            try regions.append(context.arena, .{ .rect = rect, .state = state, .horizontal = scroll.horizontal, .vertical_target = scroll.vertical_target });
         }
         state.viewport_y = rect.y;
         state.viewport_x = rect.x;

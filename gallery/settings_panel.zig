@@ -125,14 +125,14 @@ pub const SettingsPanel = struct {
             self.settings(family, accent),
             ziggui.HStack(.{
                 ziggui.Spacer(),
-                ziggui.ButtonRoled("Done", .prominent, ziggui.Callback.init(Self, self, Self.closeSheet)),
+                ziggui.ButtonRoled("Done", .prominent, ziggui.Callback.init(Self, self, Self.closeSheet)).help("Close the settings; every change is already kept"),
             }).paddingInsets(.{ .leading = 20, .bottom = 16, .trailing = 20 }),
         }).spacing(0).frameWidth(500) else ziggui.Empty();
         return ziggui.VStack(.{
             ziggui.HStack(.{ ziggui.Spacer(), window, ziggui.Spacer() }).frameMaxWidth(),
             gallery.CardName.shared().view("ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker · ziggui.ThemePicker", tokens.secondary_label),
             ziggui.HStack(.{
-                ziggui.Button("Present in a sheet", ziggui.Callback.init(Self, self, Self.openSheet)),
+                ziggui.Button("Present in a sheet", ziggui.Callback.init(Self, self, Self.openSheet)).help("Show these settings in a sheet, as an app's Settings window opens"),
                 ziggui.Spacer(),
             }).sheet(self.show_sheet.binding(), sheet),
         }).spacing(12);
@@ -146,9 +146,9 @@ pub const SettingsPanel = struct {
     /// - Returns: the settings view.
     fn settings(self: *Self, family: ziggui.Binding(i64), accent: ziggui.Binding(i64)) ziggui.View {
         const tabs = ziggui.BuildScope.shared().allocator().dupe(ziggui.Tab, &.{
-            .{ .label = "General", .icon = .settings, .content = self.generalPage(family, accent) },
-            .{ .label = "Editing", .icon = .pencilLine, .content = self.editingPage() },
-            .{ .label = "Advanced", .icon = .slidersHorizontal, .content = self.advancedPage() },
+            .{ .label = "General", .icon = .settings, .content = self.generalPage(family, accent), .help = "Startup, updates, appearance and theme" },
+            .{ .label = "Editing", .icon = .pencilLine, .content = self.editingPage(), .help = "Line numbers, wrapping, indentation and saving" },
+            .{ .label = "Advanced", .icon = .slidersHorizontal, .content = self.advancedPage(), .help = "Logging and how the window draws" },
         }) catch @panic("oom");
         return ziggui.Settings(self.tab.binding(), tabs);
     }
@@ -163,25 +163,27 @@ pub const SettingsPanel = struct {
         return ziggui.Form(.{
             ziggui.Section(.{
                 ziggui.LabeledContent("Startup:", ziggui.VStack(.{
-                    ziggui.Toggle("Reopen windows from the last session", self.reopen.binding()),
+                    ziggui.Toggle("Reopen windows from the last session", self.reopen.binding()).help("Open the documents you had open when you quit, where they were"),
                     Self.help("Documents open when you quit open again, where they were."),
                 }).spacing(4).alignment(.leading)),
                 ziggui.LabeledContent("Updates:", ziggui.VStack(.{
-                    ziggui.Toggle("Check for updates automatically", self.check_updates.binding()),
-                    ziggui.Toggle("Include beta releases", self.beta_updates.binding()).disabled(!self.check_updates.get()),
+                    ziggui.Toggle("Check for updates automatically", self.check_updates.binding()).help("Look for a new version once a day, and offer it when there is one"),
+                    // Disabled, its hint says why.
+                    ziggui.Toggle("Include beta releases", self.beta_updates.binding()).disabled(!self.check_updates.get())
+                        .help(if (self.check_updates.get()) "Offer beta versions too; they may be less stable" else "Turn on automatic updates to include beta releases"),
                 }).spacing(8).alignment(.leading)),
             }),
             ziggui.Section(.{
                 ziggui.LabeledContent("Appearance:", ziggui.VStack(.{
-                    ziggui.AppearancePicker(self.appearance.binding()),
+                    ziggui.AppearancePicker(self.appearance.binding()).help("Draw light, dark, or as the system does"),
                     Self.help(self.appearanceHelp()),
                 }).spacing(4).alignment(.leading)),
-                ziggui.LabeledContent("Theme:", ziggui.ThemePicker(family, accent)),
-                ziggui.LabeledContent("Open files in:", ziggui.Picker(self.open_in.binding(), &open_options)),
+                ziggui.LabeledContent("Theme:", ziggui.ThemePicker(family, accent).help("The look the window takes, and its accent color")),
+                ziggui.LabeledContent("Open files in:", ziggui.Picker(self.open_in.binding(), &open_options).help("Whether a file you open goes in a new window or the current one")),
             }),
             ziggui.Section(.{
                 ziggui.LabeledContent("", ziggui.VStack(.{
-                    ziggui.Toggle("Send anonymous crash reports", self.crash_reports.binding()),
+                    ziggui.Toggle("Send anonymous crash reports", self.crash_reports.binding()).help("Send a report when the app crashes, so the fault can be fixed"),
                     Self.help("Reports hold no file names or contents."),
                 }).spacing(4).alignment(.leading)),
             }),
@@ -213,13 +215,13 @@ pub const SettingsPanel = struct {
         return ziggui.Form(.{
             ziggui.Section(.{
                 ziggui.LabeledContent("Show:", ziggui.VStack(.{
-                    ziggui.Toggle("Line numbers", self.line_numbers.binding()),
-                    ziggui.Toggle("Wrap long lines", self.wrap_lines.binding()),
+                    ziggui.Toggle("Line numbers", self.line_numbers.binding()).help("Number each line in the margin"),
+                    ziggui.Toggle("Wrap long lines", self.wrap_lines.binding()).help("Wrap a line wider than the editor onto the next row, rather than scroll sideways"),
                 }).spacing(8).alignment(.leading)),
-                ziggui.LabeledContent("Indent with:", ziggui.Picker(self.indent.binding(), &indent_options)),
+                ziggui.LabeledContent("Indent with:", ziggui.Picker(self.indent.binding(), &indent_options).help("What Tab inserts: spaces, or a tab character")),
             }),
             ziggui.Section(.{
-                ziggui.LabeledContent("On save:", ziggui.Toggle("Trim trailing spaces", self.trim_spaces.binding())),
+                ziggui.LabeledContent("On save:", ziggui.Toggle("Trim trailing spaces", self.trim_spaces.binding()).help("Remove spaces at the ends of lines each time a file is saved")),
             }),
         });
     }
@@ -231,9 +233,9 @@ pub const SettingsPanel = struct {
     fn advancedPage(self: *Self) ziggui.View {
         return ziggui.Form(.{
             ziggui.Section(.{
-                ziggui.LabeledContent("Log level:", ziggui.Picker(self.log_level.binding(), &log_options)),
+                ziggui.LabeledContent("Log level:", ziggui.Picker(self.log_level.binding(), &log_options).help("How much the app writes to its log")),
                 ziggui.LabeledContent("Rendering:", ziggui.VStack(.{
-                    ziggui.Toggle("Draw with the GPU", self.gpu.binding()),
+                    ziggui.Toggle("Draw with the GPU", self.gpu.binding()).help("Draw the window on the graphics card; off, it draws in software"),
                     Self.help("Off, the window draws in software: slower, the same pixels."),
                 }).spacing(4).alignment(.leading)),
             }),

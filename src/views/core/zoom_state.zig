@@ -46,6 +46,29 @@ pub const ZoomGeometry = struct {
         return content;
     }
 
+    /// Where a segment from a content point toward a view point leaves the
+    /// content: a second click off a picture ends a line at its edge. The
+    /// point stays half a unit inside, so for a photo it is still a pixel of it.
+    ///
+    /// - `self`: the geometry.
+    /// - `inside`: the segment's start, in content units, on the content.
+    /// - `toward`: where it heads, in view points, on the content or off it.
+    /// - Returns: the last point of the segment on the content, in content
+    ///   units (`toward`'s own when it is on the content); null when `inside`
+    ///   is off the content or the geometry has no scale.
+    pub fn clipToContent(self: *const Self, inside: renderer.Point, toward: renderer.Point) ?renderer.Point {
+        if (!(self.scale > 0)) return null;
+        if (!(inside.x >= 0 and inside.y >= 0 and inside.x < self.content_width and inside.y < self.content_height)) return null;
+        const delta_x = (toward.x - self.origin.x) / self.scale - inside.x;
+        const delta_y = (toward.y - self.origin.y) / self.scale - inside.y;
+        var reach: f32 = 1;
+        // Half a unit in from each side, so the point stays on the content.
+        if (delta_x > 0) reach = @min(reach, (self.content_width - 0.5 - inside.x) / delta_x) else if (delta_x < 0) reach = @min(reach, (0.5 - inside.x) / delta_x);
+        if (delta_y > 0) reach = @min(reach, (self.content_height - 0.5 - inside.y) / delta_y) else if (delta_y < 0) reach = @min(reach, (0.5 - inside.y) / delta_y);
+        reach = @max(0, reach);
+        return .{ .x = inside.x + delta_x * reach, .y = inside.y + delta_y * reach };
+    }
+
     /// The content's rectangle, in view points: where the picture is drawn.
     ///
     /// - `self`: the geometry.
@@ -89,12 +112,12 @@ pub const ZoomState = struct {
     geometry: ZoomGeometry = .{},
     /// Where the view drew its zoom chip, while zoomed or panned.
     chip: ?renderer.Rect = null,
-    /// The frame (`BuildScope.frame_number`) `layout` last ran in: a view
-    /// scrolled out of sight, or on a page no longer shown, is not laid out,
-    /// and its old `geometry` must not take the pointer. Only the main
-    /// window's frames count, so a tray panel drawn after it changes nothing
-    /// (`BuildScope.beginSecondary`).
-    laid_out_in: ?u64 = null,
+    /// The frame `layout` last ran in, in the window that drew it (the main
+    /// window or the popover window): a view scrolled out of sight, or on a
+    /// page no longer shown, is not laid out, and its old `geometry` must not
+    /// take the pointer. Only that window's frames count, so the other
+    /// window's change nothing (`BuildScope.isLatest`).
+    laid_out_in: ?mod.FrameStamp = null,
 
     /// Lays the content out in a frame at the current zoom and pan, and keeps
     /// the result as `geometry`.
@@ -105,7 +128,7 @@ pub const ZoomState = struct {
     /// - `content_height`: the content's height, in its own units.
     /// - Returns: the geometry.
     pub fn layout(self: *Self, frame: renderer.Rect, content_width: f32, content_height: f32) ZoomGeometry {
-        self.laid_out_in = mod.BuildScope.shared().frame_number;
+        self.laid_out_in = mod.BuildScope.shared().stamp();
         self.geometry = .{ .frame = frame, .visible = frame, .content_width = content_width, .content_height = content_height };
         self.place();
         return self.geometry;
@@ -259,12 +282,13 @@ pub const ZoomState = struct {
         self.panBy(delta_x, delta_y);
     }
 
-    /// Whether the last frame of the main window laid the view out.
+    /// Whether the last frame of the window that drew the view laid it out.
     ///
     /// - `self`: the state.
     /// - Returns: true when it did.
     fn drawnLastFrame(self: *const Self) bool {
-        return self.laid_out_in == mod.BuildScope.shared().frame_number;
+        const frame = self.laid_out_in orelse return false;
+        return mod.BuildScope.shared().isLatest(frame);
     }
 
     /// Brings `geometry`'s scale and origin up to the current zoom and pan, in
@@ -332,6 +356,26 @@ test "zoom state fits, centers and maps both ways" {
     try std.testing.expectApproxEqAbs(@as(f32, 500), back.x, 1e-3);
     try std.testing.expectEqual(null, geometry.contentAt(.{ .x = 15, .y = 30 }));
     try std.testing.expect(state.isFit());
+}
+
+test "zoom geometry clips a segment to the content's edge" {
+    var state = ZoomState{};
+    // 100 × 50 content fitted 1:1 at the frame's origin.
+    const geometry = state.layout(.{ .x = 0, .y = 0, .width = 100, .height = 50 }, 100, 50);
+    const inside = renderer.Point{ .x = 50, .y = 25 };
+    // Toward a point on the content: that point.
+    const on = geometry.clipToContent(inside, .{ .x = 60, .y = 30 }).?;
+    try std.testing.expectApproxEqAbs(@as(f32, 60), on.x, 1e-4);
+    // Straight down past the foot: half a unit above the bottom edge, same column.
+    const below = geometry.clipToContent(inside, .{ .x = 50, .y = 200 }).?;
+    try std.testing.expectApproxEqAbs(@as(f32, 49.5), below.y, 1e-4);
+    try std.testing.expectApproxEqAbs(@as(f32, 50), below.x, 1e-4);
+    // Off to the upper left: along the segment, inside both edges.
+    const corner = geometry.clipToContent(inside, .{ .x = -50, .y = -25 }).?;
+    try std.testing.expect(corner.x >= 0.5 - 1e-4 and corner.y >= 0.5 - 1e-4);
+    try std.testing.expectApproxEqAbs(corner.x / 2, corner.y, 0.3);
+    // A start off the content clips nothing.
+    try std.testing.expectEqual(null, geometry.clipToContent(.{ .x = -1, .y = 0 }, .{ .x = 10, .y = 10 }));
 }
 
 test "zoom state zooms about the pointer, keeping the content under it" {
@@ -433,11 +477,16 @@ test "zoom state takes input only over the visible part, and its chip only while
     try std.testing.expect(!state.chipContains(.{ .x = 100, .y = 170 }));
 }
 
-test "zoom state counts only the main window's frames, not a tray panel's" {
+test "zoom state counts only its own window's frames, the main window's or the popover window's" {
     var state = ZoomState{};
     const scope = mod.BuildScope.shared();
     const saved = scope.frame_number;
-    defer scope.frame_number = saved;
+    const saved_popover = scope.popover_window_frame_number;
+    defer {
+        scope.frame_number = saved;
+        scope.popover_window_frame_number = saved_popover;
+        scope.popover_window = false;
+    }
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -445,12 +494,24 @@ test "zoom state counts only the main window's frames, not a tray panel's" {
     scope.begin(arena.allocator());
     _ = state.layout(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, 50, 50);
     scope.end();
-    // The panel's frame after it leaves the count alone: the picture still takes a pinch.
-    scope.beginSecondary(arena.allocator());
+    // The popover window's frame after it leaves the count alone: the picture still takes a pinch.
+    scope.beginPopoverWindow(arena.allocator());
     scope.end();
     try std.testing.expect(state.pinch(.{ .x = 50, .y = 50 }, 2));
     // The next main window frame that does not draw it does.
     scope.begin(arena.allocator());
     scope.end();
     try std.testing.expect(!state.pinch(.{ .x = 50, .y = 50 }, 2));
+
+    // A picture the popover window lays out takes a pinch through the main window's frames,
+    var popover_picture = ZoomState{};
+    scope.beginPopoverWindow(arena.allocator());
+    _ = popover_picture.layout(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, 50, 50);
+    scope.end();
+    scope.begin(arena.allocator());
+    scope.end();
+    try std.testing.expect(popover_picture.pinch(.{ .x = 50, .y = 50 }, 2));
+    // until the popover window draws without it, or hides.
+    scope.forgetPopoverWindow();
+    try std.testing.expect(!popover_picture.pinch(.{ .x = 50, .y = 50 }, 2));
 }

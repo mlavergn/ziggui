@@ -19,6 +19,9 @@ pub const Tab = struct {
     /// The symbol over the title in a `Settings` toolbar (SwiftUI's
     /// `tabItem { Label(_, systemImage:) }`); a `TabView` shows none.
     icon: ?renderer.Icon = null,
+    /// The hover hint on its tab in a `Settings` toolbar (`View.help`),
+    /// saying what the page holds; empty for none. A `TabView` shows none.
+    help: []const u8 = "",
 };
 
 // -----------------------------------------------------------------------------
