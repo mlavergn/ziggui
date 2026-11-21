@@ -12,7 +12,8 @@ pub const StackNode = struct {
     direction: mod.Direction,
     /// The gap between neighbouring children.
     spacing: f32 = 0,
-    /// Where each child sits on the cross axis (both axes for a depth stack).
+    /// Where each child sits on the cross axis (both axes for a depth stack;
+    /// for a flow stack, each row across the width and each child in its row's height).
     alignment: mod.Alignment = .center,
     /// The children, in order.
     children: []const mod.Node,

@@ -39,10 +39,12 @@ pub const TestEnvironment = struct {
         return self;
     }
 
-    /// Builds the glyph caches and opens the build arena.
+    /// Builds the glyph caches and opens the build arena; stateless scroll
+    /// views start at the top, whatever an earlier test scrolled.
     ///
     /// - `self`: the fixture, at its final address.
     pub fn setup(self: *Self) void {
+        mod.ScrollMemory.shared().reset();
         self.cache = renderer.GlyphCache.init(std.testing.allocator, &self.font.face);
         self.icon_cache = renderer.GlyphCache.init(std.testing.allocator, &self.icon_font.face);
         mod.BuildScope.shared().begin(self.arena_state.allocator());

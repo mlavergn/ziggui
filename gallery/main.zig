@@ -10,10 +10,11 @@ pub const std_options: std.Options = .{
 
 /// The command line: `ziggui-gallery [--section <n>] [--theme <n>] [--accent <n>]
 /// [--dark] [--menu <n>] [--sheet] [--alert] [--popover] [--passthrough]
-/// [--options-menu] [--picker-menu] [--find] [--dialog] [--select] [--video <url or path>]
+/// [--options-menu] [--picker-menu] [--find] [--dialog] [--select] [--rename]
+/// [--search <text>] [--video <url or path>]
 /// [--screenshot <out.bmp> [--gpu] [--bench <n>]]`.
 ///
-/// `--video` is what the Video section's "Load sample stream" plays instead
+/// `--video` is what the Media Video section's "Load sample stream" plays instead
 /// of Apple's HLS example: a URL or a local path (a Linux system may have no
 /// H.264 decoder, which the example needs).
 ///
@@ -22,15 +23,17 @@ pub const std_options: std.Options = .{
 /// Blue, Purple, Pink, Red, Yellow, Green, Graphite), drawn as the apps draw
 /// them (`ziggui.Accent.theme`); past 8 is Graphite.
 ///
-/// `--menu` opens the Menu Bar section's menu `n`. `--sheet` and `--alert`
-/// present the Overlays section's sheet and alert over any section;
-/// `--popover`, `--passthrough` and `--options-menu` open its popover, its
-/// passthrough popover and its Options menu (`--section 13`).
-/// `--picker-menu` opens the Pickers section's first menu (`--section 29`),
-/// as the theme family opens it (`--theme`). `--find`,
-/// `--dialog` and `--select` show the Editor section's find bar (after
+/// `--menu` opens the Menus & Commands section's menu `n` (`--section 10`).
+/// `--sheet` and `--alert` present the Presentations section's sheet and
+/// alert over any section; `--popover`, `--passthrough` and `--options-menu`
+/// open its popover, its passthrough popover and its Options menu
+/// (`--section 9`). `--picker-menu` opens the Pickers section's first menu
+/// (`--section 3`), as the theme family opens it (`--theme`). `--find`,
+/// `--dialog` and `--select` show the Text Editor section's find bar (after
 /// `greeting`), its Open dialog, and a selection across three lines
-/// (`--section 17`).
+/// (`--section 1`). `--rename` shows the Lists section's renamed row, its
+/// name selected (`--section 6`). `--search` types
+/// its text into the sidebar's search, which shows its first match.
 ///
 /// `--gpu` draws the `--screenshot` frame through the SDL_GPU pipeline,
 /// offscreen (no window), instead of the software rasterizer: the same build,
@@ -59,35 +62,38 @@ const Arguments = struct {
     /// Open in the dark appearance instead of following the OS.
     dark: bool = false,
 
-    /// The Menu Bar panel's menu to open, for a screenshot of it.
+    /// The Menus & Commands section's menu to open, for a screenshot of it.
     menu: ?usize = null,
 
-    /// Present the Overlays panel's sheet.
+    /// Present the Presentations section's sheet.
     sheet: bool = false,
 
-    /// Present the Overlays panel's alert.
+    /// Present the Presentations section's alert.
     alert: bool = false,
 
-    /// Present the Overlays panel's popover.
+    /// Present the Presentations section's popover.
     popover: bool = false,
 
-    /// Present the Overlays panel's passthrough popover.
+    /// Present the Presentations section's passthrough popover.
     passthrough: bool = false,
 
-    /// Open the Overlays panel's Options menu.
+    /// Open the Presentations section's Options menu.
     options_menu: bool = false,
 
     /// Open the Pickers panel's first menu.
     picker_menu: bool = false,
 
-    /// Show the Editor panel's find bar, its first match selected.
+    /// Show the Text Editor section's find bar, its first match selected.
     find: bool = false,
 
-    /// Present the Editor panel's Open dialog.
+    /// Present the Text Editor section's Open dialog.
     dialog: bool = false,
 
-    /// Select across three of the Editor panel's lines.
+    /// Select across three of the Text Editor section's lines.
     select: bool = false,
+
+    /// Rename the Lists section's rename card's second row, its name selected in the field.
+    rename: bool = false,
 
     /// Draw one frame to this BMP instead of opening a window.
     screenshot: ?[]const u8 = null,
@@ -98,8 +104,11 @@ const Arguments = struct {
     /// How many more times to draw the screenshot, timed (0: none).
     bench: u32 = 0,
 
-    /// What the Video section plays instead of its sample, or null.
+    /// What the Media Video section plays instead of its sample, or null.
     video: ?[:0]const u8 = null,
+
+    /// What to type into the sidebar's search, or null.
+    search: ?[:0]const u8 = null,
 
     /// Reads the argument vector; unknown or malformed arguments are logged and skipped.
     ///
@@ -130,6 +139,8 @@ const Arguments = struct {
                 arguments.dialog = true;
             } else if (std.mem.eql(u8, argument, "--select")) {
                 arguments.select = true;
+            } else if (std.mem.eql(u8, argument, "--rename")) {
+                arguments.rename = true;
             } else if (std.mem.eql(u8, argument, "--gpu")) {
                 arguments.gpu = true;
             } else if (std.mem.eql(u8, argument, "--bench") and index + 1 < argument_vector.len) {
@@ -144,6 +155,9 @@ const Arguments = struct {
                     log.warn("ignoring --theme {s} [{t}]", .{ argument_vector[index], err });
                     break :blk 0;
                 };
+            } else if (std.mem.eql(u8, argument, "--search") and index + 1 < argument_vector.len) {
+                index += 1;
+                arguments.search = argument_vector[index];
             } else if (std.mem.eql(u8, argument, "--video") and index + 1 < argument_vector.len) {
                 index += 1;
                 arguments.video = argument_vector[index];
@@ -190,6 +204,8 @@ const Arguments = struct {
         if (self.find) shown.editor.showMatch("greeting");
         if (self.dialog) shown.editor.openDialog();
         if (self.select) shown.editor.selectBetween("const greeting", "// Click");
+        if (self.rename) shown.kit.rename_on_show = 1;
+        if (self.search) |text| shown.search.field.setText(text) catch |err| log.err("search not typed: {s}", .{@errorName(err)});
         if (self.video) |video| shown.media.sample = video;
     }
 };
@@ -403,17 +419,27 @@ const Window = struct {
         Self.shown = target;
         defer Self.shown = null;
         Self.follow_os = follow;
-        target.showcase.platform = .{
+        const platform: gallery.Platform = .{
             .minimize_fn = Self.minimize,
             .toggle_maximized_fn = Self.toggleMaximized,
             .is_maximized_fn = Self.isMaximized,
             .request_close_fn = Self.requestClose,
             .quit_fn = Self.quit,
             .animator_fn = Self.animator,
+            .open_file_fn = Self.openFile,
+            .save_file_fn = Self.saveFile,
+            .take_file_fn = Self.takeFile,
         };
+        target.showcase.platform = platform;
         defer target.showcase.platform = .{};
-        // The Native View section shows a real AppKit view in a window.
-        // The Video panel's full-screen button takes the window with it.
+        // Every card's copy button puts its names on the clipboard.
+        gallery.CardName.shared().copy_fn = Self.copyText;
+        defer gallery.CardName.shared().copy_fn = null;
+        // The Files section's Open and Save buttons show the system's panels.
+        target.kit.platform = platform;
+        defer target.kit.platform = .{};
+        // The Media Native section shows a real AppKit view in a window.
+        // The Media Video panel's full-screen button takes the window with it.
         target.media.set_full_screen_fn = Self.setFullScreen;
         target.media.is_full_screen_fn = Self.isFullScreen;
         defer {
@@ -444,7 +470,7 @@ const Window = struct {
         }, gallery.Gallery.body, null);
     }
 
-    /// Makes the Native View section's platform view: on macOS a layer-hosting
+    /// Makes the Media Native section's platform view: on macOS a layer-hosting
     /// `NSView`, tinted and labelled, which `NativeView` places; elsewhere none.
     ///
     /// - Returns: the view, or null where there is no host.
@@ -478,14 +504,14 @@ const Window = struct {
         return view;
     }
 
-    /// Frees the Native View section's platform view, once the loop is done with it.
+    /// Frees the Media Native section's platform view, once the loop is done with it.
     ///
     /// - `view`: the view `makeNativeSample` made, or null.
     fn releaseNativeSample(view: ?*anyopaque) void {
         if (comptime gallery.is_macos) ziggui.sdl.ObjectiveC.release(view);
     }
 
-    /// Takes the window into full screen or out of it (the Video panel's
+    /// Takes the window into full screen or out of it (the Media Video panel's
     /// full-screen button).
     ///
     /// - `full_screen`: true for full screen.
@@ -493,7 +519,7 @@ const Window = struct {
         ziggui.App.shared().setFullScreen(full_screen);
     }
 
-    /// Reports whether the window is in full screen (the Video panel's
+    /// Reports whether the window is in full screen (the Media Video panel's
     /// check that it still is).
     ///
     /// - Returns: true in full screen.
@@ -501,12 +527,12 @@ const Window = struct {
         return ziggui.App.shared().isFullScreen();
     }
 
-    /// Minimizes the window (the Window section's minimize button).
+    /// Minimizes the window (the Windows section's minimize button).
     fn minimize() void {
         ziggui.App.shared().minimizeWindow();
     }
 
-    /// Maximizes or restores the window (the Window section's maximize button).
+    /// Maximizes or restores the window (the Windows section's maximize button).
     fn toggleMaximized() void {
         ziggui.App.shared().toggleMaximized();
     }
@@ -535,6 +561,41 @@ const Window = struct {
         return ziggui.App.shared().animator();
     }
 
+    /// Puts text on the system clipboard (a card's copy button).
+    ///
+    /// - `text`: the text.
+    fn copyText(text: []const u8) void {
+        ziggui.Clipboard.setText(std.heap.page_allocator, text);
+    }
+
+    /// Shows the system's open-file panel (the Files section's Open File… button).
+    ///
+    /// - `location`: the folder it starts in.
+    /// - Returns: false when a dialog is already up.
+    fn openFile(location: [:0]const u8) bool {
+        return ziggui.FileDialog.shared().openFile(&.{}, location);
+    }
+
+    /// Shows the system's save panel (the Files section's Save As… button).
+    ///
+    /// - `location`: the folder and the name its field starts with.
+    /// - Returns: false when a dialog is already up.
+    fn saveFile(location: [:0]const u8) bool {
+        return ziggui.FileDialog.shared().saveFile(&.{}, location);
+    }
+
+    /// Takes the outcome of the dialog last shown, once.
+    ///
+    /// - `allocator`: owns a picked path's copy.
+    /// - Returns: the outcome, `.none` while the dialog is still up.
+    fn takeFile(allocator: std.mem.Allocator) gallery.FileDialogOutcome {
+        return switch (ziggui.FileDialog.shared().takeResult(allocator)) {
+            .none => .none,
+            .canceled => .canceled,
+            .picked => |path| .{ .picked = path },
+        };
+    }
+
     /// How often the loop wakes: every frame while a hover popover waits out
     /// its delay (the pointer resting sends no events), else idle.
     ///
@@ -544,8 +605,8 @@ const Window = struct {
         return if (target.hoverWaiting()) 16 else 0;
     }
 
-    /// A key went down: the Menu Bar panel's Alt tap and menu keys, the
-    /// Editor panel's shortcuts, and the File Browser's keys.
+    /// A key went down: the Menus & Commands section's Alt tap and menu keys, the
+    /// Text Editor section's shortcuts, and the File Browser's keys.
     ///
     /// - `keycode`: its `SDL_Keycode`.
     /// - `modifiers`: its `SDL_Keymod` mask.
@@ -555,7 +616,7 @@ const Window = struct {
         return target.keyDown(keycode, modifiers);
     }
 
-    /// A key came up: Alt ends a tap; the Overlays panel shows the keycode.
+    /// A key came up: Alt ends a tap; the Presentations section shows the keycode.
     ///
     /// - `keycode`: its `SDL_Keycode`.
     /// - `modifiers`: its `SDL_Keymod` mask.
@@ -565,7 +626,7 @@ const Window = struct {
         target.keyUp(keycode);
     }
 
-    /// A quit was asked for: the Overlays panel may ask first.
+    /// A quit was asked for: the Presentations section may ask first.
     ///
     /// - Returns: true to let the quit end the loop.
     fn onQuit() bool {
@@ -573,8 +634,9 @@ const Window = struct {
         return target.quitRequested();
     }
 
-    /// A mouse event: a press cancels an Alt tap; over the Image & Canvas
-    /// panel's picture a pinch or a ⌘- or Ctrl-scroll zooms it about the
+    /// A mouse event: a press cancels an Alt tap, and a left press on the
+    /// File Browser's list hands it the arrow keys; over the Images & Drawing
+    /// section's picture a pinch or a ⌘- or Ctrl-scroll zooms it about the
     /// pointer, and a left press on its zoom chip fits it again, consumed
     /// before it can start the picture's pan drag. A plain scroll is left to
     /// the page, which scrolls.
@@ -583,9 +645,10 @@ const Window = struct {
     /// - Returns: true when the picture took it; otherwise ziggui handles it as usual.
     fn onMouse(event: ziggui.MouseEvent) bool {
         const target = Self.shown orelse return false;
-        if (event.kind == .down) target.menu_bar.pointerDown();
-        const zoom = target.pictureZoom() orelse return false;
         const point = ziggui.Point{ .x = event.x, .y = event.y };
+        if (event.kind == .down) target.menu_bar.pointerDown();
+        if (event.kind == .down and event.button == 1) target.pointerDown(point);
+        const zoom = target.pictureZoom() orelse return false;
         if (event.kind == .down and event.button == 1 and zoom.chipContains(point)) {
             zoom.fit();
             return true;

@@ -237,6 +237,10 @@ pub const KdeTheme = renderer.KdeTheme;
 pub const MuiTheme = renderer.MuiTheme;
 /// An app's accent, a setting: the brand's orange or one of macOS's (`theme` applies it, the macOS dark on black).
 pub const Accent = views.Accent;
+/// What the pointer looks like over a view (`.pointerStyle()`).
+pub const PointerStyle = views.PointerStyle;
+/// Where stateless scroll views keep their positions between frames.
+pub const ScrollMemory = views.ScrollMemory;
 
 // -----------------------------------------------------------------------------
 // Icons
@@ -460,6 +464,8 @@ pub const Ellipse = views.Ellipse;
 pub const LinearGradient = views.LinearGradient;
 /// Three bouncing dots.
 pub const LoadingDots = views.LoadingDots;
+/// A ring of dots turning: a small indeterminate busy mark.
+pub const Spinner = views.Spinner;
 /// A push button.
 pub const Button = views.Button;
 /// A push button with a role (default, cancel, destructive).
@@ -514,6 +520,14 @@ pub const IconSegment = views.IconSegment;
 pub const Appearance = views.Appearance;
 /// A settings page's appearance choice: Auto, Light and Dark as little windows.
 pub const AppearancePicker = views.AppearancePicker;
+/// A settings page's theme choice: a little window per theme family, then the accent swatches.
+pub const ThemePicker = views.ThemePicker;
+/// The theme families alone, as mini renderings with their names as hover hints.
+pub const ThemeFamilyPicker = views.ThemeFamilyPicker;
+/// A label renamed in place: a click while it is selected makes it a field.
+pub const EditableText = views.EditableText;
+/// An `EditableText`'s text, edit and armed click; app-owned.
+pub const EditableTextState = views.EditableTextState;
 
 // -----------------------------------------------------------------------------
 // Containers
@@ -524,6 +538,8 @@ pub const VStack = views.VStack;
 pub const HStack = views.HStack;
 /// Children layered front to back.
 pub const ZStack = views.ZStack;
+/// Children side by side, wrapping into rows as wide as offered.
+pub const FlowStack = views.FlowStack;
 /// A slice mapped to views, spliced into the enclosing stack.
 pub const ForEach = views.ForEach;
 /// Flexible space in a stack.
@@ -576,6 +592,10 @@ pub const ContextMenu = views.ContextMenu;
 pub const MenuItem = views.MenuItem;
 /// A pop-up menu's panel: its entries stacked at a fixed width.
 pub const MenuList = views.MenuList;
+/// One option of a check list: a checkmark column before its content.
+pub const CheckRow = views.CheckRow;
+/// A choice's rows in a rounded group, hairlines between them.
+pub const CheckList = views.CheckList;
 /// An empty pane's message: a quiet title over a wrapped detail, centered.
 pub const EmptyState = views.EmptyState;
 /// The notice strip: a busy mark, the last notice, and an optional action.

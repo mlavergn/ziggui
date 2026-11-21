@@ -31,6 +31,10 @@ pub const PointerInput = struct {
     /// A drag-area handler armed by a press.
     area_drag: ?mod.DragCallback = null,
 
+    /// The pointer look of the region the last press landed on, kept while a
+    /// drag it armed runs, so a divider keeps its resize cursor off its strip.
+    press_style: ?mod.PointerStyle = null,
+
     /// The last pointer position fed to `area_drag`.
     area_last: renderer.Point = .{ .x = 0, .y = 0 },
 
@@ -101,6 +105,7 @@ pub const PointerInput = struct {
         self.text_drag = null;
         self.slider_drag = null;
         self.area_drag = null;
+        self.press_style = null;
     }
 
     /// Drops every reference to `field`: a text drag on it ends. Its
@@ -173,6 +178,7 @@ pub const PointerInput = struct {
     /// - Returns: true if a region took it.
     pub fn tap(self: *Self, regions: []const mod.HitRegion, point: renderer.Point) bool {
         self.press_point = point;
+        self.press_style = null;
         const selection = mod.TextSelection.shared();
         // A press elsewhere clears it; a press on selectable text starts anew; a shift-press may extend it (`ended_by_press`).
         selection.ended_by_press = if (selection.current) |span| span.key else null;
@@ -184,6 +190,7 @@ pub const PointerInput = struct {
             if (region.action == .secondary) continue;
             if (!region.disabled and region.rect.contains(point)) {
                 self.countPress(region);
+                self.press_style = region.pointer_style;
                 self.perform(region.action, point);
                 if (self.passesDrag(region.action)) self.armBeneath(regions[0..index], point, region.rect);
                 return true;
@@ -415,27 +422,31 @@ pub const PointerInput = struct {
         return consumed;
     }
 
-    /// Whether the pointer over `point` should show the text (I-beam) cursor: the
-    /// top-most thing under it is a text field, an editor or selectable text.
+    /// What the pointer should look like at `point`: while a drag runs, the
+    /// look of the region that armed it (a divider's resize, else the arrow;
+    /// the I-beam while selecting text); otherwise the style of the top-most
+    /// region under it (`View.pointerStyle`), else the I-beam over a text
+    /// field, an editor or selectable text, else the arrow.
     ///
     /// - `self`: the pointer input.
     /// - `regions`: the frame's hit regions.
     /// - `point`: the pointer.
-    /// - Returns: whether to show the I-beam.
-    pub fn textCursorAt(self: *const Self, regions: []const mod.HitRegion, point: renderer.Point) bool {
-        _ = self;
-        if (mod.TextSelection.shared().current) |span| if (span.dragging) return true;
+    /// - Returns: the pointer's look.
+    pub fn pointerStyleAt(self: *const Self, regions: []const mod.HitRegion, point: renderer.Point) mod.PointerStyle {
+        if (mod.TextSelection.shared().current) |span| if (span.dragging) return .horizontalText;
+        if (self.area_drag != null) return self.press_style orelse .default;
         var index = regions.len;
         while (index > 0) {
             index -= 1;
             const region = regions[index];
             if (region.disabled or region.action == .secondary or !region.rect.contains(point)) continue;
+            if (region.pointer_style) |style| return style;
             return switch (region.action) {
-                .textClick, .focus, .textSelect => true,
-                else => false,
+                .textClick, .focus, .textSelect => .horizontalText,
+                else => .default,
             };
         }
-        return false;
+        return .default;
     }
 
     /// Arms `callback` as the drag under way from `point`, telling it so (`begin`).
@@ -873,4 +884,34 @@ test "a row that moved under the pointer between two presses is no double click"
     // B clicked again stays B: that pair is a double click.
     ClickProbe.press(&after, point, 3);
     try std.testing.expect(ClickProbe.double);
+}
+
+test "pointer: a region's pointer style shows over it and through the drag it arms" {
+    const Probe = struct {
+        const Self = @This();
+
+        /// Arms a drag that does nothing, as a divider's press does.
+        fn press(_: ?*anyopaque) void {
+            PointerInput.shared().armDrag(.{ .function = Self.moved });
+        }
+
+        /// A drag's move that does nothing.
+        fn moved(_: ?*anyopaque, _: f32, _: f32) void {}
+
+        /// A tap that does nothing.
+        fn ignore(_: ?*anyopaque) void {}
+    };
+    const input = PointerInput.shared();
+    defer input.endDrag();
+    const regions = [_]mod.HitRegion{
+        .{ .rect = .{ .x = 0, .y = 0, .width = 100, .height = 100 }, .action = .{ .callback = .{ .function = Probe.ignore } }, .disabled = false },
+        .{ .rect = .{ .x = 48, .y = 0, .width = 4, .height = 100 }, .action = .{ .callback = .{ .function = Probe.press } }, .disabled = false, .pointer_style = .columnResize },
+    };
+    try std.testing.expectEqual(mod.PointerStyle.default, input.pointerStyleAt(&regions, .{ .x = 10, .y = 10 }));
+    try std.testing.expectEqual(mod.PointerStyle.columnResize, input.pointerStyleAt(&regions, .{ .x = 50, .y = 10 }));
+    try std.testing.expect(input.tap(&regions, .{ .x = 50, .y = 10 }));
+    // Dragged off the strip, the divider keeps its look until the drag ends.
+    try std.testing.expectEqual(mod.PointerStyle.columnResize, input.pointerStyleAt(&regions, .{ .x = 10, .y = 10 }));
+    input.endDrag();
+    try std.testing.expectEqual(mod.PointerStyle.default, input.pointerStyleAt(&regions, .{ .x = 10, .y = 10 }));
 }

@@ -13,6 +13,8 @@ pub const Direction = enum {
     vertical,
     /// Overlaid (ZStack).
     depth,
+    /// Side by side, wrapping into rows as wide as offered (FlowStack).
+    flow,
 };
 
 // -----------------------------------------------------------------------------

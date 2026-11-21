@@ -2136,8 +2136,9 @@ test "view: List wraps rows in a scroll + divider-separated stack" {
     environment.setup();
     defer environment.deinit();
     const tree = mod.List(.{ mod.Text("a"), mod.Text("b") });
-    try std.testing.expect(tree.kind == .scroll);
-    const inner = tree.kind.scroll.content.*;
+    // A List scrolls on its own: its position kept in `ScrollMemory`.
+    try std.testing.expect(tree.kind == .scrollState);
+    const inner = tree.kind.scrollState.content.*;
     try std.testing.expect(inner.kind == .stack);
     // 2 rows + 1 divider between them
     try std.testing.expectEqual(@as(usize, 3), inner.kind.stack.children.len);
@@ -2982,4 +2983,44 @@ test "a form label is centered beside a pop-up's row, and keeps to the top besid
     const top = beside_text.frame.child.stack.children[0].frame;
     try std.testing.expect(top.height == null);
     try std.testing.expectEqual(renderer.Alignment.topTrailing, top.alignment);
+}
+
+test "view: an icon button stands as tall as a titled button in every theme family" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    const Probe = struct {
+        const Self = @This();
+
+        /// A tap that does nothing.
+        fn ignore(_: ?*anyopaque) void {}
+    };
+    const callback: mod.Callback = .{ .function = Probe.ignore };
+    for (renderer.ThemeFamily.all) |family| {
+        var context = environment.context();
+        context.theme = family.forScheme(.light);
+        const titled = renderer.LayoutEngine.shared().measure(try mod.ViewLowering.buildNode(&context, mod.ButtonIcon("Think", .sparkles, callback)), .{});
+        const icon = renderer.LayoutEngine.shared().measure(try mod.ViewLowering.buildNode(&context, mod.IconButton(.settings, 15, callback)), .{});
+        try std.testing.expectEqual(titled.height, icon.height);
+        try std.testing.expect(icon.width >= icon.height);
+    }
+}
+
+test "view: a stateless ScrollView scrolls under the wheel and keeps its offset from frame to frame" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    const rows = [_]mod.View{ mod.Rectangle(renderer.Color.red).frameHeight(80), mod.Rectangle(renderer.Color.blue).frameHeight(80), mod.Rectangle(renderer.Color.green).frameHeight(80) };
+    window.begin(renderer.MacosTheme.light);
+    var view = mod.ScrollView(mod.VStack(@as([]const mod.View, &rows)));
+    window.end();
+    var first = try window.render(view, 100, 100);
+    first.deinit();
+    try std.testing.expect(window.scroll(.{ .x = 50, .y = 50 }, 0, -3));
+    // Built again, as the next frame builds it, it is still scrolled.
+    window.begin(renderer.MacosTheme.light);
+    view = mod.ScrollView(mod.VStack(@as([]const mod.View, &rows)));
+    window.end();
+    var second = try window.render(view, 100, 100);
+    defer second.deinit();
+    try std.testing.expect(view.kind.scrollState.state.offset > 0);
 }

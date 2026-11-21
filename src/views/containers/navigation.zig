@@ -80,6 +80,8 @@ pub fn NavigationSplitView(sidebar: mod.View, detail: mod.View, sidebar_fill: re
 /// Glass panel set in from the window edges (the style of chat/notes apps),
 /// with no divider — the detail pane runs over the same window background.
 /// Pair with `SidebarStyled(…, .prominent)` for accent-selected content rows.
+/// The sidebar is clipped to the panel's rounded shape, so content taller or
+/// wider than the panel (a theme with larger type) never draws outside it.
 ///
 /// - `sidebar`: the sidebar pane.
 /// - `detail`: the detail pane.
@@ -89,6 +91,7 @@ pub fn NavigationSplitViewInset(sidebar: mod.View, detail: mod.View) mod.View {
         .frameWidth(220)
         .frameMaxHeight()
         .cornerRadius(14)
+        .clipped()
         .glassEffect();
     return mod.StackBuilder.make(.horizontal, 0, .center, .{
         mod.StackBuilder.make(.vertical, 0, .center, .{panel})

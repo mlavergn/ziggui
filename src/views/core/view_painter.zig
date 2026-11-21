@@ -85,13 +85,13 @@ pub const ViewPainter = struct {
         // The view's own tap region goes in BEFORE its content: regions are tested
         // last-registered first, so a button inside a tappable row must win.
         if (view.modifiers.on_secondary) |callback| {
-            try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .secondary = callback }, .disabled = child_context.disabled });
+            try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .secondary = callback }, .disabled = child_context.disabled, .pointer_style = view.modifiers.pointer_style });
         }
         if (view.modifiers.on_tap) |callback| {
-            try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .callback = callback }, .disabled = child_context.disabled, .id = view.modifiers.id });
+            try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .callback = callback }, .disabled = child_context.disabled, .id = view.modifiers.id, .pointer_style = view.modifiers.pointer_style });
         }
         if (view.modifiers.on_drag) |drag_callback| {
-            try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .drag = drag_callback }, .disabled = child_context.disabled });
+            try context.hit_regions.append(context.arena, .{ .rect = outer, .action = .{ .drag = drag_callback }, .disabled = child_context.disabled, .pointer_style = view.modifiers.pointer_style });
         }
         // The hover hint: the innermost hinted view under the pointer, and on screen, offers its text.
         if (view.modifiers.help.len > 0) if (context.hover_point) |point| {

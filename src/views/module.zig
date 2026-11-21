@@ -100,6 +100,10 @@ pub const IconName = @import("core/module.zig").IconName;
 pub const Binding = @import("core/module.zig").Binding;
 /// An app's accent, a setting: the brand's orange or one of macOS's (`theme` applies it, the macOS dark on black).
 pub const Accent = @import("core/module.zig").Accent;
+/// What the pointer looks like over a view (`.pointerStyle()`).
+pub const PointerStyle = @import("core/module.zig").PointerStyle;
+/// Where stateless scroll views keep their positions between frames.
+pub const ScrollMemory = @import("core/module.zig").ScrollMemory;
 /// A tap handler (`init` wraps a method, `action` a function, `select` a selection).
 pub const Callback = @import("core/module.zig").Callback;
 /// What `View.onHover` calls: true on entering a view, false on leaving it.
@@ -256,6 +260,8 @@ pub const Ellipse = @import("controls/module.zig").Ellipse;
 pub const LinearGradient = @import("controls/module.zig").LinearGradient;
 /// Three bouncing dots.
 pub const LoadingDots = @import("controls/module.zig").LoadingDots;
+/// A ring of dots turning: a small indeterminate busy mark.
+pub const Spinner = @import("controls/module.zig").Spinner;
 /// A push button.
 pub const Button = @import("controls/module.zig").Button;
 /// A push button with a role (default, cancel, destructive).
@@ -310,6 +316,14 @@ pub const IconSegment = @import("controls/module.zig").IconSegment;
 pub const Appearance = @import("controls/module.zig").Appearance;
 /// A settings page's appearance choice: Auto, Light and Dark as little windows.
 pub const AppearancePicker = @import("controls/module.zig").AppearancePicker;
+/// A settings page's theme choice: a little window per theme family, then the accent swatches.
+pub const ThemePicker = @import("controls/module.zig").ThemePicker;
+/// The theme families alone, as mini renderings with their names as hover hints.
+pub const ThemeFamilyPicker = @import("controls/module.zig").ThemeFamilyPicker;
+/// A label renamed in place: a click while it is selected makes it a field.
+pub const EditableText = @import("controls/module.zig").EditableText;
+/// An `EditableText`'s text, edit and armed click; app-owned.
+pub const EditableTextState = @import("controls/module.zig").EditableTextState;
 
 // -----------------------------------------------------------------------------
 // Containers (containers/)
@@ -320,6 +334,8 @@ pub const VStack = @import("containers/module.zig").VStack;
 pub const HStack = @import("containers/module.zig").HStack;
 /// Children layered front to back.
 pub const ZStack = @import("containers/module.zig").ZStack;
+/// Children side by side, wrapping into rows as wide as offered.
+pub const FlowStack = @import("containers/module.zig").FlowStack;
 /// A slice mapped to views, spliced into the enclosing stack.
 pub const ForEach = @import("containers/module.zig").ForEach;
 /// Flexible space in a stack.
@@ -372,6 +388,10 @@ pub const ContextMenu = @import("containers/module.zig").ContextMenu;
 pub const MenuItem = @import("containers/module.zig").MenuItem;
 /// A pop-up menu's panel: its entries stacked at a fixed width.
 pub const MenuList = @import("containers/module.zig").MenuList;
+/// One option of a check list: a checkmark column before its content.
+pub const CheckRow = @import("containers/module.zig").CheckRow;
+/// A choice's rows in a rounded group, hairlines between them.
+pub const CheckList = @import("containers/module.zig").CheckList;
 /// An empty pane's message: a quiet title over a wrapped detail, centered.
 pub const EmptyState = @import("containers/module.zig").EmptyState;
 /// The notice strip: a busy mark, the last notice, and an optional action.

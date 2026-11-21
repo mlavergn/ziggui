@@ -56,7 +56,7 @@ const start_url: []const u8 = blk: {
 /// The most of a page's message the panel keeps to show: a line's worth.
 const max_message_bytes: usize = 256;
 
-/// The Web View panel: a `WebPage` shown by a `WebView` under a browser's
+/// The Media Web panel: a `WebPage` shown by a `WebView` under a browser's
 /// toolbar (back, forward, reload, the address, home, bookmarks), its start
 /// page posting to a bridge. Ported from zigwebview's browser shell.
 pub const WebPanel = struct {
@@ -155,7 +155,7 @@ pub const WebPanel = struct {
             if (failure.len > 0) ziggui.Text(failure).foreground(tokens.removed).truncated().frameMaxWidth().frameAlign(.leading) else ziggui.Empty(),
             ziggui.WebView(&self.page).cornerRadius(theme.metrics.corner_radius).border(theme.colors.separator, theme.metrics.hairline).frameMaxWidth().frameMaxHeight(),
             ziggui.Text(status).font(.footnote).foreground(tokens.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
-            ziggui.Text("ziggui.WebView · ziggui.WebPage · ziggui.WebPageMessageCallback").font(.caption).mono().foreground(tokens.secondary_label).frameMaxWidth().frameAlign(.leading),
+            gallery.CardName.shared().view("ziggui.WebView · ziggui.WebPage · ziggui.WebPageMessageCallback", tokens.secondary_label),
         }).spacing(10).padding(20).frameMaxWidth().frameMaxHeight();
     }
 

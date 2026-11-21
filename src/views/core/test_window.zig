@@ -56,6 +56,8 @@ pub const TestWindow = struct {
     /// - `allocator`: allocator for the window, its caches and its frames.
     /// - Returns: the window, owned by the caller (`destroy`); propagates allocation failure.
     pub fn create(allocator: std.mem.Allocator) !*Self {
+        // Stateless scroll views start at the top, whatever an earlier test scrolled.
+        mod.ScrollMemory.shared().reset();
         const self = try allocator.create(Self);
         self.* = .{
             .allocator = allocator,

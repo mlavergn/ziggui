@@ -142,11 +142,11 @@ pub const App = struct {
     /// profiling the software rasterizer without a GPU profiler.
     frame_log: bool = false,
 
-    /// The system cursors made so far: the arrow, then the I-beam.
-    cursors: [2]?*sdl_c.SDL_Cursor = .{ null, null },
+    /// The system cursors made so far, one per `views.PointerStyle`, by its tag.
+    cursors: [@typeInfo(views.PointerStyle).@"enum".field_names.len]?*sdl_c.SDL_Cursor = @splat(null),
 
-    /// Whether the I-beam is showing.
-    text_cursor: bool = false,
+    /// The pointer look showing.
+    pointer_style: views.PointerStyle = .default,
 
     /// The main window's frame when it was last neither maximized, minimized
     /// nor full screen (`noteWindowFrame`); what `windowFrame` reports while
@@ -578,17 +578,35 @@ pub const App = struct {
         return ((now -| self.blink_epoch) / Self.blink_ms) % 2 == 0;
     }
 
-    /// Shows the I-beam over text (fields, editors, selectable text), else the
-    /// arrow.
+    /// Shows the system cursor for a pointer look (`PointerInput.pointerStyleAt`):
+    /// the arrow, the I-beam over text, or a resize over a divider; each made
+    /// on first need.
     ///
     /// - `self`: the app.
-    /// - `over_text`: true for the I-beam.
-    pub fn setTextCursor(self: *Self, over_text: bool) void {
-        if (over_text == self.text_cursor) return;
-        self.text_cursor = over_text;
-        const index: usize = @intFromBool(over_text);
-        if (self.cursors[index] == null) self.cursors[index] = sdl_c.SDL_CreateSystemCursor(if (over_text) sdl_c.SDL_SYSTEM_CURSOR_TEXT else sdl_c.SDL_SYSTEM_CURSOR_DEFAULT);
+    /// - `style`: the look to show.
+    pub fn setPointerStyle(self: *Self, style: views.PointerStyle) void {
+        if (style == self.pointer_style) return;
+        self.pointer_style = style;
+        const index: usize = @backingInt(style);
+        if (self.cursors[index] == null) self.cursors[index] = sdl_c.SDL_CreateSystemCursor(switch (style) {
+            .default => sdl_c.SDL_SYSTEM_CURSOR_DEFAULT,
+            .horizontalText => sdl_c.SDL_SYSTEM_CURSOR_TEXT,
+            .columnResize => sdl_c.SDL_SYSTEM_CURSOR_EW_RESIZE,
+            .rowResize => sdl_c.SDL_SYSTEM_CURSOR_NS_RESIZE,
+        });
         if (self.cursors[index]) |cursor| _ = sdl_c.SDL_SetCursor(cursor);
+    }
+
+    /// Frees the system cursors `setPointerStyle` made, before SDL quits,
+    /// and goes back to the arrow, so a later loop makes them again.
+    ///
+    /// - `self`: the app.
+    pub fn releaseCursors(self: *Self) void {
+        for (&self.cursors) |*slot| {
+            if (slot.*) |cursor| sdl_c.SDL_DestroyCursor(cursor);
+            slot.* = null;
+        }
+        self.pointer_style = .default;
     }
 
     /// `window`'s frame as it is now, in points.

@@ -110,11 +110,11 @@ pub const LayoutEngine = struct {
     }
 
     /// The narrowest `node` can be laid out without a child overflowing: a leaf's
-    /// minimum, a horizontal stack's children and gaps summed, the widest child
-    /// of any other stack, padding added, and a fixed frame's width. A frame that
-    /// only caps or fills the width does not lower its child's minimum (`arrange`
-    /// still gives the child that much), and a measured leaf (wrapped text) is
-    /// zero: it wraps, and reports no wider than it is offered.
+    /// minimum, a horizontal stack's children and gaps summed, the widest child of any
+    /// other stack (a flow stack wraps the rest onto rows), padding added, and a fixed
+    /// frame's width. A frame that only caps or fills the width does not lower its
+    /// child's minimum (`arrange` still gives the child that much), and a measured leaf
+    /// (wrapped text) is zero: it wraps, and reports no wider than it is offered.
     ///
     /// - `self`: the engine.
     /// - `node`: the tree.
@@ -293,6 +293,7 @@ pub const LayoutEngine = struct {
     fn measureStack(self: *Self, stack: mod.StackNode, proposal: mod.Proposal) mod.Size {
         if (stack.children.len == 0) return .{};
         if (stack.direction == .depth) return self.measureDepthStack(stack, proposal);
+        if (stack.direction == .flow) return self.measureFlowStack(stack, proposal);
 
         const axis: mod.Axis = if (stack.direction == .horizontal) .horizontal else .vertical;
         const main_proposal = Self.mainOf(axis, proposal);
@@ -328,6 +329,84 @@ pub const LayoutEngine = struct {
             height = @max(height, child_size.height);
         }
         return .{ .width = width, .height = height };
+    }
+
+    /// The size of a flow stack: its children packed left to right into rows
+    /// no wider than offered (one row when the width is open), as wide as its
+    /// widest row and as tall as its rows and the gaps between them.
+    ///
+    /// - `self`: the engine.
+    /// - `stack`: the stack.
+    /// - `proposal`: the size offered; only its width matters.
+    /// - Returns: the stack's size.
+    fn measureFlowStack(self: *Self, stack: mod.StackNode, proposal: mod.Proposal) mod.Size {
+        var sizes_scratch: mod.Scratch(mod.Size) = .{};
+        defer sizes_scratch.deinit();
+        const sizes = sizes_scratch.get(stack.children.len);
+        self.flowChildSizes(stack, proposal.width, sizes);
+        return Self.packFlow(stack, proposal.width, sizes, null);
+    }
+
+    /// Each flow child's size: its own, or, for one wider than the width
+    /// offered, what it takes at that width (a text wraps or truncates); a
+    /// spacer takes no room. Shared by measure and arrange so both agree.
+    ///
+    /// - `self`: the engine.
+    /// - `stack`: the flow stack.
+    /// - `width`: the width offered, or null for an open one.
+    /// - `sizes`: receives each child's size.
+    fn flowChildSizes(self: *Self, stack: mod.StackNode, width: ?f32, sizes: []mod.Size) void {
+        for (stack.children, sizes) |child, *size| {
+            if (child == .spacer) {
+                size.* = .{};
+                continue;
+            }
+            size.* = self.measure(child, .{});
+            if (width) |limit| if (size.width > limit) {
+                size.* = self.measure(child, .{ .width = limit });
+            };
+        }
+    }
+
+    /// Packs flow children into rows: each row takes children while they fit
+    /// the width with the gaps between them (always at least one), the rows
+    /// stacked a gap apart; with `origins`, notes each child's place relative
+    /// to the stack's top-left, its row moved across `width` by the
+    /// alignment's horizontal part and the child within its row's height by
+    /// its vertical part.
+    ///
+    /// - `stack`: the flow stack.
+    /// - `width`: the width rows may take, or null for one row.
+    /// - `sizes`: each child's size.
+    /// - `origins`: receives each child's place, or null to measure only.
+    /// - Returns: the packed extent, its widest row by its rows' height.
+    fn packFlow(stack: mod.StackNode, width: ?f32, sizes: []const mod.Size, origins: ?[]mod.Point) mod.Size {
+        var widest: f32 = 0;
+        var top: f32 = 0;
+        var start: usize = 0;
+        while (start < sizes.len) {
+            var stop = start + 1;
+            var row_width = sizes[start].width;
+            while (stop < sizes.len) : (stop += 1) {
+                const wider = row_width + stack.spacing + sizes[stop].width;
+                if (width) |limit| if (wider > limit) break;
+                row_width = wider;
+            }
+            var row_height: f32 = 0;
+            for (sizes[start..stop]) |size| row_height = @max(row_height, size.height);
+            if (origins) |places| {
+                var x = if (width) |limit| @max(0, limit - row_width) * stack.alignment.horizontal.fraction() else 0;
+                for (sizes[start..stop], places[start..stop]) |size, *place| {
+                    place.* = .{ .x = x, .y = top + (row_height - size.height) * stack.alignment.vertical.fraction() };
+                    x += size.width + stack.spacing;
+                }
+            }
+            widest = @max(widest, row_width);
+            top += row_height;
+            if (stop < sizes.len) top += stack.spacing;
+            start = stop;
+        }
+        return .{ .width = widest, .height = top };
     }
 
     /// Resolve each child's size given the stack's main/cross proposals, writing
@@ -413,6 +492,7 @@ pub const LayoutEngine = struct {
     fn arrangeStack(self: *Self, allocator: std.mem.Allocator, stack: mod.StackNode, rect: mod.Rect) std.mem.Allocator.Error!mod.LayoutResult {
         if (stack.children.len == 0) return .{ .frame = rect };
         if (stack.direction == .depth) return self.arrangeDepthStack(allocator, stack, rect);
+        if (stack.direction == .flow) return self.arrangeFlowStack(allocator, stack, rect);
 
         const axis: mod.Axis = if (stack.direction == .horizontal) .horizontal else .vertical;
         const cross_extent = Self.crossAxis(axis, rect.size());
@@ -434,6 +514,32 @@ pub const LayoutEngine = struct {
             const child_rect = Self.rectFrom(axis, cursor, cross_position, Self.mainAxis(axis, child_size), child_cross);
             results[index] = try self.arrange(allocator, child, child_rect);
             cursor += Self.mainAxis(axis, child_size) + stack.spacing;
+        }
+        return .{ .frame = rect, .children = results };
+    }
+
+    /// Place a flow stack's children in rows as wide as the rect, as
+    /// `measureFlowStack` packs them.
+    ///
+    /// - `self`: the engine.
+    /// - `allocator`: allocator for the result's children.
+    /// - `stack`: the stack.
+    /// - `rect`: the rect the stack gets.
+    /// - Returns: the placements; propagates allocation failure.
+    fn arrangeFlowStack(self: *Self, allocator: std.mem.Allocator, stack: mod.StackNode, rect: mod.Rect) std.mem.Allocator.Error!mod.LayoutResult {
+        var sizes_scratch: mod.Scratch(mod.Size) = .{};
+        defer sizes_scratch.deinit();
+        const sizes = sizes_scratch.get(stack.children.len);
+        self.flowChildSizes(stack, rect.width, sizes);
+        var origins_scratch: mod.Scratch(mod.Point) = .{};
+        defer origins_scratch.deinit();
+        const origins = origins_scratch.get(stack.children.len);
+        _ = Self.packFlow(stack, rect.width, sizes, origins);
+
+        const results = try allocator.alloc(mod.LayoutResult, stack.children.len);
+        errdefer allocator.free(results);
+        for (stack.children, sizes, origins, results) |child, size, origin, *result| {
+            result.* = try self.arrange(allocator, child, mod.Rect.fromOriginSize(.{ .x = rect.x + origin.x, .y = rect.y + origin.y }, size));
         }
         return .{ .frame = rect, .children = results };
     }
@@ -778,4 +884,33 @@ test "measure+arrange: ZStack overlays children, sized to largest" {
     // child0 (50x20) centered -> y=10 ; child1 (30x40) centered -> x=10
     try std.testing.expectEqual(mod.Rect{ .x = 0, .y = 10, .width = 50, .height = 20 }, result.children[0].frame);
     try std.testing.expectEqual(mod.Rect{ .x = 10, .y = 0, .width = 30, .height = 40 }, result.children[1].frame);
+}
+
+test "a flow stack wraps its children into rows as wide as offered" {
+    const children = [_]mod.Node{ TestNodes.leaf(40, 10), TestNodes.leaf(50, 20), TestNodes.leaf(30, 10), TestNodes.leaf(60, 10) };
+    const node = mod.Node{ .stack = .{ .direction = .flow, .spacing = 5, .alignment = .topLeading, .children = &children } };
+    const engine = LayoutEngine.shared();
+    // Open width: one row.
+    try std.testing.expectEqual(mod.Size{ .width = 40 + 50 + 30 + 60 + 3 * 5, .height = 20 }, engine.measure(node, .{}));
+    // 100 wide: 40+5+50 fits, then 30+5+60, rows 5 apart.
+    try std.testing.expectEqual(mod.Size{ .width = 95, .height = 20 + 5 + 10 }, engine.measure(node, .{ .width = 100 }));
+    var result = try engine.arrange(std.testing.allocator, node, .{ .x = 10, .y = 10, .width = 100, .height = 35 });
+    defer result.deinit(std.testing.allocator);
+    try std.testing.expectEqual(mod.Rect{ .x = 10, .y = 10, .width = 40, .height = 10 }, result.children[0].frame);
+    try std.testing.expectEqual(mod.Rect{ .x = 55, .y = 10, .width = 50, .height = 20 }, result.children[1].frame);
+    try std.testing.expectEqual(mod.Rect{ .x = 10, .y = 35, .width = 30, .height = 10 }, result.children[2].frame);
+    try std.testing.expectEqual(mod.Rect{ .x = 45, .y = 35, .width = 60, .height = 10 }, result.children[3].frame);
+    // Its minimum width is its widest child: narrower, each child has a row.
+    try std.testing.expectEqual(@as(f32, 60), engine.minWidth(node));
+    try std.testing.expectEqual(mod.Size{ .width = 60, .height = 10 + 20 + 10 + 10 + 3 * 5 }, engine.measure(node, .{ .width = 60 }));
+}
+
+test "a flow stack centres its rows and its children in them" {
+    const children = [_]mod.Node{ TestNodes.leaf(40, 10), TestNodes.leaf(40, 20) };
+    const node = mod.Node{ .stack = .{ .direction = .flow, .spacing = 0, .alignment = .center, .children = &children } };
+    var result = try LayoutEngine.shared().arrange(std.testing.allocator, node, .{ .x = 0, .y = 0, .width = 100, .height = 20 });
+    defer result.deinit(std.testing.allocator);
+    // The 80-wide row sits 10 in; the short child halfway down the row.
+    try std.testing.expectEqual(mod.Rect{ .x = 10, .y = 5, .width = 40, .height = 10 }, result.children[0].frame);
+    try std.testing.expectEqual(mod.Rect{ .x = 50, .y = 0, .width = 40, .height = 20 }, result.children[1].frame);
 }

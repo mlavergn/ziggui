@@ -23,6 +23,18 @@ pub fn HStack(children: anytype) mod.View {
     return mod.StackBuilder.make(.horizontal, 8, .center, children);
 }
 
+/// Children side by side, 8 points apart, wrapping into rows as wide as the
+/// stack is offered (a row of tags or chips), each row at the leading edge
+/// and each child centred in its row's height; `.alignment()` moves both, and
+/// `.spacing()` sets the gap between children and between rows alike. A child
+/// wider than a row gets the row's width; a `Spacer` takes no room.
+///
+/// - `children`: a tuple literal or a slice of views.
+/// - Returns: the stack.
+pub fn FlowStack(children: anytype) mod.View {
+    return mod.StackBuilder.make(.flow, 8, .leading, children);
+}
+
 /// Children layered front to back, centered.
 ///
 /// - `children`: a tuple literal or a slice of views.

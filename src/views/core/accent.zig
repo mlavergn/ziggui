@@ -29,6 +29,16 @@ pub const Accent = enum {
     /// Every accent, in a Settings sheet's order.
     pub const all = [_]Self{ .orange, .blue, .purple, .pink, .red, .yellow, .green, .graphite };
 
+    /// The accent a picker's choice index names (`ThemePicker`): 0 is none,
+    /// the theme family's own accent; 1 and on are `all`, in order.
+    ///
+    /// - `index`: the choice's index; one past either end is clamped to it.
+    /// - Returns: the accent, or null for the theme family's own.
+    pub fn atChoice(index: i64) ?Self {
+        if (index <= 0) return null;
+        return all[@intCast(@min(index, all.len) - 1)];
+    }
+
     /// The accent as a Settings sheet names it.
     ///
     /// - `self`: the accent.
@@ -106,6 +116,14 @@ test {
     std.testing.refAllDecls(@This());
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "a choice index names the theme's own accent first, then every accent, clamped" {
+    try std.testing.expectEqual(@as(?Accent, null), Accent.atChoice(0));
+    try std.testing.expectEqual(@as(?Accent, null), Accent.atChoice(-3));
+    try std.testing.expectEqual(@as(?Accent, .orange), Accent.atChoice(1));
+    try std.testing.expectEqual(@as(?Accent, .graphite), Accent.atChoice(Accent.all.len));
+    try std.testing.expectEqual(@as(?Accent, .graphite), Accent.atChoice(99));
 }
 
 test "every family draws in the accent, white on it but on the yellow and the green" {

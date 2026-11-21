@@ -262,9 +262,12 @@ pub const ViewLowering = struct {
             },
             .icon => |icon| return .{ .leaf = renderer.SizingHints.fixedSize(.{ .width = icon.size, .height = icon.size }) },
             .iconButton => |icon_button| {
+                // As tall as the theme's controls, so it stands level with a
+                // titled button beside it, and never narrower than tall.
+                const height = @max(icon_button.size + 2 * mod.ControlMetrics.icon_button_padding_y, context.theme.metrics.control_height);
                 return .{ .leaf = renderer.SizingHints.fixedSize(.{
-                    .width = icon_button.size + 2 * mod.ControlMetrics.icon_button_padding_x,
-                    .height = icon_button.size + 2 * mod.ControlMetrics.icon_button_padding_y,
+                    .width = @max(icon_button.size + 2 * mod.ControlMetrics.icon_button_padding_x, height),
+                    .height = height,
                 }) };
             },
             .label => |label| {

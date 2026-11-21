@@ -643,7 +643,7 @@ const EventRouter = struct {
                 if ((event.motion.state & sdl_c.SDL_BUTTON_LMASK) != 0) {
                     views.PointerInput.shared().drag(target_hits, motion_point);
                 }
-                app.setTextCursor(views.PointerInput.shared().textCursorAt(target_hits, motion_point));
+                app.setPointerStyle(views.PointerInput.shared().pointerStyleAt(target_hits, motion_point));
             },
             sdl_c.SDL_EVENT_WINDOW_MOUSE_LEAVE => if (on_panel) {
                 panel.hover = null;
@@ -743,11 +743,13 @@ const EventRouter = struct {
                     // macOS: ⌘←/⌘→ go to the line's start and end (a one-line
                     // field's head and tail), ⌘↑/⌘↓ to the text's.
                     const command = mod.os_tag == .macos and (event.key.mod & sdl_c.SDL_KMOD_GUI) != 0;
+                    // A word at a time: ⌥←/⌥→ and ⌥⌫/⌥⌦ on macOS, Ctrl with them elsewhere.
+                    const word = (event.key.mod & (if (mod.os_tag == .macos) sdl_c.SDL_KMOD_ALT else sdl_c.SDL_KMOD_CTRL)) != 0;
                     switch (event.key.key) {
-                        sdl_c.SDLK_BACKSPACE => field.backspace(),
-                        sdl_c.SDLK_DELETE => field.deleteForward(),
-                        sdl_c.SDLK_LEFT => if (command) field.home(shift) else field.moveLeft(shift),
-                        sdl_c.SDLK_RIGHT => if (command) field.end(shift) else field.moveRight(shift),
+                        sdl_c.SDLK_BACKSPACE => if (word) field.deleteWordBackward() else field.backspace(),
+                        sdl_c.SDLK_DELETE => if (word) field.deleteWordForward() else field.deleteForward(),
+                        sdl_c.SDLK_LEFT => if (command) field.home(shift) else if (word) field.moveWordLeft(shift) else field.moveLeft(shift),
+                        sdl_c.SDLK_RIGHT => if (command) field.end(shift) else if (word) field.moveWordRight(shift) else field.moveRight(shift),
                         sdl_c.SDLK_UP => if (command) field.moveToStart(shift) else field.moveUp(shift),
                         sdl_c.SDLK_DOWN => if (command) field.moveToEnd(shift) else field.moveDown(shift),
                         sdl_c.SDLK_HOME => field.home(shift),
@@ -1103,6 +1105,7 @@ pub fn EventLoop(comptime AppState: type) type {
             if (self.sdl_renderer) |sdl_renderer| sdl_c.SDL_DestroyRenderer(sdl_renderer);
             if (self.gpu_backend) |*gpu| gpu.deinit();
             views.FrameClock.shared().setWakeHandler(null);
+            app.releaseCursors();
             sdl_c.SDL_DestroyWindow(self.window);
             sdl_c.SDL_Quit();
             self.allocator.destroy(self);

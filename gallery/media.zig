@@ -3,12 +3,12 @@ const log = std.log.scoped(.ziggui_gallery_media);
 const gallery = @import("module.zig");
 const ziggui = @import("ziggui");
 
-/// The sample the Video panel plays: Apple's public HLS example (10 minutes,
+/// The sample the Media Video panel plays: Apple's public HLS example (10 minutes,
 /// fMP4, an English audio rendition and two subtitle ones). Fetched only when
 /// "Load sample stream" is pressed.
 const sample_url = "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8";
 
-/// The sample the Audio Player panel plays: the audio-only variant of Apple's
+/// The sample the Media Audio panel plays: the audio-only variant of Apple's
 /// public HLS example (AAC). Fetched only when "Load sample audio" is pressed.
 const audio_sample_url = "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear0/prog_index.m3u8";
 
@@ -16,13 +16,13 @@ const audio_sample_url = "https://devstreaming-cdn.apple.com/videos/streaming/ex
 const InfoHalf = enum {
     const Self = @This();
 
-    /// How the window draws and the media player (the Video panel).
+    /// How the window draws and the media player (the Media Video panel).
     video,
-    /// The audio outputs (the Audio Player panel).
+    /// The audio outputs (the Media Audio panel).
     audio,
 };
 
-/// The Video panel: a `VideoPlayer` with controls drawn over the picture, the
+/// The Media Video panel: a `VideoPlayer` with controls drawn over the picture, the
 /// buttons that load and clear its item, and what the player reports.
 pub const Media = struct {
     const Self = @This();
@@ -42,7 +42,7 @@ pub const Media = struct {
     /// Owns `report` and its strings.
     report_arena: std.heap.ArenaAllocator,
 
-    /// What the Video and Audio Player panels' info and output menus show
+    /// What the Media Video and Media Audio panels' info and output menus show
     /// (the menus list its `audio_outputs`): read as either panel first
     /// shows (`showPanel`), and again from Refresh Info or a menu's Refresh.
     report: ?ziggui.SystemReport = null,
@@ -51,13 +51,13 @@ pub const Media = struct {
     /// each frame.
     report_read: bool = false,
 
-    /// The Audio Player panel's player.
+    /// The Media Audio panel's player.
     audio_player: ziggui.Player,
 
     /// The audio bar's state.
     audio_controls: ziggui.AudioPlayerControlsState = .{},
 
-    /// Whether the Audio Player panel's output menu is shown.
+    /// Whether the Media Audio panel's output menu is shown.
     audio_output_menu: ziggui.State(bool),
 
     /// Whether the player fills the window alone (the controls' full-screen button).
@@ -84,7 +84,7 @@ pub const Media = struct {
     /// What "Load sample stream" plays: `sample_url`, or what `--video` named.
     sample: [:0]const u8 = sample_url,
 
-    /// The Native View panel's platform view: an `NSView` `main.zig` makes on
+    /// The Media Native section's platform view: an `NSView` `main.zig` makes on
     /// macOS; null headless and elsewhere, where the panel shows the placeholder.
     native_sample: ?*anyopaque = null,
 
@@ -116,7 +116,7 @@ pub const Media = struct {
         self.audio_output_menu.deinit();
     }
 
-    /// The Video panel: the picture with the standard controls over it, the
+    /// The Media Video panel: the picture with the standard controls over it, the
     /// item's buttons, and the player's state.
     ///
     /// - `self`: the panel.
@@ -126,14 +126,14 @@ pub const Media = struct {
         const observation = self.player.observe();
         const buttons = self.itemButtons("Load sample stream", ziggui.Callback.init(Self, self, Self.loadSample), ziggui.Callback.init(Self, self, Self.clear), &self.player, &self.output_menu, Self.chooseOutput);
         return ziggui.VStack(.{
-            Self.card(theme, "VideoPlayer: the platform player draws the picture, ziggui the controls over it", "ziggui.VideoPlayer · ziggui.VideoPlayerControls · ziggui.Player", self.picture(8).frameHeight(300)),
+            gallery.Card.view(theme, "VideoPlayer: the platform player draws the picture, ziggui the controls over it", "ziggui.VideoPlayer · ziggui.VideoPlayerControls · ziggui.Player", self.picture(8).frameHeight(300)),
             buttons,
             ziggui.Text(Self.describe(observation, "No item. Load sample stream plays Apple's HLS example (over the network).")).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
             self.infoCard(theme, "VideoInfoView: how the window draws and the media player", "ziggui.VideoInfoView · ziggui.SystemInfo", .video),
         }).spacing(16);
     }
 
-    /// The Audio Player panel: the audio bar over its own `Player`, the
+    /// The Media Audio panel: the audio bar over its own `Player`, the
     /// item's buttons (and the output menu where outputs are listed), what
     /// the player reports, and the audio outputs.
     ///
@@ -145,7 +145,7 @@ pub const Media = struct {
         const title = if (observation.has_item) "Apple's HLS example (audio)" else "";
         const buttons = self.itemButtons("Load sample audio", ziggui.Callback.init(Self, self, Self.loadAudioSample), ziggui.Callback.init(Self, self, Self.clearAudio), &self.audio_player, &self.audio_output_menu, Self.chooseAudioOutput);
         return ziggui.VStack(.{
-            Self.card(theme, "AudioPlayerControls: a podcast player's bar over a Player with no picture", "ziggui.AudioPlayerControls · ziggui.AudioPlayerControlsState · ziggui.Player", ziggui.AudioPlayerControls(&self.audio_player, &self.audio_controls, title)),
+            gallery.Card.view(theme, "AudioPlayerControls: a podcast player's bar over a Player with no picture", "ziggui.AudioPlayerControls · ziggui.AudioPlayerControlsState · ziggui.Player", ziggui.AudioPlayerControls(&self.audio_player, &self.audio_controls, title)),
             buttons,
             ziggui.Text(Self.describe(observation, "No item. Load sample audio plays the audio of Apple's HLS example (over the network).")).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
             self.infoCard(theme, "AudioInfoView: the output the player plays through, and the devices", "ziggui.AudioInfoView · ziggui.AudioOutputs", .audio),
@@ -192,7 +192,7 @@ pub const Media = struct {
         }
     }
 
-    /// The Native View panel: an app-made platform view placed by layout,
+    /// The Media Native section: an app-made platform view placed by layout,
     /// with ziggui text above and below it.
     ///
     /// - `self`: the panel.
@@ -201,7 +201,7 @@ pub const Media = struct {
     pub fn nativePanel(self: *Self, theme: ziggui.Theme) ziggui.View {
         const secondary = ziggui.BuildScope.shared().tokens().secondary_label;
         return ziggui.VStack(.{
-            Self.card(theme, "NativeView: the app's platform view, placed and clipped where layout puts it", "ziggui.NativeView", ziggui.NativeView(self.native_sample).cornerRadius(8).frameHeight(220)),
+            gallery.Card.view(theme, "NativeView: the app's platform view, placed and clipped where layout puts it", "ziggui.NativeView", ziggui.NativeView(self.native_sample).cornerRadius(8).frameHeight(220)),
             ziggui.Text("It sits over the window's surface, so it hides while a sheet, alert, popover or menu is open.").foreground(secondary).truncated().frameMaxWidth().frameAlign(.leading),
             ziggui.Text("A view that takes the keyboard (a web view) gets it on a click; a click elsewhere gives it back.").foreground(secondary).truncated().frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
@@ -223,7 +223,7 @@ pub const Media = struct {
         });
     }
 
-    /// Reads the system the first time the Video or Audio Player panel shows,
+    /// Reads the system the first time the Media Video or Media Audio panel shows,
     /// so their views only draw what was read; the gallery calls it as the
     /// section opens. GStreamer starts and the devices are probed here, once.
     ///
@@ -255,7 +255,7 @@ pub const Media = struct {
             .audio => ziggui.AudioInfoView(report, self.audio_player.audioOutput()),
         } else ziggui.Text("The system could not be read.");
         return ziggui.VStack(.{
-            Self.card(theme, title, names, body),
+            gallery.Card.view(theme, title, names, body),
             ziggui.HStack(.{
                 ziggui.Button("Refresh Info", ziggui.Callback.init(Self, self, Self.readReport)),
                 ziggui.Spacer(),
@@ -416,29 +416,6 @@ pub const Media = struct {
             observation.presentation_width,
             observation.presentation_height,
         }) catch @panic("oom");
-    }
-
-    /// A titled group on the secondary background, the code names it shows
-    /// under it, as the other panels draw.
-    ///
-    /// - `theme`: the theme this frame draws with.
-    /// - `title`: the group's heading.
-    /// - `names`: what it shows, as code names it (`ziggui.Table`), drawn under it.
-    /// - `content`: the group's contents.
-    /// - Returns: the group's view.
-    fn card(theme: ziggui.Theme, title: []const u8, names: []const u8, content: ziggui.View) ziggui.View {
-        return ziggui.VStack(.{
-            ziggui.Text(title).font(.headline).frameMaxWidth().frameAlign(.leading),
-            ziggui.VStack(.{
-                ziggui.StackBuilder.make(.vertical, 0, .leading, .{content})
-                    .frameMaxWidth()
-                    .padding(14)
-                    .background(theme.colors.secondary_background)
-                    .cornerRadius(theme.metrics.corner_radius)
-                    .frameMaxWidth(),
-                ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
-            }).spacing(4).frameMaxWidth(),
-        }).spacing(8).frameMaxWidth();
     }
 };
 

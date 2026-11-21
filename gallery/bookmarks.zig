@@ -1,4 +1,4 @@
-//! The Web View panel's saved sites, kept in memory: a gallery keeps no
+//! The Media Web panel's saved sites, kept in memory: a gallery keeps no
 //! files, so they last as long as the window.
 //!
 //! An app that keeps them on disk reads and writes the list as ZON (a

@@ -328,7 +328,9 @@ pub const ControlPainter = struct {
         });
         const dim: f32 = if (context.disabled) 0.4 else 1;
         const color = label_color.multiplyAlpha(context.opacity * dim);
-        const box = rect.insetBy(mod.ControlMetrics.icon_button_padding_x, mod.ControlMetrics.icon_button_padding_y);
+        // The glyph at its own size, centred: the button may be taller than it
+        // and its padding (the theme's control height).
+        const box = renderer.Rect{ .x = rect.x + (rect.width - icon_button.size) / 2, .y = rect.y + (rect.height - icon_button.size) / 2, .width = icon_button.size, .height = icon_button.size };
         renderer.TextPainter.shared().drawIcon(display_list, context.icon_cache orelse return, icon_button.icon.codepoint(), box, context.scale, color) catch |err| log.debug("icon not drawn [{t}]", .{err});
         try context.hit_regions.append(context.arena, .{ .rect = rect, .action = .{ .callback = icon_button.action }, .disabled = context.disabled });
     }

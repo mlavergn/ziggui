@@ -95,6 +95,10 @@ pub const IconName = renderer.Icon;
 pub const Binding = renderer.Binding;
 /// An app's accent, a setting: the brand's orange or one of macOS's (`theme` applies it, the macOS dark on black).
 pub const Accent = @import("accent.zig").Accent;
+/// What the pointer looks like over a view (`.pointerStyle()`).
+pub const PointerStyle = @import("pointer_style.zig").PointerStyle;
+/// Where stateless scroll views keep their positions between frames.
+pub const ScrollMemory = @import("scroll_memory.zig").ScrollMemory;
 
 // -----------------------------------------------------------------------------
 // Callbacks
@@ -325,5 +329,7 @@ test {
     _ = @import("help_tip.zig");
     _ = @import("test_environment.zig");
     _ = @import("accent.zig");
+    _ = @import("pointer_style.zig");
+    _ = @import("scroll_memory.zig");
     _ = @import("test_window.zig");
 }

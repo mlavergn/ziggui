@@ -1,7 +1,7 @@
 .{
     .name = .ziggui,
     .description = "Zig Cross Platform GUI Module",
-    .version = "3.0.0",
+    .version = "3.1.0",
     .fingerprint = 0x216dc68257d008b,
     .minimum_zig_version = "0.17.1",
     .paths = .{
@@ -13,8 +13,8 @@
     },
     .dependencies = .{
         .zigbuildx = .{
-            .url = "git+https://github.com/mlavergn/zigbuildx?ref=v6.6.0#d1a4ac7497c85fa7cae97b654aa32b1cc72a565c",
-            .hash = "zigbuildx-6.6.0-9koPhGvgBgD_tKJcGnDiCa6chCrGTrHMI1EyfvdBE-2a",
+            .url = "git+https://github.com/mlavergn/zigbuildx?ref=v7.1.0#af09076f946372c75891a95c4d10705a70964725",
+            .hash = "zigbuildx-7.1.0-9koPhHEiBwDJZCNTWnoYCFICXgekccIVSw1I7mjsPrJA",
         },
         .sdl = .{
             .url = "https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz",

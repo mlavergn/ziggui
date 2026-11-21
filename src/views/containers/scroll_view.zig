@@ -25,12 +25,18 @@ const FixedScroll = struct {
     }
 };
 
-/// A vertical scroll view at the top.
+/// A vertical scroll view that keeps its own position, as SwiftUI's does: the
+/// wheel scrolls it, and the offset lasts from frame to frame in
+/// `ScrollMemory`, keyed by its place among the frame's stateless scroll views
+/// (`BuildScope.scrollViewKey`), so it holds while the views built before it
+/// stay the same. One whose position the app reads, sets or keeps across a
+/// change of view takes `ScrollViewState` and a `ScrollState` of its own.
 ///
 /// - `content`: what scrolls.
 /// - Returns: the view.
 pub fn ScrollView(content: mod.View) mod.View {
-    return FixedScroll.view(.vertical, 0, content);
+    const scope = mod.BuildScope.shared();
+    return ScrollViewState(mod.ScrollMemory.shared().state(scope.scrollViewKey(), scope.frame_number), content);
 }
 
 /// A scroll view at a fixed offset along `axis`.

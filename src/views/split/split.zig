@@ -55,7 +55,7 @@ const Split = struct {
         const first = state.resolved(state.total);
         const rest = @max(0, state.total - first - 1);
         const line = mod.BuildScope.shared().tokens().separator;
-        const handle = mod.Empty().onTap(state.pressCallback());
+        const handle = mod.Empty().onTap(state.pressCallback()).pointerStyle(if (horizontal) .columnResize else .rowResize);
         const lead = @max(0, first - grab);
         if (horizontal) {
             const panes = mod.HStack(.{

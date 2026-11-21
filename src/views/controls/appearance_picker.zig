@@ -56,8 +56,6 @@ const AppearanceThumbnail = struct {
     const size = renderer.Size{ .width = 68, .height = 44 };
     /// The thumbnail's corner radius.
     const radius: f32 = 6;
-    /// The ring's width around the chosen thumbnail.
-    const ring: f32 = 3;
 
     /// The appearance it shows.
     appearance: mod.Appearance,
@@ -78,19 +76,8 @@ const AppearanceThumbnail = struct {
         const tokens = scope.tokens();
         const thumbnail = scope.allocator().create(Self) catch @panic("oom");
         thumbnail.* = .{ .appearance = appearance, .accent = tokens.accent, .outline = tokens.separator };
-        // Its corners are drawn rounded rather than clipped: a clip's edge
-        // anti-aliases differently on the GPU, a fill's does not.
         const picture = mod.Canvas(Self, thumbnail, Self.draw).frame(size.width, size.height);
-        // The ring is a ground the thumbnail sits on, so a chiseled theme
-        // draws it as it does every other fill, not as a bevel.
-        var ringed = mod.StackBuilder.make(.vertical, 0, .center, .{picture}).padding(ring).cornerRadius(radius + ring);
-        if (chosen) ringed = ringed.background(tokens.accent);
-        return mod.StackBuilder.make(.vertical, 5, .center, .{
-            ringed,
-            mod.Text(appearance.title()).font(.subheadline).foreground(if (chosen) tokens.label else tokens.secondary_label),
-        }).onTap(mod.Callback.select(selection, @backingInt(appearance)))
-            .accessibilityLabel(appearance.title())
-            .accessibilityAddTraits(.{ .is_button = true, .is_selected = chosen });
+        return mod.ThumbnailChoice.view(picture, radius, appearance.title(), .subheadline, 5, chosen, selection, @backingInt(appearance));
     }
 
     /// Draws the thumbnail: Light's or Dark's little window, or Auto's, light
@@ -114,10 +101,7 @@ const AppearanceThumbnail = struct {
                 try graphics.display_list.popClip();
             },
         }
-        // Inset by half its width, so all of it lies inside the frame.
-        const hairline = graphics.context.theme.metrics.hairline;
-        const edge = renderer.Rect{ .x = frame.x + hairline / 2, .y = frame.y + hairline / 2, .width = frame.width - hairline, .height = frame.height - hairline };
-        try graphics.stroke(edge, radius - hairline / 2, hairline, self.outline);
+        try mod.ThumbnailChoice.outline(graphics, frame, radius, self.outline);
     }
 
     /// Draws a desktop with a menu bar and a window on it: a title bar with
@@ -206,7 +190,7 @@ test "an appearance picker rings the chosen one, and a tap chooses another" {
     // Auto is chosen: its ring is the accent; Light's place is the window's.
     const accent = mod.BuildScope.shared().tokens().accent;
     try std.testing.expect(frame.at(1, 30).approxEql(accent, 0.05));
-    const light_x = 2 * AppearanceThumbnail.ring + AppearanceThumbnail.size.width + 12;
+    const light_x = 2 * mod.ThumbnailChoice.ring + AppearanceThumbnail.size.width + 12;
     try std.testing.expect(frame.at(@intFromFloat(light_x + 1), 30).approxEql(renderer.Color.white, 0.02));
 
     // The three choices are the only tap regions; the rightmost is Dark.

@@ -303,6 +303,33 @@ pub const TextFieldState = struct {
         self.revision +%= 1;
     }
 
+    /// Deletes the selection, or back to the start of the word before the
+    /// caret, as macOS's ⌥⌫ does: the same stops as `moveWordLeft`. A secure
+    /// field deletes back to its start, so the key never shows where its
+    /// spaces are.
+    ///
+    /// - `self`: the field.
+    pub fn deleteWordBackward(self: *Self) void {
+        if (self.deleteSelection()) return;
+        const start = if (self.secure) 0 else self.wordStartBefore(self.caret);
+        if (start == self.caret) return;
+        self.selection_anchor = start;
+        _ = self.deleteSelection();
+    }
+
+    /// Deletes the selection, or on to the end of the word after the caret,
+    /// as macOS's ⌥⌦ does: the same stops as `moveWordRight`. A secure field
+    /// deletes on to its end.
+    ///
+    /// - `self`: the field.
+    pub fn deleteWordForward(self: *Self) void {
+        if (self.deleteSelection()) return;
+        const stop = if (self.secure) self.buffer.items.len else self.wordEndAfter(self.caret);
+        if (stop == self.caret) return;
+        self.selection_anchor = stop;
+        _ = self.deleteSelection();
+    }
+
     // --- caret movement (extend = Shift held, growing the selection) -------
 
     /// Moves the caret one codepoint left; a plain move collapses a selection
@@ -340,6 +367,38 @@ pub const TextFieldState = struct {
         self.beginExtend(extend);
         const items = self.buffer.items;
         if (self.caret < items.len) self.caret = mod.TextLines.init(items).nextCodepointEnd(self.caret);
+    }
+
+    /// Moves the caret to the start of the word before it, as macOS's ⌥←
+    /// does: past anything that is not a word character (spaces, line breaks,
+    /// punctuation), then past the run of word characters (`CharClass.word`:
+    /// letters, digits, `_`, anything non-ASCII) before that. A plain move
+    /// starts from a selection's left edge. A secure field goes to its start,
+    /// so the gesture never shows where its spaces are.
+    ///
+    /// - `self`: the field.
+    /// - `extend`: Shift is held: grow the selection.
+    pub fn moveWordLeft(self: *Self, extend: bool) void {
+        if (self.secure) return self.moveToStart(extend);
+        const from = if (extend) self.caret else if (self.selectionRange()) |range| range.start else self.caret;
+        self.beginExtend(extend);
+        self.caret = self.wordStartBefore(from);
+        self.preferred_column = null;
+    }
+
+    /// Moves the caret to the end of the word after it, as macOS's ⌥→ does:
+    /// past anything that is not a word character, then past the run of word
+    /// characters after that. A plain move starts from a selection's right
+    /// edge. A secure field goes to its end.
+    ///
+    /// - `self`: the field.
+    /// - `extend`: Shift is held: grow the selection.
+    pub fn moveWordRight(self: *Self, extend: bool) void {
+        if (self.secure) return self.moveToEnd(extend);
+        const from = if (extend) self.caret else if (self.selectionRange()) |range| range.end else self.caret;
+        self.beginExtend(extend);
+        self.caret = self.wordEndAfter(from);
+        self.preferred_column = null;
     }
 
     /// Moves the caret to its line's start.
@@ -455,6 +514,44 @@ pub const TextFieldState = struct {
         if (extend) {
             if (self.selection_anchor == null) self.selection_anchor = self.caret;
         } else self.selection_anchor = null;
+    }
+
+    /// Where a word starts before a byte: back over every codepoint that is
+    /// not a word character, then over the word characters before them.
+    ///
+    /// - `self`: the field.
+    /// - `index`: the byte to look back from.
+    /// - Returns: the word's first byte, or 0 when no word lies before.
+    fn wordStartBefore(self: *const Self, index: usize) usize {
+        const items = self.buffer.items;
+        const lines = mod.TextLines.init(items);
+        var at = @min(index, items.len);
+        while (at > 0) {
+            const previous = lines.previousCodepointStart(at);
+            if (CharClass.of(items[previous]) == .word) break;
+            at = previous;
+        }
+        while (at > 0) {
+            const previous = lines.previousCodepointStart(at);
+            if (CharClass.of(items[previous]) != .word) break;
+            at = previous;
+        }
+        return at;
+    }
+
+    /// Where a word ends after a byte: on over every codepoint that is not a
+    /// word character, then over the word characters after them.
+    ///
+    /// - `self`: the field.
+    /// - `index`: the byte to look on from.
+    /// - Returns: the byte just past the word, or the text's end when no word lies after.
+    fn wordEndAfter(self: *const Self, index: usize) usize {
+        const items = self.buffer.items;
+        const lines = mod.TextLines.init(items);
+        var at = @min(index, items.len);
+        while (at < items.len and CharClass.of(items[at]) != .word) at = lines.nextCodepointEnd(at);
+        while (at < items.len and CharClass.of(items[at]) == .word) at = lines.nextCodepointEnd(at);
+        return at;
     }
 };
 
@@ -660,4 +757,104 @@ test "text field state wipes to empty, the old bytes zeroed" {
     try std.testing.expectEqualStrings("", field.text());
     try std.testing.expectEqual(@as(usize, 0), field.caret);
     for (held) |byte| try std.testing.expectEqual(@as(u8, 0), byte);
+}
+
+test "TextFieldState: word moves skip spaces and punctuation, then cross one word" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("  let snake_case = 42, café;\nnext");
+    field.caret = 0;
+    // Right: past the leading spaces to the end of each word in turn; `_`,
+    // digits and non-ASCII letters belong to the word, punctuation does not.
+    const ends = [_][]const u8{ "  let", "  let snake_case", "  let snake_case = 42", "  let snake_case = 42, café", "  let snake_case = 42, café;\nnext" };
+    for (ends) |prefix| {
+        field.moveWordRight(false);
+        try std.testing.expectEqual(prefix.len, field.caret);
+    }
+    // At the end it stays there.
+    field.moveWordRight(false);
+    try std.testing.expectEqual(field.text().len, field.caret);
+    // Left: back to the start of each word, across the line break.
+    const starts = [_]usize{ "  let snake_case = 42, café;\n".len, "  let snake_case = 42, ".len, "  let snake_case = ".len, "  let ".len, "  ".len, 0 };
+    for (starts) |start| {
+        field.moveWordLeft(false);
+        try std.testing.expectEqual(start, field.caret);
+    }
+}
+
+test "TextFieldState: word moves extend with Shift and start from a selection's edge" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("one two three");
+    field.caret = 0;
+    field.moveWordRight(true);
+    field.moveWordRight(true);
+    try std.testing.expectEqualStrings("one two", field.selectedText());
+    // A plain move leaves the selection from its right edge.
+    field.moveWordRight(false);
+    try std.testing.expect(field.selection_anchor == null);
+    try std.testing.expectEqual("one two three".len, field.caret);
+    field.selection_anchor = 4;
+    field.caret = 7; // "two" selected
+    field.moveWordLeft(false);
+    try std.testing.expectEqual(@as(usize, 0), field.caret);
+}
+
+test "TextFieldState: a secure field's word moves go to its ends" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    field.secure = true;
+    try field.setText("pass word");
+    field.caret = 2;
+    field.moveWordRight(false);
+    try std.testing.expectEqual("pass word".len, field.caret);
+    field.moveWordLeft(false);
+    try std.testing.expectEqual(@as(usize, 0), field.caret);
+}
+
+test "TextFieldState: word deletes remove back to a word's start or on to its end" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("call(snake_case, café)");
+    // Back from the end: the ")" and "café", then ", " and "snake_case".
+    field.caret = field.text().len;
+    field.deleteWordBackward();
+    try std.testing.expectEqualStrings("call(snake_case, ", field.text());
+    field.deleteWordBackward();
+    try std.testing.expectEqualStrings("call(", field.text());
+    try std.testing.expectEqual("call(".len, field.caret);
+    // On from the start: "call", then "(" and "snake_case".
+    try field.setText("call(snake_case, café)");
+    field.caret = 0;
+    field.deleteWordForward();
+    try std.testing.expectEqualStrings("(snake_case, café)", field.text());
+    try std.testing.expectEqual(@as(usize, 0), field.caret);
+    field.deleteWordForward();
+    try std.testing.expectEqualStrings(", café)", field.text());
+    // At the ends there is nothing to delete.
+    field.caret = 0;
+    field.deleteWordBackward();
+    try std.testing.expectEqualStrings(", café)", field.text());
+    field.caret = field.text().len;
+    field.deleteWordForward();
+    try std.testing.expectEqualStrings(", café)", field.text());
+}
+
+test "TextFieldState: word deletes take a selection first, and clear a secure field's side" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("one two three");
+    field.selection_anchor = 4;
+    field.caret = 7;
+    field.deleteWordBackward();
+    try std.testing.expectEqualStrings("one  three", field.text());
+
+    field.secure = true;
+    try field.setText("pass word");
+    field.caret = 6;
+    field.deleteWordBackward();
+    try std.testing.expectEqualStrings("ord", field.text());
+    field.caret = 1;
+    field.deleteWordForward();
+    try std.testing.expectEqualStrings("o", field.text());
 }

@@ -12,6 +12,8 @@ pub const VStack = @import("stacks.zig").VStack;
 pub const HStack = @import("stacks.zig").HStack;
 /// Children layered front to back.
 pub const ZStack = @import("stacks.zig").ZStack;
+/// Children side by side, wrapping into rows as wide as offered.
+pub const FlowStack = @import("stacks.zig").FlowStack;
 /// A slice mapped to views, spliced into the enclosing stack.
 pub const ForEach = @import("stacks.zig").ForEach;
 /// Flexible space in a stack.
@@ -64,6 +66,10 @@ pub const ContextMenu = @import("menu.zig").ContextMenu;
 pub const MenuItem = @import("menu.zig").MenuItem;
 /// A pop-up menu's panel: its entries stacked at a fixed width.
 pub const MenuList = @import("menu.zig").MenuList;
+/// One option of a check list: a checkmark column before its content.
+pub const CheckRow = @import("check_list.zig").CheckRow;
+/// A choice's rows in a rounded group, hairlines between them.
+pub const CheckList = @import("check_list.zig").CheckList;
 /// An empty pane's message: a quiet title over a wrapped detail, centered.
 pub const EmptyState = @import("empty_state.zig").EmptyState;
 /// The notice strip: a busy mark, the last notice, and an optional action.
@@ -135,6 +141,8 @@ pub const SettingRow = @import("setting_row.zig").SettingRow;
 pub const View = @import("../module.zig").View;
 /// The build arena (from the views module).
 pub const BuildScope = @import("../module.zig").BuildScope;
+/// Where stateless scroll views keep their positions (from the views module).
+pub const ScrollMemory = @import("../module.zig").ScrollMemory;
 /// Builds stack views (from the views module).
 pub const StackBuilder = @import("../module.zig").StackBuilder;
 /// A scroll view's app-owned offsets (from the views module).
@@ -194,6 +202,7 @@ test {
     _ = @import("navigation_path.zig");
     _ = @import("navigation.zig");
     _ = @import("menu.zig");
+    _ = @import("check_list.zig");
     _ = @import("empty_state.zig");
     _ = @import("notice_bar.zig");
     _ = @import("pane_title.zig");

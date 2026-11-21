@@ -105,21 +105,24 @@ pub const SettingsPanel = struct {
     }
 
     /// The Settings panel: the settings drawn as a window would show them,
-    /// and a button that presents them in a sheet.
+    /// and a button that presents them in a sheet. Their theme and accent are
+    /// the gallery's own, so a choice there redraws the whole window.
     ///
     /// - `self`: the panel.
     /// - `theme`: the theme this frame draws with.
+    /// - `family`: the gallery's theme family, its index in `ziggui.ThemeFamily.all`.
+    /// - `accent`: the gallery's accent, its choice index (`ziggui.Accent.atChoice`).
     /// - Returns: the panel's view.
-    pub fn panel(self: *Self, theme: ziggui.Theme) ziggui.View {
+    pub fn panel(self: *Self, theme: ziggui.Theme, family: ziggui.Binding(i64), accent: ziggui.Binding(i64)) ziggui.View {
         const tokens = ziggui.BuildScope.shared().tokens();
-        const window = self.settings()
+        const window = self.settings(family, accent)
             .frameWidth(500)
             .background(theme.colors.window_background)
             .cornerRadius(10)
             .border(theme.colors.separator, theme.metrics.hairline);
         // Built only while presented: the settings are a whole tree of forms.
         const sheet = if (self.show_sheet.get()) ziggui.VStack(.{
-            self.settings(),
+            self.settings(family, accent),
             ziggui.HStack(.{
                 ziggui.Spacer(),
                 ziggui.ButtonRoled("Done", .prominent, ziggui.Callback.init(Self, self, Self.closeSheet)),
@@ -127,7 +130,7 @@ pub const SettingsPanel = struct {
         }).spacing(0).frameWidth(500) else ziggui.Empty();
         return ziggui.VStack(.{
             ziggui.HStack(.{ ziggui.Spacer(), window, ziggui.Spacer() }).frameMaxWidth(),
-            ziggui.Text("ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker").font(.caption).mono().foreground(tokens.secondary_label).frameMaxWidth().frameAlign(.leading),
+            gallery.CardName.shared().view("ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker · ziggui.ThemePicker", tokens.secondary_label),
             ziggui.HStack(.{
                 ziggui.Button("Present in a sheet", ziggui.Callback.init(Self, self, Self.openSheet)),
                 ziggui.Spacer(),
@@ -138,10 +141,12 @@ pub const SettingsPanel = struct {
     /// The settings: General, Editing and Advanced pages.
     ///
     /// - `self`: the panel.
+    /// - `family`: the theme family's index, for the General page's theme picker.
+    /// - `accent`: the accent's choice index, for the same picker.
     /// - Returns: the settings view.
-    fn settings(self: *Self) ziggui.View {
+    fn settings(self: *Self, family: ziggui.Binding(i64), accent: ziggui.Binding(i64)) ziggui.View {
         const tabs = ziggui.BuildScope.shared().allocator().dupe(ziggui.Tab, &.{
-            .{ .label = "General", .icon = .settings, .content = self.generalPage() },
+            .{ .label = "General", .icon = .settings, .content = self.generalPage(family, accent) },
             .{ .label = "Editing", .icon = .pencilLine, .content = self.editingPage() },
             .{ .label = "Advanced", .icon = .slidersHorizontal, .content = self.advancedPage() },
         }) catch @panic("oom");
@@ -151,8 +156,10 @@ pub const SettingsPanel = struct {
     /// The General page.
     ///
     /// - `self`: the panel.
+    /// - `family`: the theme family's index, for the theme picker.
+    /// - `accent`: the accent's choice index, for the theme picker.
     /// - Returns: the page.
-    fn generalPage(self: *Self) ziggui.View {
+    fn generalPage(self: *Self, family: ziggui.Binding(i64), accent: ziggui.Binding(i64)) ziggui.View {
         return ziggui.Form(.{
             ziggui.Section(.{
                 ziggui.LabeledContent("Startup:", ziggui.VStack(.{
@@ -165,7 +172,11 @@ pub const SettingsPanel = struct {
                 }).spacing(8).alignment(.leading)),
             }),
             ziggui.Section(.{
-                ziggui.LabeledContent("Appearance:", ziggui.AppearancePicker(self.appearance.binding())),
+                ziggui.LabeledContent("Appearance:", ziggui.VStack(.{
+                    ziggui.AppearancePicker(self.appearance.binding()),
+                    Self.help(self.appearanceHelp()),
+                }).spacing(4).alignment(.leading)),
+                ziggui.LabeledContent("Theme:", ziggui.ThemePicker(family, accent)),
                 ziggui.LabeledContent("Open files in:", ziggui.Picker(self.open_in.binding(), &open_options)),
             }),
             ziggui.Section(.{
@@ -175,6 +186,23 @@ pub const SettingsPanel = struct {
                 }).spacing(4).alignment(.leading)),
             }),
         });
+    }
+
+    /// What the chosen appearance draws in (`Appearance.resolved`), the
+    /// window's own scheme standing in for the system's.
+    ///
+    /// - `self`: the panel.
+    /// - Returns: the help line, in the build arena.
+    fn appearanceHelp(self: *const Self) []const u8 {
+        const appearance = ziggui.Appearance.at(self.appearance.get());
+        const system = ziggui.BuildScope.shared().theme().scheme;
+        const scheme = appearance.resolved(system);
+        const name = if (scheme == .dark) "dark" else "light";
+        const allocator = ziggui.BuildScope.shared().allocator();
+        return (if (appearance == .automatic)
+            allocator.print("Follows the system: draws {s} now.", .{name})
+        else
+            allocator.print("Always draws {s}.", .{name})) catch @panic("oom");
     }
 
     /// The Editing page.
@@ -257,10 +285,14 @@ test "settings panel: beta releases are offered only while updates are checked" 
     defer panel.deinit();
     const window = try ziggui.TestWindow.create(std.testing.allocator);
     defer window.destroy();
+    var family = ziggui.State(i64).init(std.testing.allocator, 0);
+    defer family.deinit();
+    var accent = ziggui.State(i64).init(std.testing.allocator, 0);
+    defer accent.deinit();
     for ([_]bool{ true, false }) |checking| {
         panel.check_updates.set(checking);
         window.begin(ziggui.MacosTheme.light);
-        const view = panel.settings();
+        const view = panel.settings(family.binding(), accent.binding());
         window.end();
         var frame = try window.render(view, 500, 420);
         defer frame.deinit();
@@ -273,4 +305,16 @@ test "settings panel: beta releases are offered only while updates are checked" 
         }
         try std.testing.expectEqual(@as(usize, 4), toggles);
     }
+}
+
+test "settings panel: the appearance's help says what it draws in" {
+    var panel = SettingsPanel.init(std.testing.allocator);
+    defer panel.deinit();
+    const window = try ziggui.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    window.begin(ziggui.MacosTheme.dark);
+    defer window.end();
+    try std.testing.expectEqualStrings("Follows the system: draws dark now.", panel.appearanceHelp());
+    panel.appearance.set(1);
+    try std.testing.expectEqualStrings("Always draws light.", panel.appearanceHelp());
 }

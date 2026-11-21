@@ -21,6 +21,10 @@ pub const HitRegion = struct {
     /// click only on the same thing; null leaves its place and handler to
     /// tell it apart.
     id: ?u64 = null,
+
+    /// The pointer's look over the region (`View.pointerStyle`), or null for
+    /// the arrow (or the I-beam over text).
+    pointer_style: ?mod.PointerStyle = null,
 };
 
 // -----------------------------------------------------------------------------

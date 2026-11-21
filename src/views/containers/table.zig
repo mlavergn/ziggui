@@ -118,7 +118,8 @@ const TableModel = struct {
             mod.Rectangle(mod.BuildScope.shared().tokens().tertiary_label).frame(1, 14),
         }).spacing(0)
             .frame(grab, 14)
-            .onTap(mod.Callback.tagged(mod.TableColumnCustomization, customization, mod.TableColumnCustomization.pressEdge, column_index));
+            .onTap(mod.Callback.tagged(mod.TableColumnCustomization, customization, mod.TableColumnCustomization.pressEdge, column_index))
+            .pointerStyle(.columnResize);
         // The edge holds the gap before the next column.
         const content = mod.HStack(.{ title, mod.Spacer(), edge }).spacing(0).paddingInsets(.{ .leading = insets.leading });
         if (width) |fixed| return content.frameWidth(fixed);

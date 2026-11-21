@@ -94,6 +94,9 @@ pub const Modifiers = struct {
     /// What this view is (`.id`), carried by its tap region, so a double
     /// click counts only two presses on the same thing.
     id: ?u64 = null,
+    /// The pointer's look over this view (`.pointerStyle()`), carried by its
+    /// tap, secondary-tap and drag regions; null leaves it to what is under it.
+    pointer_style: ?mod.PointerStyle = null,
     /// Painted only while the cursor is inside the nearest `hover_scope`.
     reveal_on_hover: bool = false,
     /// A `TextEditor` that draws no field surface of its own (its container

@@ -530,6 +530,20 @@ pub const View = struct {
         return view;
     }
 
+    /// Sets what the pointer looks like over this view, as SwiftUI's
+    /// `.pointerStyle()` does: a split view's divider shows `.columnResize`.
+    /// It applies where the view takes presses (a tap, a secondary tap, a
+    /// drag), whose regions carry it, and holds for a drag a press on it arms.
+    ///
+    /// - `self`: the view.
+    /// - `style`: the pointer's look.
+    /// - Returns: the view.
+    pub fn pointerStyle(self: *const Self, style: mod.PointerStyle) Self {
+        var view = self.*;
+        view.modifiers.pointer_style = style;
+        return view;
+    }
+
     /// Shows `text` in a small label once the pointer rests on this view, like
     /// SwiftUI's `.help` and a native tooltip (`HelpTip`). An icon-only button
     /// says what it does this way; a disabled view still shows its hint, so it

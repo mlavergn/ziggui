@@ -73,7 +73,7 @@ pub const Pickers = struct {
     /// - Returns: the panel's view.
     pub fn panel(self: *Self, theme: ziggui.Theme) ziggui.View {
         return ziggui.VStack(.{
-            Self.card(theme, "Picker in a Form: a pop-up menu, as the platform draws it", "ziggui.Picker · ziggui.Form · .pickerStyle(.automatic)", ziggui.Form(.{
+            gallery.Card.view(theme, "Picker in a Form: a pop-up menu, as the platform draws it", "ziggui.Picker · ziggui.Form · .pickerStyle(.automatic)", ziggui.Form(.{
                 ziggui.Section(.{
                     ziggui.LabeledContent("Message format:", ziggui.Picker(self.format.binding(), &format_options)),
                     ziggui.LabeledContent("Check spelling:", ziggui.Picker(self.spelling.binding(), &spelling_options)),
@@ -87,7 +87,7 @@ pub const Pickers = struct {
                     ziggui.LabeledContent("Undo send delay:", ziggui.Picker(self.delay.binding(), &delay_options)),
                 }),
             })),
-            Self.card(theme, "Outside a Form: segmented, or a menu asked for", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu)", ziggui.VStack(.{
+            gallery.Card.view(theme, "Outside a Form: segmented, or a menu asked for", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu)", ziggui.VStack(.{
                 ziggui.HStack(.{ ziggui.Picker(self.spelling.binding(), &spelling_options), ziggui.Spacer() }),
                 ziggui.HStack(.{ ziggui.Picker(self.spelling.binding(), &spelling_options).pickerStyle(.menu), ziggui.Spacer() }),
             }).spacing(12).alignment(.leading)),
@@ -98,29 +98,6 @@ pub const Pickers = struct {
             ziggui.Text("While the menu is open: ↑ ↓ move, Return chooses, Esc closes.")
                 .foreground(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
-    }
-
-    /// A titled group on the secondary background, the code names it shows
-    /// under it, as the other panels draw.
-    ///
-    /// - `theme`: the theme this frame draws with.
-    /// - `title`: the group's heading.
-    /// - `names`: what it shows, as code names it, drawn under it.
-    /// - `content`: the group's contents.
-    /// - Returns: the group's view.
-    fn card(theme: ziggui.Theme, title: []const u8, names: []const u8, content: ziggui.View) ziggui.View {
-        return ziggui.VStack(.{
-            ziggui.Text(title).font(.headline).frameMaxWidth().frameAlign(.leading),
-            ziggui.VStack(.{
-                ziggui.StackBuilder.make(.vertical, 0, .leading, .{content})
-                    .frameMaxWidth()
-                    .padding(14)
-                    .background(theme.colors.secondary_background)
-                    .cornerRadius(theme.metrics.corner_radius)
-                    .frameMaxWidth(),
-                ziggui.Text(names).font(.caption).mono().foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
-            }).spacing(4).frameMaxWidth(),
-        }).spacing(8).frameMaxWidth();
     }
 };
 

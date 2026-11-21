@@ -32,6 +32,8 @@ pub const Ellipse = @import("shapes.zig").Ellipse;
 pub const LinearGradient = @import("linear_gradient.zig").LinearGradient;
 /// Three bouncing dots.
 pub const LoadingDots = @import("loading_dots.zig").LoadingDots;
+/// A ring of dots turning: a small indeterminate busy mark.
+pub const Spinner = @import("spinner.zig").Spinner;
 /// A push button.
 pub const Button = @import("button.zig").Button;
 /// A push button with a role.
@@ -86,6 +88,16 @@ pub const IconSegment = @import("icon_segment.zig").IconSegment;
 pub const Appearance = @import("appearance.zig").Appearance;
 /// A settings page's appearance choice: Auto, Light and Dark as little windows.
 pub const AppearancePicker = @import("appearance_picker.zig").AppearancePicker;
+/// A settings page's theme choice: a little window per theme family, then the accent swatches.
+pub const ThemePicker = @import("theme_picker.zig").ThemePicker;
+/// The theme families alone, as mini renderings with their names as hover hints.
+pub const ThemeFamilyPicker = @import("theme_picker.zig").ThemeFamilyPicker;
+/// The frame both settings pickers draw a choice in (internal to the controls).
+pub const ThumbnailChoice = @import("thumbnail_choice.zig").ThumbnailChoice;
+/// A label renamed in place: a click while it is selected makes it a field.
+pub const EditableText = @import("editable_text.zig").EditableText;
+/// An `EditableText`'s text, edit and armed click; app-owned.
+pub const EditableTextState = @import("editable_text_state.zig").EditableTextState;
 
 /// A node of the view tree (from the views module).
 pub const View = @import("../module.zig").View;
@@ -105,6 +117,10 @@ pub const TextLines = @import("../module.zig").TextLines;
 pub const ScrollState = @import("../module.zig").ScrollState;
 /// What a `Canvas` draws with (from the views module).
 pub const GraphicsContext = @import("../module.zig").GraphicsContext;
+/// A view's text style token (from the views module).
+pub const FontToken = @import("../module.zig").FontToken;
+/// An app's accent color, a setting (from the views module).
+pub const Accent = @import("../module.zig").Accent;
 /// Markers a `Canvas` draws over a picture (from the views module).
 pub const CanvasMarkers = @import("../module.zig").CanvasMarkers;
 /// A `ZoomableImage`'s zoom and pan (from the views module).
@@ -125,6 +141,14 @@ pub const StackBuilder = @import("../module.zig").StackBuilder;
 pub const BuildTokens = @import("../module.zig").BuildTokens;
 /// The built-in controls' geometry (from the views module).
 pub const ControlMetrics = @import("../module.zig").ControlMetrics;
+/// The keyboard focus (from the views module).
+pub const Focus = @import("../module.zig").Focus;
+/// The frame time and frame requests (from the views module).
+pub const FrameClock = @import("../module.zig").FrameClock;
+/// Taps, drags and click counts (from the views module).
+pub const PointerInput = @import("../module.zig").PointerInput;
+/// SDL3 keycodes and modifier bits as named constants (from the views module).
+pub const SdlKey = @import("../module.zig").SdlKey;
 /// A headless window for the unit tests (from the views module).
 pub const TestWindow = @import("../module.zig").TestWindow;
 
@@ -139,6 +163,7 @@ test {
     _ = @import("shapes.zig");
     _ = @import("linear_gradient.zig");
     _ = @import("loading_dots.zig");
+    _ = @import("spinner.zig");
     _ = @import("button.zig");
     _ = @import("toggle.zig");
     _ = @import("slider.zig");
@@ -157,4 +182,8 @@ test {
     _ = @import("segmented_control.zig");
     _ = @import("appearance.zig");
     _ = @import("appearance_picker.zig");
+    _ = @import("theme_picker.zig");
+    _ = @import("thumbnail_choice.zig");
+    _ = @import("editable_text.zig");
+    _ = @import("editable_text_state.zig");
 }

@@ -36,6 +36,14 @@ pub const BuildScope = struct {
     /// last frame drew from one scrolled or switched away (`ZoomState.contains`).
     frame_number: u64 = 0,
 
+    /// How many stateless scroll views the frame has built so far, for
+    /// `scrollViewKey`; `begin` and `beginSecondary` empty it.
+    scroll_count: u32 = 0,
+
+    /// Whether the frame being built is a second window's (`beginSecondary`),
+    /// so its scroll views keep positions apart from the main window's.
+    secondary: bool = false,
+
     /// The current thread's scope.
     threadlocal var shared_scope: Self = .{};
 
@@ -66,6 +74,7 @@ pub const BuildScope = struct {
     /// - `arena`: the arena view constructors allocate from.
     pub fn begin(self: *Self, arena: std.mem.Allocator) void {
         self.frame_number +%= 1;
+        self.secondary = false;
         self.open(arena);
     }
 
@@ -77,6 +86,7 @@ pub const BuildScope = struct {
     /// - `self`: the scope.
     /// - `arena`: the arena view constructors allocate from.
     pub fn beginSecondary(self: *Self, arena: std.mem.Allocator) void {
+        self.secondary = true;
         self.open(arena);
     }
 
@@ -124,6 +134,20 @@ pub const BuildScope = struct {
         const entry = self.selection_counts.getOrPut(std.heap.page_allocator, content) catch @panic("oom");
         entry.value_ptr.* = if (entry.found_existing) entry.value_ptr.* + 1 else 0;
         return entry.value_ptr.*;
+    }
+
+    /// The key a stateless scroll view keeps its position under
+    /// (`ScrollMemory`): its place among the frame's stateless scroll views,
+    /// in build order, and the window it is built for. Build order is the same
+    /// frame to frame, so the key stays with its view while the views built
+    /// before it stay the same.
+    ///
+    /// - `self`: the scope.
+    /// - Returns: the key.
+    pub fn scrollViewKey(self: *Self) u64 {
+        const ordinal = self.scroll_count;
+        self.scroll_count += 1;
+        return (@as(u64, @intFromBool(self.secondary)) << 32) | ordinal;
     }
 
     /// Formats a string in the build arena (for state-derived text).
@@ -266,6 +290,7 @@ pub const BuildScope = struct {
     fn open(self: *Self, arena: std.mem.Allocator) void {
         if (self.wrap_cache) |cache| cache.beginFrame();
         self.selection_counts.clearRetainingCapacity();
+        self.scroll_count = 0;
         self.arena = arena;
     }
 };

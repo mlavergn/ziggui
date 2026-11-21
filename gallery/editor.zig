@@ -524,7 +524,7 @@ pub const Editor = struct {
         return ziggui.HStack(.{
             ziggui.Text(counts).font(.footnote).foreground(theme.colors.secondary_label),
             ziggui.Spacer(),
-            ziggui.Text(if (self.show_find.get()) "ziggui.TextEditor · ziggui.FindBar · ziggui.FindCount · ziggui.FindActions" else "ziggui.TextEditor").font(.caption).mono().foreground(theme.colors.tertiary_label),
+            gallery.CardName.shared().view(if (self.show_find.get()) "ziggui.TextEditor · ziggui.FindBar · ziggui.FindCount · ziggui.FindActions" else "ziggui.TextEditor", theme.colors.tertiary_label),
             ziggui.Text(self.status()).font(.footnote).foreground(theme.colors.tertiary_label),
         }).spacing(14)
             .paddingInsets(.{ .top = 6, .leading = 14, .bottom = 6, .trailing = 14 })
