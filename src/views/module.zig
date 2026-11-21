@@ -72,6 +72,8 @@ pub const Modifiers = @import("core/module.zig").Modifiers;
 pub const ToggleStyle = @import("core/module.zig").ToggleStyle;
 /// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerStyle = @import("core/module.zig").PickerStyle;
+/// Whether scroll views draw their scrollbars (`.scrollIndicators()`).
+pub const ScrollIndicatorVisibility = @import("core/module.zig").ScrollIndicatorVisibility;
 /// A `.sheet`/`.alert`/`.popover` modifier.
 pub const OverlayModifier = @import("core/module.zig").OverlayModifier;
 /// A `.frame(...)` modifier's sizes and alignment.
@@ -146,6 +148,12 @@ pub const OverlayRequest = @import("core/module.zig").OverlayRequest;
 pub const SelectHit = @import("core/module.zig").SelectHit;
 /// What a `Canvas` draws with (SwiftUI's `GraphicsContext`).
 pub const GraphicsContext = @import("core/module.zig").GraphicsContext;
+/// Markers a `Canvas` draws over a picture, and the hit test that finds one.
+pub const CanvasMarkers = @import("core/module.zig").CanvasMarkers;
+/// A `ZoomableImage`'s app-owned zoom, pan and last layout.
+pub const ZoomState = @import("core/module.zig").ZoomState;
+/// Where a zoomed picture was laid out, and how its content maps into it.
+pub const ZoomGeometry = @import("core/module.zig").ZoomGeometry;
 /// The build arena, published theme and tokens, viewport, wrap cache and link handler (`BuildScope.shared()`).
 pub const BuildScope = @import("core/module.zig").BuildScope;
 /// The build-time theme colors, `label`, `separator`, `added` and `removed` included.
@@ -200,6 +208,8 @@ pub const TestWindow = @import("core/module.zig").TestWindow;
 
 /// One styled run of a `RichText`.
 pub const Span = @import("text/module.zig").Span;
+/// A run of a text's bytes, as `HighlightedText` marks them.
+pub const TextRange = @import("text/module.zig").TextRange;
 /// A laid-out piece of one span on one line of a rich paragraph.
 pub const RichRun = @import("text/module.zig").RichRun;
 /// One laid-out line of a rich paragraph.
@@ -230,6 +240,8 @@ pub const RichText = @import("controls/module.zig").RichText;
 pub const RichTextPreformatted = @import("controls/module.zig").RichTextPreformatted;
 /// A wrapped paragraph of styled spans at a given line height.
 pub const RichTextSpaced = @import("controls/module.zig").RichTextSpaced;
+/// One line of text with runs of it marked, as search results mark a match.
+pub const HighlightedText = @import("controls/module.zig").HighlightedText;
 /// A filled rectangle.
 pub const Rectangle = @import("controls/module.zig").Rectangle;
 /// A filled rounded rectangle.
@@ -276,6 +288,10 @@ pub const Icon = @import("controls/module.zig").Icon;
 pub const IconButton = @import("controls/module.zig").IconButton;
 /// A view that paints itself through a callback.
 pub const Canvas = @import("controls/module.zig").Canvas;
+/// A picture that zooms and pans, with an overlay drawn through its geometry.
+pub const ZoomableImage = @import("controls/module.zig").ZoomableImage;
+/// The picture a `ZoomableImage` shows.
+pub const ZoomPicture = @import("controls/module.zig").ZoomPicture;
 /// A push button with its keyboard shortcut in a key cap after the label.
 pub const ButtonKeyed = @import("controls/module.zig").ButtonKeyed;
 /// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
@@ -290,6 +306,10 @@ pub const SegmentedControl = @import("controls/module.zig").SegmentedControl;
 pub const IconSegmentedControl = @import("controls/module.zig").IconSegmentedControl;
 /// One segment of an `IconSegmentedControl`: its icon and title.
 pub const IconSegment = @import("controls/module.zig").IconSegment;
+/// An app's appearance setting: follow the system, light or dark.
+pub const Appearance = @import("controls/module.zig").Appearance;
+/// A settings page's appearance choice: Auto, Light and Dark as little windows.
+pub const AppearancePicker = @import("controls/module.zig").AppearancePicker;
 
 // -----------------------------------------------------------------------------
 // Containers (containers/)
@@ -476,6 +496,8 @@ pub const StatusMarkState = @import("chat/module.zig").StatusMarkState;
 pub const StatusMark = @import("chat/module.zig").StatusMark;
 /// A header that folds content away, like SwiftUI's `DisclosureGroup`.
 pub const DisclosureGroup = @import("chat/module.zig").DisclosureGroup;
+/// A `DisclosureGroup` with an accessory at its header row's trailing edge.
+pub const DisclosureGroupAccessory = @import("chat/module.zig").DisclosureGroupAccessory;
 /// A small capsule: a mode, a model, an attachment.
 pub const Chip = @import("chat/module.zig").Chip;
 /// Preformatted text on a tinted panel.
@@ -602,6 +624,12 @@ pub const FileBrowserState = @import("forms/module.zig").FileBrowserState;
 pub const FileBrowser = @import("forms/module.zig").FileBrowser;
 /// A search field: a magnifying glass, the text, and a clear button.
 pub const SearchField = @import("forms/module.zig").SearchField;
+/// Where a find stands: which match is current, of how many.
+pub const FindCount = @import("forms/module.zig").FindCount;
+/// What a `FindBar`'s field, buttons and keys do (`handleKey`).
+pub const FindActions = @import("forms/module.zig").FindActions;
+/// A find bar: a search field, the count, and Previous, Next and Done.
+pub const FindBar = @import("forms/module.zig").FindBar;
 /// A composed field's look: the raised ground, a strong hairline border, a 6pt corner.
 pub const FieldChrome = @import("forms/module.zig").FieldChrome;
 

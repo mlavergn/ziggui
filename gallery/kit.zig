@@ -330,7 +330,7 @@ pub const Kit = struct {
         else
             "Picks nothing: the selection is hidden.";
         return ziggui.VStack(.{
-            Self.card(theme, "FileBrowser: a tap selects, a double-click opens a folder", "ziggui.FileBrowser", ziggui.FileBrowser(&self.files, true).frameHeight(280)),
+            Self.card(theme, "FileBrowser: a tap or the arrows select, a double-click or Return opens a folder", "ziggui.FileBrowser", ziggui.FileBrowser(&self.files, true).frameHeight(200)),
             ziggui.Text(said).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
     }

@@ -30,6 +30,12 @@ pub const BuildScope = struct {
     /// arena, so it never outlives its memory; `begin` empties it.
     selection_counts: std.AutoHashMapUnmanaged(u64, u32) = .empty,
 
+    /// The main window's frame being built (or last built), counted by `begin`
+    /// from 1 (a tray panel's `beginSecondary` leaves it): what a view stamps
+    /// its state with when it paints, so the event loop can tell a view the
+    /// last frame drew from one scrolled or switched away (`ZoomState.contains`).
+    frame_number: u64 = 0,
+
     /// The current thread's scope.
     threadlocal var shared_scope: Self = .{};
 
@@ -59,9 +65,19 @@ pub const BuildScope = struct {
     /// - `self`: the scope.
     /// - `arena`: the arena view constructors allocate from.
     pub fn begin(self: *Self, arena: std.mem.Allocator) void {
-        if (self.wrap_cache) |cache| cache.beginFrame();
-        self.selection_counts.clearRetainingCapacity();
-        self.arena = arena;
+        self.frame_number +%= 1;
+        self.open(arena);
+    }
+
+    /// Opens the build arena for a second window's frame (the tray panel the
+    /// SDL loop draws after the main window), as `begin` does, but leaves
+    /// `frame_number`, which counts only the main window's frames: a view the
+    /// main window drew stays the one its next events land on.
+    ///
+    /// - `self`: the scope.
+    /// - `arena`: the arena view constructors allocate from.
+    pub fn beginSecondary(self: *Self, arena: std.mem.Allocator) void {
+        self.open(arena);
     }
 
     /// Closes the build arena.
@@ -240,6 +256,17 @@ pub const BuildScope = struct {
     pub fn layoutRich(self: *const Self, arena: std.mem.Allocator, spans: []const mod.Span, faces: mod.RichFaces, pixel_size: f32, line_multiple: f32, max_width: f32, preformatted: bool) std.mem.Allocator.Error!mod.RichLayout {
         const cache = self.wrap_cache orelse return mod.RichLayout.layOut(arena, spans, faces, pixel_size, line_multiple, max_width, preformatted);
         return cache.layoutRich(arena, spans, faces, pixel_size, line_multiple, max_width, preformatted);
+    }
+
+    /// Starts a frame's build without counting it: the wrap cache may empty
+    /// itself, the selection ordinals restart, and the arena opens.
+    ///
+    /// - `self`: the scope.
+    /// - `arena`: the arena view constructors allocate from.
+    fn open(self: *Self, arena: std.mem.Allocator) void {
+        if (self.wrap_cache) |cache| cache.beginFrame();
+        self.selection_counts.clearRetainingCapacity();
+        self.arena = arena;
     }
 };
 

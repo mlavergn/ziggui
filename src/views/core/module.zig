@@ -67,6 +67,8 @@ pub const Modifiers = @import("modifiers.zig").Modifiers;
 pub const ToggleStyle = @import("toggle_style.zig").ToggleStyle;
 /// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerStyle = @import("picker_style.zig").PickerStyle;
+/// Whether scroll views draw their scrollbars (`.scrollIndicators()`).
+pub const ScrollIndicatorVisibility = @import("scroll_indicator_visibility.zig").ScrollIndicatorVisibility;
 /// A `.sheet`/`.alert`/`.popover` modifier.
 pub const OverlayModifier = @import("modifiers.zig").OverlayModifier;
 /// A `.frame(...)` modifier's sizes and alignment.
@@ -153,6 +155,12 @@ pub const OverlayRequest = @import("overlay_request.zig").OverlayRequest;
 pub const SelectHit = @import("select_hit.zig").SelectHit;
 /// What a `Canvas` draws with (SwiftUI's `GraphicsContext`).
 pub const GraphicsContext = @import("graphics_context.zig").GraphicsContext;
+/// Markers a `Canvas` draws over a picture, and the hit test that finds one.
+pub const CanvasMarkers = @import("canvas_markers.zig").CanvasMarkers;
+/// A `ZoomableImage`'s app-owned zoom, pan and last layout.
+pub const ZoomState = @import("zoom_state.zig").ZoomState;
+/// Where a zoomed picture was laid out, and how its content maps into it.
+pub const ZoomGeometry = @import("zoom_state.zig").ZoomGeometry;
 
 // -----------------------------------------------------------------------------
 // Building, lowering, painting, rendering
@@ -267,6 +275,7 @@ test {
     _ = @import("kind.zig");
     _ = @import("modifiers.zig");
     _ = @import("toggle_style.zig");
+    _ = @import("scroll_indicator_visibility.zig");
     _ = @import("picker_style.zig");
     _ = @import("picker_menu.zig");
     _ = @import("frame_specification.zig");
@@ -293,6 +302,8 @@ test {
     _ = @import("overlay_request.zig");
     _ = @import("select_hit.zig");
     _ = @import("graphics_context.zig");
+    _ = @import("canvas_markers.zig");
+    _ = @import("zoom_state.zig");
     _ = @import("build_scope.zig");
     _ = @import("build_tokens.zig");
     _ = @import("wrap_cache.zig");

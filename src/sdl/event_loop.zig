@@ -192,7 +192,9 @@ fn WindowFrame(comptime AppState: type) type {
             views.BuildScope.shared().setViewport(point_width, point_height);
             app.caret_drawn = app.caretPhaseOn(sdl_c.SDL_GetTicks());
             views.Focus.shared().setCaretVisible(app.caret_drawn);
-            views.BuildScope.shared().begin(arena);
+            // The panel's build leaves the frame count the main window's, so a
+            // view it drew still takes the events that follow (`ZoomState.contains`).
+            if (self.panel_body != null) views.BuildScope.shared().beginSecondary(arena) else views.BuildScope.shared().begin(arena);
             const root = if (self.panel_body) |panel_body| panel_body(self.state) else self.body(self.state);
             views.BuildScope.shared().end();
 

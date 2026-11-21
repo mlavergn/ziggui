@@ -460,6 +460,10 @@ pub const Gallery = struct {
     /// Whether the Chat panel's tool call is unfolded.
     tool_open: bool = false,
 
+    /// Whether the Chat panel's thought is unfolded: open at first, so the
+    /// card shows a group both folded and unfolded.
+    thought_open: bool = true,
+
     /// The Panes panel's virtual list position.
     files_scroll: ziggui.ScrollState = .{},
 
@@ -624,7 +628,8 @@ pub const Gallery = struct {
 
     /// A key went down (ziggui's raw event): Esc takes the Video panel's
     /// player out of full screen, unless a sheet or alert is up; then the Menu Bar panel's keys, then the
-    /// Editor panel's shortcuts while it shows with nothing modal over it.
+    /// Editor panel's shortcuts, or the File Browser's keys while no text field
+    /// has the keyboard, while that panel shows with nothing modal over it.
     ///
     /// - `self`: the gallery.
     /// - `keycode`: the event's `SDL_Keycode`.
@@ -638,8 +643,25 @@ pub const Gallery = struct {
         }
         if (self.menuKeyDown(keycode, modifiers)) return true;
         if (self.showcase.presentsModal()) return false;
-        if (Section.at(self.section.get()) != .editor) return false;
-        return self.editor.keyDown(keycode, modifiers);
+        return switch (Section.at(self.section.get())) {
+            .editor => self.editor.keyDown(keycode, modifiers),
+            .files => if (ziggui.Focus.shared().focused() != null) false else self.kit.files.keyDown(keycode, modifiers, gallery.is_macos) catch |err| {
+                log.err("file browser key not handled [{t}]", .{err});
+                return false;
+            },
+            else => false,
+        };
+    }
+
+    /// The Image & Canvas panel's picture zoom, for the event loop's pinches
+    /// and ⌘-scrolls, while that panel shows with nothing modal over it.
+    ///
+    /// - `self`: the gallery.
+    /// - Returns: the zoom, or null when the picture is not showing.
+    pub fn pictureZoom(self: *Self) ?*ziggui.ZoomState {
+        if (self.showcase.presentsModal()) return null;
+        if (Section.at(self.section.get()) != .canvas) return null;
+        return &self.showcase.picture_zoom;
     }
 
     /// A key came up (ziggui's raw event): the Menu Bar panel's Alt tap
@@ -678,6 +700,13 @@ pub const Gallery = struct {
     /// - `self`: the gallery.
     pub fn toggleTool(self: *Self) void {
         self.tool_open = !self.tool_open;
+    }
+
+    /// Folds or unfolds the Chat panel's thought.
+    ///
+    /// - `self`: the gallery.
+    pub fn toggleThought(self: *Self) void {
+        self.thought_open = !self.thought_open;
     }
 
     /// Selects a row of the Panes panel's table.
@@ -861,10 +890,17 @@ pub const Gallery = struct {
                 ziggui.Chip("screenshot.png · 84 KB", .image, null),
                 ziggui.Spacer(),
             }).spacing(8)),
-            Self.card(active_theme, "Transcript", "ziggui.Bubble · ziggui.DisclosureGroup · ziggui.CodeBlock · ziggui.Quote", ziggui.VStack(.{
+            Self.card(active_theme, "Transcript", "ziggui.Bubble · ziggui.DisclosureGroup · ziggui.DisclosureGroupAccessory · ziggui.CodeBlock · ziggui.Quote", ziggui.VStack(.{
                 Self.leading(ziggui.Bubble(ziggui.WrappedText("List the files and explain the build."), active_theme.colors.accent.withAlpha(0.16))),
                 ziggui.DisclosureGroup(
+                    ziggui.Text("Thought for 4 seconds").font(.footnote).foreground(active_theme.colors.secondary_label),
+                    self.thought_open,
+                    ziggui.Callback.init(Self, self, Self.toggleThought),
+                    ziggui.WrappedText("The build file names every step; list the folder first.").font(.footnote).foreground(active_theme.colors.secondary_label),
+                ),
+                ziggui.DisclosureGroupAccessory(
                     ziggui.Text("ls -la").font(.footnote).mono(),
+                    ziggui.Badge("3 files", .neutral),
                     self.tool_open,
                     toggle,
                     ziggui.CodeBlock("build.zig\nbuild.zig.zon\nsrc/"),
@@ -1285,6 +1321,32 @@ test "the split views resolve their dividers when drawn" {
     try std.testing.expectEqual(ziggui.Axis.vertical, shown.rows.axis);
 }
 
+test "the picture zooms under a pinch only while the Image & Canvas panel shows" {
+    const allocator = std.testing.allocator;
+
+    var shown = try Gallery.init(allocator);
+    defer shown.deinit();
+
+    try std.testing.expectEqual(null, shown.pictureZoom());
+    shown.section.set(@backingInt(Section.canvas));
+    // Tall enough to show the picture card, below the image and chart cards.
+    const rgba = try ziggui.Screenshot.render(allocator, &shown, Gallery.body, .{ .width = 980, .height = 900, .theme = shown.theme() });
+    defer allocator.free(rgba);
+    const zoom = shown.pictureZoom().?;
+    const frame = zoom.geometry.frame;
+    try std.testing.expect(frame.width > 0);
+    // Over the picture a pinch zooms it; beside it, nothing.
+    try std.testing.expect(!zoom.pinch(.{ .x = frame.x - 4, .y = frame.y }, 2));
+    try std.testing.expect(zoom.pinch(.{ .x = frame.x + frame.width / 2, .y = frame.y + frame.height / 2 }, 2));
+    try std.testing.expectApproxEqAbs(@as(f32, 2), zoom.zoom, 1e-5);
+
+    // At the test size the card is scrolled out of sight: never drawn, it takes no pinch.
+    shown.showcase.picture_zoom = .{};
+    const small = try ziggui.Screenshot.render(allocator, &shown, Gallery.body, .{ .width = gallery.test_width, .height = gallery.test_height, .theme = shown.theme() });
+    defer allocator.free(small);
+    try std.testing.expect(!shown.pictureZoom().?.pinch(.{ .x = gallery.test_width / 2, .y = gallery.test_height / 2 }, 2));
+}
+
 test "the panel callbacks fold the tool call and select a row and a hunk" {
     const allocator = std.testing.allocator;
 
@@ -1293,6 +1355,8 @@ test "the panel callbacks fold the tool call and select a row and a hunk" {
 
     shown.toggleTool();
     try std.testing.expect(shown.tool_open);
+    shown.toggleThought();
+    try std.testing.expect(!shown.thought_open);
     shown.selectFile(7);
     try std.testing.expectEqual(@as(usize, 7), shown.file_selected);
     shown.selectHunk(2);

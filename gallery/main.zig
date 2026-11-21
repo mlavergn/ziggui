@@ -544,8 +544,8 @@ const Window = struct {
         return if (target.hoverWaiting()) 16 else 0;
     }
 
-    /// A key went down: the Menu Bar panel's Alt tap and menu keys, and the
-    /// Editor panel's shortcuts.
+    /// A key went down: the Menu Bar panel's Alt tap and menu keys, the
+    /// Editor panel's shortcuts, and the File Browser's keys.
     ///
     /// - `keycode`: its `SDL_Keycode`.
     /// - `modifiers`: its `SDL_Keymod` mask.
@@ -573,14 +573,28 @@ const Window = struct {
         return target.quitRequested();
     }
 
-    /// A mouse event: a press cancels an Alt tap; none is consumed.
+    /// A mouse event: a press cancels an Alt tap; over the Image & Canvas
+    /// panel's picture a pinch or a ⌘- or Ctrl-scroll zooms it about the
+    /// pointer, and a left press on its zoom chip fits it again, consumed
+    /// before it can start the picture's pan drag. A plain scroll is left to
+    /// the page, which scrolls.
     ///
     /// - `event`: the event.
-    /// - Returns: false, so ziggui handles it as usual.
+    /// - Returns: true when the picture took it; otherwise ziggui handles it as usual.
     fn onMouse(event: ziggui.MouseEvent) bool {
         const target = Self.shown orelse return false;
         if (event.kind == .down) target.menu_bar.pointerDown();
-        return false;
+        const zoom = target.pictureZoom() orelse return false;
+        const point = ziggui.Point{ .x = event.x, .y = event.y };
+        if (event.kind == .down and event.button == 1 and zoom.chipContains(point)) {
+            zoom.fit();
+            return true;
+        }
+        return switch (event.kind) {
+            .pinch => zoom.pinch(point, event.scale),
+            .wheel => event.commandOrControl() and zoom.wheel(point, event.delta_x, event.delta_y, true),
+            else => false,
+        };
     }
 
     /// The theme provider: the gallery's selection, the OS appearance on the first frame.

@@ -305,6 +305,8 @@ pub const Modifiers = views.Modifiers;
 pub const ToggleStyle = views.ToggleStyle;
 /// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerStyle = views.PickerStyle;
+/// Whether scroll views draw their scrollbars (`.scrollIndicators()`).
+pub const ScrollIndicatorVisibility = views.ScrollIndicatorVisibility;
 /// A `.sheet`/`.alert`/`.popover` modifier.
 pub const OverlayModifier = views.OverlayModifier;
 /// A `.frame(...)` modifier's sizes and alignment.
@@ -373,6 +375,12 @@ pub const OverlayRequest = views.OverlayRequest;
 pub const SelectHit = views.SelectHit;
 /// What a `Canvas` draws with (SwiftUI's `GraphicsContext`).
 pub const GraphicsContext = views.GraphicsContext;
+/// Markers a `Canvas` draws over a picture, and the hit test that finds one.
+pub const CanvasMarkers = views.CanvasMarkers;
+/// A `ZoomableImage`'s app-owned zoom, pan and last layout.
+pub const ZoomState = views.ZoomState;
+/// Where a zoomed picture was laid out, and how its content maps into it.
+pub const ZoomGeometry = views.ZoomGeometry;
 /// The build arena, published theme and tokens, viewport, wrap cache and link
 /// handler: `BuildScope.shared().begin(arena)`/`end()`, `allocator()`,
 /// `setTheme(theme)`, `theme()`, `tokens()`, `viewport()`, `print(...)`.
@@ -436,6 +444,8 @@ pub const RichText = views.RichText;
 pub const RichTextPreformatted = views.RichTextPreformatted;
 /// A wrapped paragraph of styled spans at a given line height.
 pub const RichTextSpaced = views.RichTextSpaced;
+/// One line of text with runs of it marked, as search results mark a match.
+pub const HighlightedText = views.HighlightedText;
 /// A filled rectangle.
 pub const Rectangle = views.Rectangle;
 /// A filled rounded rectangle.
@@ -482,6 +492,10 @@ pub const Icon = views.Icon;
 pub const IconButton = views.IconButton;
 /// A view that paints itself through a callback.
 pub const Canvas = views.Canvas;
+/// A picture that zooms and pans, with an overlay drawn through its geometry.
+pub const ZoomableImage = views.ZoomableImage;
+/// The picture a `ZoomableImage` shows.
+pub const ZoomPicture = views.ZoomPicture;
 /// A push button with its keyboard shortcut in a key cap after the label.
 pub const ButtonKeyed = views.ButtonKeyed;
 /// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
@@ -496,6 +510,10 @@ pub const SegmentedControl = views.SegmentedControl;
 pub const IconSegmentedControl = views.IconSegmentedControl;
 /// One segment of an `IconSegmentedControl`: its icon and title.
 pub const IconSegment = views.IconSegment;
+/// An app's appearance setting: follow the system, light or dark.
+pub const Appearance = views.Appearance;
+/// A settings page's appearance choice: Auto, Light and Dark as little windows.
+pub const AppearancePicker = views.AppearancePicker;
 
 // -----------------------------------------------------------------------------
 // Containers
@@ -658,6 +676,8 @@ pub const SettingRow = views.SettingRow;
 
 /// One styled run of a `RichText`.
 pub const Span = views.Span;
+/// A run of a text's bytes, as `HighlightedText` marks them.
+pub const TextRange = views.TextRange;
 /// A laid-out piece of one span on one line of a rich paragraph.
 pub const RichRun = views.RichRun;
 /// One laid-out line of a rich paragraph.
@@ -754,6 +774,8 @@ pub const StatusMarkState = views.StatusMarkState;
 pub const StatusMark = views.StatusMark;
 /// A header that folds content away, like SwiftUI's `DisclosureGroup`.
 pub const DisclosureGroup = views.DisclosureGroup;
+/// A `DisclosureGroup` with an accessory at its header row's trailing edge.
+pub const DisclosureGroupAccessory = views.DisclosureGroupAccessory;
 /// A small capsule: a mode, a model, an attachment.
 pub const Chip = views.Chip;
 /// Preformatted text on a tinted panel.
@@ -878,6 +900,12 @@ pub const FileBrowserState = views.FileBrowserState;
 pub const FileBrowser = views.FileBrowser;
 /// A search field: a magnifying glass, the text, and a clear button.
 pub const SearchField = views.SearchField;
+/// Where a find stands: which match is current, of how many.
+pub const FindCount = views.FindCount;
+/// What a `FindBar`'s field, buttons and keys do (`handleKey`).
+pub const FindActions = views.FindActions;
+/// A find bar: a search field, the count, and Previous, Next and Done.
+pub const FindBar = views.FindBar;
 /// A composed field's look: the raised ground, a strong hairline border, a 6pt corner.
 pub const FieldChrome = views.FieldChrome;
 

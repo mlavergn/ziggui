@@ -119,7 +119,8 @@ pub const Scrollbar = struct {
     }
 
     /// Draws the vertical thumb on the right edge of `rect` when the content
-    /// overflows and it is showing. No-op when everything fits.
+    /// overflows and it is showing (`Context.scroll_indicators`). No-op when
+    /// everything fits.
     ///
     /// - `context`: the paint context.
     /// - `scroll_state`: the scroll position.
@@ -133,7 +134,7 @@ pub const Scrollbar = struct {
         const hot = dragging or (if (context.hover_point) |point| Self.strip(rect).contains(point) else false);
 
         // Auto-hide: only visible briefly after the last scroll, then fade out.
-        const fade = Self.fadeAmount(scroll_state, hot) orelse return;
+        const fade = Self.fadeAmount(context, scroll_state, hot) orelse return;
 
         const width: f32 = if (hot) 7 else 4;
         const bar = renderer.Rect{ .x = rect.x + rect.width - width - inset, .y = found.start, .width = width, .height = found.length };
@@ -153,7 +154,7 @@ pub const Scrollbar = struct {
         const found = Self.thumbHorizontal(scroll_state, rect.x) orelse return;
         const dragging = if (mod.PointerInput.shared().area_drag) |armed| armed.context == @as(?*anyopaque, @ptrCast(@constCast(scroll_state))) and armed.function == Self.dragHorizontal else false;
         const hot = dragging or (if (context.hover_point) |point| Self.stripHorizontal(rect).contains(point) else false);
-        const fade = Self.fadeAmount(scroll_state, hot) orelse return;
+        const fade = Self.fadeAmount(context, scroll_state, hot) orelse return;
         const height: f32 = if (hot) 7 else 4;
         const bar = renderer.Rect{ .x = found.start, .y = rect.y + rect.height - height - inset, .width = found.length, .height = height };
         const color = context.theme.colors.secondary_label.withAlpha(0.45 * context.opacity * fade);
@@ -176,14 +177,16 @@ pub const Scrollbar = struct {
         return .{ .start = start + inset + travel * std.math.clamp(offset / max, 0, 1), .length = length, .travel = travel };
     }
 
-    /// How visible a scrollbar is: 1 while hot or just scrolled, fading to 0
-    /// after `FrameClock.scrollbar_hold_ms`.
+    /// How visible a scrollbar is: 1 while hot, just scrolled or kept
+    /// `.visible`, fading to 0 after `FrameClock.scrollbar_hold_ms`.
     ///
+    /// - `context`: the paint context, with the inherited `scroll_indicators`.
     /// - `scroll_state`: the scroll position, with its last scroll's time.
     /// - `hot`: grabbed, or under the pointer.
-    /// - Returns: the opacity; null when hidden (never scrolled, headless, faded out).
-    fn fadeAmount(scroll_state: *const mod.ScrollState, hot: bool) ?f32 {
-        if (hot) return 1;
+    /// - Returns: the opacity; null when hidden (`.hidden`, never scrolled, headless, faded out).
+    fn fadeAmount(context: *const mod.Context, scroll_state: *const mod.ScrollState, hot: bool) ?f32 {
+        if (!context.scroll_indicators.draws()) return null;
+        if (hot or context.scroll_indicators == .visible) return 1;
         const now = mod.FrameClock.shared().time_ms;
         if (scroll_state.last_active_ms == 0 or now == 0) return null;
         const since = now -| scroll_state.last_active_ms;

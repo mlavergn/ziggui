@@ -135,6 +135,9 @@ pub const Modifiers = struct {
     toggle_style: ?mod.ToggleStyle = null,
     /// How the `Picker`s in this subtree draw, or null to inherit. See `.pickerStyle()`.
     picker_style: ?mod.PickerStyle = null,
+    /// Whether the scroll views in this subtree draw their scrollbars, or
+    /// null to inherit. See `.scrollIndicators()`.
+    scroll_indicators: ?mod.ScrollIndicatorVisibility = null,
     /// A `Form`: its subtree's form labels share a column as wide as the
     /// widest of them, and its toggles default to checkboxes.
     form_columns: bool = false,

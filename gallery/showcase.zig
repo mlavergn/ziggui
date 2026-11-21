@@ -234,10 +234,8 @@ pub const Showcase = struct {
 
     /// The Picture card's 2048 × 1536 test pattern, RGBA8.
     picture_pixels: []u8 = &.{},
-    /// The Picture card's zoom: 1 fits the picture to the card.
-    picture_zoom: f32 = 1,
-    /// The Picture card's pan, in points from the fitted position.
-    picture_offset: ziggui.Point = .{ .x = 0, .y = 0 },
+    /// The Picture card's zoom and pan.
+    picture_zoom: ziggui.ZoomState = .{},
 
     /// Constructs the panels' state as the showcase opened.
     ///
@@ -424,6 +422,16 @@ pub const Showcase = struct {
                 "WrappedText word-wraps to the width it is given, growing taller as the " ++
                     "column narrows. Reach for it for paragraphs, descriptions, captions.",
             ).foreground(theme.colors.label)),
+            Self.card(theme, "Search results, matches marked (the last cut by a narrow cell)", "ziggui.HighlightedText · ziggui.TextRange", ziggui.VStack(.{
+                ziggui.HStack(.{ ziggui.HighlightedText("FindBar: the find bar under Command-F", &.{ .{ .start = 0, .end = 4 }, .{ .start = 13, .end = 17 } }, .medium), ziggui.Spacer() }),
+                ziggui.HStack(.{ ziggui.HighlightedText("FindCount says where a find stands", &.{ .{ .start = 0, .end = 4 }, .{ .start = 23, .end = 27 } }, null), ziggui.Spacer() }),
+                ziggui.HStack(.{
+                    ziggui.HStack(.{ ziggui.HighlightedText("FindActions: the keys a find bar takes", &.{ .{ .start = 0, .end = 4 }, .{ .start = 24, .end = 28 } }, null), ziggui.Spacer() })
+                        .frameWidth(160)
+                        .border(theme.colors.separator, 1),
+                    ziggui.Spacer(),
+                }),
+            }).spacing(8)),
             Self.card(theme, "Label", "ziggui.Label", ziggui.Label("Tagged item", theme.colors.accent).frameMaxWidth().frameAlign(.leading)),
             Self.card(theme, "Icon gallery", "ziggui.Icon · ziggui.LazyVGrid", ziggui.LazyVGrid(6, 10, &icon_gallery, Self.iconCell).frameMaxWidth()),
         }).spacing(16);
@@ -683,6 +691,27 @@ pub const Showcase = struct {
         }).spacing(16);
     }
 
+    /// The Image & Canvas panel: an image at its own size and scaled to fit
+    /// frames, a chart a `Canvas` draws through its `GraphicsContext`, and a large
+    /// picture drawn from a texture of its own, panned and zoomed.
+    ///
+    /// - `self`: the showcase.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the panel's view.
+    pub fn canvasPanel(self: *Self, theme: ziggui.Theme) ziggui.View {
+        const image: ziggui.ImagePixels = .{ .width = demo_image_side, .height = demo_image_side, .pixels = &demo_image };
+        return ziggui.VStack(.{
+            Self.card(theme, "Image: its own size, and scaled to fit a frame", "ziggui.Image · .scaledToFit()", ziggui.HStack(.{
+                ziggui.Image(image),
+                ziggui.Image(image).scaledToFit().frame(160, 96).border(theme.colors.separator, 1),
+                ziggui.Image(image).scaledToFit().frame(48, 96).border(theme.colors.separator, 1),
+                ziggui.Spacer(),
+            }).spacing(16)),
+            Self.card(theme, "Canvas: a view that draws itself", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", ziggui.Canvas(Self, self, Self.drawChart).frameMaxWidth().frameHeight(160).clipped().cornerRadius(8)),
+            Self.card(theme, "A large picture with markers (drag to pan, pinch or ⌘-scroll to zoom)", "ziggui.ZoomableImage · ZoomState · CanvasMarkers · .onDrag", self.pictureDemo(theme)),
+        }).spacing(16);
+    }
+
     /// Empties the Navigation panel's route stack (leaving the panel does).
     ///
     /// - `self`: the showcase.
@@ -879,27 +908,6 @@ pub const Showcase = struct {
         }).frameMaxWidth().frameHeight(32);
     }
 
-    /// The Image & Canvas panel: an image at its own size and scaled to fit
-    /// frames, a chart a `Canvas` draws through its `GraphicsContext`, and a large
-    /// picture drawn from a texture of its own, panned and zoomed.
-    ///
-    /// - `self`: the showcase.
-    /// - `theme`: the theme this frame draws with.
-    /// - Returns: the panel's view.
-    pub fn canvasPanel(self: *Self, theme: ziggui.Theme) ziggui.View {
-        const image: ziggui.ImagePixels = .{ .width = demo_image_side, .height = demo_image_side, .pixels = &demo_image };
-        return ziggui.VStack(.{
-            Self.card(theme, "Image: its own size, and scaled to fit a frame", "ziggui.Image · .scaledToFit()", ziggui.HStack(.{
-                ziggui.Image(image),
-                ziggui.Image(image).scaledToFit().frame(160, 96).border(theme.colors.separator, 1),
-                ziggui.Image(image).scaledToFit().frame(48, 96).border(theme.colors.separator, 1),
-                ziggui.Spacer(),
-            }).spacing(16)),
-            Self.card(theme, "Canvas: a view that draws itself", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", ziggui.Canvas(Self, self, Self.drawChart).frameMaxWidth().frameHeight(160).clipped().cornerRadius(8)),
-            Self.card(theme, "A large picture (drag to pan)", "ziggui.Canvas · GraphicsContext.picture · .onDrag · .clipped", self.pictureDemo(theme)),
-        }).spacing(16);
-    }
-
     /// Paints the Canvas card: a week of readings as bars over a tinted
     /// ground and a grid, a line through their tops, and the day under each,
     /// every measure taken from the frame, so it follows the card's width;
@@ -941,16 +949,23 @@ pub const Showcase = struct {
     }
 
     /// The Picture card: a 2048 × 1536 picture drawn from a texture of its own
-    /// (`GraphicsContext.picture`, never the atlas), dragged to pan and zoomed with the buttons.
+    /// (`GraphicsContext.picture`, never the atlas) in a `ZoomableImage`, with
+    /// markers over it, dragged to pan and zoomed with the buttons, a pinch or a
+    /// ⌘-scroll (`Gallery.pictureZoom`, from the event loop).
     ///
     /// - `self`: the showcase.
     /// - `theme`: the theme this frame draws with.
     /// - Returns: the card's content.
     fn pictureDemo(self: *Self, theme: ziggui.Theme) ziggui.View {
-        const zoom_text = ziggui.BuildScope.shared().allocator().print("{d:.0}%", .{self.picture_zoom * 100}) catch @panic("oom");
+        const zoom_text = ziggui.BuildScope.shared().allocator().print("{d:.0}%", .{self.picture_zoom.zoom * 100}) catch @panic("oom");
+        const picture = ziggui.ZoomPicture{
+            .image = .{ .width = picture_width, .height = picture_height, .pixels = self.picture_pixels },
+            .key = @intFromPtr(self.picture_pixels.ptr),
+            .fit_hint = "Fit to see it all",
+        };
         return ziggui.VStack(.{
-            ziggui.Canvas(Self, self, Self.drawPicture).frameMaxWidth().frameHeight(180).clipped().cornerRadius(8)
-                .onDrag(.{ .context = self, .function = Self.panPicture }),
+            ziggui.ZoomableImage(Self, self, Self.drawPictureMarkers, &self.picture_zoom, picture).frameHeight(180).cornerRadius(8)
+                .onDrag(.{ .context = &self.picture_zoom, .function = ziggui.ZoomState.panDrag }),
             ziggui.HStack(.{
                 ziggui.ButtonRoled("−", .normal, ziggui.Callback.init(Self, self, Self.zoomPictureOut)),
                 ziggui.ButtonRoled("Fit", .normal, ziggui.Callback.init(Self, self, Self.fitPicture)),
@@ -961,63 +976,42 @@ pub const Showcase = struct {
         }).spacing(8);
     }
 
-    /// Paints the Picture card: the picture fitted to the frame, scaled by the
-    /// zoom about the frame's center and moved by the pan.
+    /// Marks the Picture card's picture: a crosshair and its label at the
+    /// picture's centre and a ring on a grid corner, placed through the
+    /// geometry so they stay on their pixels as it zooms and pans.
     ///
     /// - `self`: the showcase.
     /// - `graphics`: what it draws with.
-    /// - `bounds`: the card's frame.
+    /// - `geometry`: the picture's layout.
     /// - Returns: nothing; propagates allocation failure.
-    fn drawPicture(self: *const Self, graphics: *ziggui.GraphicsContext, bounds: ziggui.Rect) std.mem.Allocator.Error!void {
-        const image = ziggui.ImagePixels{ .width = picture_width, .height = picture_height, .pixels = self.picture_pixels };
-        const fit = @min(bounds.width / @as(f32, picture_width), bounds.height / @as(f32, picture_height));
-        const scale = fit * self.picture_zoom;
-        const width = @as(f32, picture_width) * scale;
-        const height = @as(f32, picture_height) * scale;
-        const rect = ziggui.Rect{
-            .x = bounds.x + (bounds.width - width) / 2 + self.picture_offset.x,
-            .y = bounds.y + (bounds.height - height) / 2 + self.picture_offset.y,
-            .width = width,
-            .height = height,
-        };
-        try graphics.picture(rect, image, @intFromPtr(self.picture_pixels.ptr), 1);
-    }
-
-    /// Pans the Picture card.
-    ///
-    /// - `context`: the showcase.
-    /// - `delta_x`: the movement across, in points.
-    /// - `delta_y`: the movement down, in points.
-    fn panPicture(context: ?*anyopaque, delta_x: f32, delta_y: f32) void {
-        const self: *Self = @ptrCast(@alignCast(context.?));
-        self.picture_offset.x += delta_x;
-        self.picture_offset.y += delta_y;
+    fn drawPictureMarkers(self: *const Self, graphics: *ziggui.GraphicsContext, geometry: ziggui.ZoomGeometry) std.mem.Allocator.Error!void {
+        _ = self;
+        const colors = graphics.context.theme.colors;
+        const center = geometry.at(.{ .x = picture_width / 2, .y = picture_height / 2 });
+        try ziggui.CanvasMarkers.ring(graphics, geometry.at(.{ .x = 512, .y = 384 }), 10, 2, colors.accent);
+        try ziggui.CanvasMarkers.crosshair(graphics, center, 14, ziggui.Color.white, ziggui.Color.black);
+        _ = try ziggui.CanvasMarkers.pill(graphics, .{ .x = center.x + 22, .y = center.y - 26 }, "1024, 768", colors.accent, ziggui.Color.white);
     }
 
     /// Zooms the Picture card in by half again.
     ///
     /// - `self`: the showcase.
     fn zoomPictureIn(self: *Self) void {
-        self.picture_zoom = @min(self.picture_zoom * 1.5, 32);
-        self.picture_offset.x *= 1.5;
-        self.picture_offset.y *= 1.5;
+        self.picture_zoom.zoomBy(1.5);
     }
 
     /// Zooms the Picture card out by a third.
     ///
     /// - `self`: the showcase.
     fn zoomPictureOut(self: *Self) void {
-        self.picture_zoom = @max(self.picture_zoom / 1.5, 0.25);
-        self.picture_offset.x /= 1.5;
-        self.picture_offset.y /= 1.5;
+        self.picture_zoom.zoomBy(2.0 / 3.0);
     }
 
     /// Fits the Picture card's picture to the card again.
     ///
     /// - `self`: the showcase.
     fn fitPicture(self: *Self) void {
-        self.picture_zoom = 1;
-        self.picture_offset = .{ .x = 0, .y = 0 };
+        self.picture_zoom.fit();
     }
 
     /// Paints the Picture card's test pattern: hue across, light down, and a

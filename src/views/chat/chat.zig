@@ -36,6 +36,36 @@ pub const StatusMarkState = enum {
 /// The orange a waiting mark is drawn in: it asks for attention whatever the theme.
 const waiting_orange = renderer.Color.fromRgb8(255, 149, 0);
 
+/// The one header row and fold both disclosure groups are built from.
+const Disclosure = struct {
+    const Self = @This();
+
+    /// A disclosure group: its tappable header row (chevron, header, space,
+    /// and the accessory when there is one), with the content under it while
+    /// expanded.
+    ///
+    /// - `header`: the always-shown label.
+    /// - `accessory`: what sits at the row's trailing edge, or null for none.
+    /// - `expanded`: whether `content` shows.
+    /// - `on_toggle`: called when the header row is tapped.
+    /// - `content`: what unfolds under the row.
+    /// - Returns: the row alone, or the row over the content.
+    fn group(header: mod.View, accessory: ?mod.View, expanded: bool, on_toggle: mod.Callback, content: mod.View) mod.View {
+        const tokens = mod.BuildScope.shared().tokens();
+        const chevron = mod.Icon(if (expanded) .chevronDown else .chevronRight, 12, tokens.secondary_label);
+        const row_stack = if (accessory) |trailing|
+            mod.HStack(.{ chevron, header, mod.Spacer(), trailing })
+        else
+            mod.HStack(.{ chevron, header, mod.Spacer() });
+        const row = row_stack.spacing(6).frameMaxWidth().onTap(on_toggle);
+        if (!expanded) return row;
+        return mod.VStack(.{
+            row,
+            content.paddingInsets(.{ .leading = 18 }).frameMaxWidth().frameAlign(.leading),
+        }).spacing(4).alignment(.leading).frameMaxWidth();
+    }
+};
+
 /// A round mark for a row's state: green idle, accent busy, orange waiting,
 /// a faint dot starting, a hollow ring stopped.
 ///
@@ -65,17 +95,22 @@ pub fn StatusMark(mark: StatusMarkState, size: f32) mod.View {
 /// - `content`: what unfolds under the header.
 /// - Returns: the group.
 pub fn DisclosureGroup(header: mod.View, expanded: bool, on_toggle: mod.Callback, content: mod.View) mod.View {
-    const tokens = mod.BuildScope.shared().tokens();
-    const row = mod.HStack(.{
-        mod.Icon(if (expanded) .chevronDown else .chevronRight, 12, tokens.secondary_label),
-        header,
-        mod.Spacer(),
-    }).spacing(6).frameMaxWidth().onTap(on_toggle);
-    if (!expanded) return row;
-    return mod.VStack(.{
-        row,
-        content.paddingInsets(.{ .leading = 18 }).frameMaxWidth().frameAlign(.leading),
-    }).spacing(4).alignment(.leading).frameMaxWidth();
+    return Disclosure.group(header, null, expanded, on_toggle, content);
+}
+
+/// A `DisclosureGroup` with an accessory at the trailing end of its header
+/// row, past the space the header leaves: a count, a badge, a status mark,
+/// right-aligned however long the header is. A tap on it folds the group, as
+/// one on the header does.
+///
+/// - `header`: the always-shown label.
+/// - `accessory`: what sits at the row's trailing edge.
+/// - `expanded`: whether `content` shows.
+/// - `on_toggle`: called when the header row is tapped.
+/// - `content`: what unfolds under the header.
+/// - Returns: the group.
+pub fn DisclosureGroupAccessory(header: mod.View, accessory: mod.View, expanded: bool, on_toggle: mod.Callback, content: mod.View) mod.View {
+    return Disclosure.group(header, accessory, expanded, on_toggle, content);
 }
 
 /// A small capsule with an optional leading icon: a mode, a model, an
@@ -183,6 +218,36 @@ test "a disclosure group shows its content only while expanded" {
     try std.testing.expect(closed.kind == .stack and closed.kind.stack.direction == .horizontal);
     try std.testing.expect(open.kind == .stack and open.kind.stack.direction == .vertical);
     try std.testing.expectEqual(@as(usize, 2), open.kind.stack.children.len);
+}
+
+test "a disclosure group's accessory sits at the trailing edge of its row" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    const Probe = struct {
+        const Self = @This();
+        /// A tap that does nothing.
+        fn noop(_: ?*anyopaque) void {}
+    };
+    const callback: mod.Callback = .{ .function = Probe.noop };
+    window.begin(renderer.MacosTheme.light);
+    const group = DisclosureGroupAccessory(mod.Text("Steps"), mod.Rectangle(renderer.Color.red).frame(10, 10), true, callback, mod.Text("one"));
+    window.end();
+    // Open, it is the row over the content; the row ends with the accessory, past a spacer.
+    try std.testing.expect(group.kind == .stack and group.kind.stack.direction == .vertical);
+    var shot = try window.render(group, 200, 60);
+    defer shot.deinit();
+    // The accessory's red reaches the row's trailing edge, well clear of the header.
+    var least_x: u32 = 200;
+    var most_x: u32 = 0;
+    for (0..60) |y| for (0..200) |x| {
+        const pixel = shot.at(@intCast(x), @intCast(y));
+        if (pixel.r > 0.9 and pixel.g < 0.1 and pixel.b < 0.1) {
+            least_x = @min(least_x, @as(u32, @intCast(x)));
+            most_x = @max(most_x, @as(u32, @intCast(x)));
+        }
+    };
+    try std.testing.expect(most_x >= 195);
+    try std.testing.expect(least_x >= 185);
 }
 
 test "a chip is tappable only with a callback, and a code block keeps its text" {

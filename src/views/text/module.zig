@@ -7,6 +7,8 @@ const log = std.log.scoped(.ziggui_text_module);
 
 /// One styled run of a `RichText`.
 pub const Span = @import("span.zig").Span;
+/// A run of a text's bytes, as `HighlightedText` marks them.
+pub const TextRange = @import("text_range.zig").TextRange;
 /// A laid-out piece of one span on one line.
 pub const RichRun = @import("rich_run.zig").RichRun;
 /// One laid-out line of a rich paragraph.

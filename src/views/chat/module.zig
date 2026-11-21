@@ -10,6 +10,8 @@ pub const StatusMarkState = @import("chat.zig").StatusMarkState;
 pub const StatusMark = @import("chat.zig").StatusMark;
 /// A header that folds content away, like SwiftUI's `DisclosureGroup`.
 pub const DisclosureGroup = @import("chat.zig").DisclosureGroup;
+/// A `DisclosureGroup` with an accessory at its header row's trailing edge.
+pub const DisclosureGroupAccessory = @import("chat.zig").DisclosureGroupAccessory;
 /// A small capsule: a mode, a model, an attachment.
 pub const Chip = @import("chat.zig").Chip;
 /// Preformatted text on a tinted panel.

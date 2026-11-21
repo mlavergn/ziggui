@@ -3,9 +3,6 @@ const log = std.log.scoped(.ziggui_gallery_settings_panel);
 const gallery = @import("module.zig");
 const ziggui = @import("ziggui");
 
-/// The General page's appearance choices.
-const appearance_options = [_][]const u8{ "System", "Light", "Dark" };
-
 /// Where the General page opens files.
 const open_options = [_][]const u8{ "New window", "Current window" };
 
@@ -35,7 +32,7 @@ pub const SettingsPanel = struct {
     /// General: include beta releases (only while checking for updates).
     beta_updates: ziggui.State(bool),
 
-    /// General: the appearance (`appearance_options`).
+    /// General: the appearance, a `ziggui.Appearance`'s index.
     appearance: ziggui.State(i64),
 
     /// General: where files open (`open_options`).
@@ -130,7 +127,7 @@ pub const SettingsPanel = struct {
         }).spacing(0).frameWidth(500) else ziggui.Empty();
         return ziggui.VStack(.{
             ziggui.HStack(.{ ziggui.Spacer(), window, ziggui.Spacer() }).frameMaxWidth(),
-            ziggui.Text("ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle").font(.caption).mono().foreground(tokens.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker").font(.caption).mono().foreground(tokens.secondary_label).frameMaxWidth().frameAlign(.leading),
             ziggui.HStack(.{
                 ziggui.Button("Present in a sheet", ziggui.Callback.init(Self, self, Self.openSheet)),
                 ziggui.Spacer(),
@@ -168,7 +165,7 @@ pub const SettingsPanel = struct {
                 }).spacing(8).alignment(.leading)),
             }),
             ziggui.Section(.{
-                ziggui.LabeledContent("Appearance:", ziggui.Picker(self.appearance.binding(), &appearance_options)),
+                ziggui.LabeledContent("Appearance:", ziggui.AppearancePicker(self.appearance.binding())),
                 ziggui.LabeledContent("Open files in:", ziggui.Picker(self.open_in.binding(), &open_options)),
             }),
             ziggui.Section(.{

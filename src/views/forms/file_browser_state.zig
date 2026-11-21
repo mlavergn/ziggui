@@ -46,6 +46,9 @@ const FolderListing = struct {
     path: []const u8,
     /// The entry to select once listed, by name; null for none.
     selected_name: ?[]const u8,
+    /// Whether to select the ".." row once listed instead (a refresh while it
+    /// was selected).
+    select_parent: bool = false,
     /// The folder, absolute, once read.
     absolute: []const u8 = "",
     /// The folder's entries, once read.
@@ -183,9 +186,12 @@ pub const FilePick = struct {
 
 /// A `FileBrowser`'s folder, listed through `std.Io`: its path, its entries
 /// (folders first, then files, each by name, case aside), the selected one,
-/// and whether hidden (dot) names show. App-owned, so it survives frames; keep
-/// it at a stable address, since the browser's taps point back at it. Opening
-/// a folder that cannot be read keeps the one on show and sets `failure`.
+/// whether hidden (dot) names show, and which files show (`shows_file`). Below
+/// any folder but the root, the rows start with "..", the enclosing folder:
+/// selected, moved onto and entered as an entry is, though it is not one of
+/// `nodes`. App-owned, so it survives frames; keep it at a stable address,
+/// since the browser's taps point back at it. Opening a folder that cannot be
+/// read keeps the one on show and sets `failure`.
 ///
 /// A folder is read off the UI thread when the `Io` can run work concurrently
 /// (`Io.concurrent`), so a large or slow folder never stalls the window: the
@@ -195,6 +201,9 @@ pub const FilePick = struct {
 /// that cannot (`Io.Threaded.global_single_threaded`) lists in place, at once.
 pub const FileBrowserState = struct {
     const Self = @This();
+
+    /// The height of a browser row, in points: a `SelectableRow`'s.
+    pub const row_height: f32 = 28;
 
     /// Where the path and the state live.
     allocator: std.mem.Allocator,
@@ -206,12 +215,21 @@ pub const FileBrowserState = struct {
     arena: std.heap.ArenaAllocator,
     /// The folder's entries, in order.
     nodes: []const FileNode = &.{},
-    /// The selected entry, an index into `nodes`; null for none.
+    /// The selected entry, an index into `nodes`; null for none (and while
+    /// the ".." row is selected).
     selection: ?usize = null,
+    /// Whether the ".." row is selected; `selection` is null while it is.
+    parent_selected: bool = false,
     /// Whether hidden names show; the browser's toggle binds to it.
     show_hidden: renderer.State(bool),
     /// Why the last `open` failed, or null when it listed.
     failure: ?anyerror = null,
+    /// Which files show, by name (a document picker's types); null shows
+    /// every file. Folders always show, so the user can reach the files.
+    ///
+    /// - `name`: the file's name.
+    /// - Returns: true when it shows.
+    shows_file: ?*const fn (name: []const u8) bool = null,
     /// The list's scroll offset.
     scroll: mod.ScrollState = .{},
     /// The listing under way, if any; adopted by `poll` when it lands.
@@ -254,15 +272,16 @@ pub const FileBrowserState = struct {
     /// - Returns: nothing; on a folder that cannot be read the one on show
     /// stays and `failure` says why; propagates allocation failure.
     pub fn open(self: *Self, path: []const u8) std.mem.Allocator.Error!void {
-        try self.request(path, null);
+        try self.request(path, null, false);
     }
 
-    /// Lists the folder on show again, keeping the selection on the same name.
+    /// Lists the folder on show again, keeping the selection on the same name
+    /// (or on "..").
     ///
     /// - `self`: the state.
     /// - Returns: nothing; as `open`.
     pub fn refresh(self: *Self) std.mem.Allocator.Error!void {
-        try self.request(self.path.items, if (self.selected()) |node| node.name else null);
+        try self.request(self.path.items, if (self.selected()) |node| node.name else null, self.parent_selected);
     }
 
     /// Opens the folder above the one on show, selecting the one left.
@@ -271,19 +290,23 @@ pub const FileBrowserState = struct {
     /// - Returns: nothing; a no-op at the root; as `open`.
     pub fn up(self: *Self) std.mem.Allocator.Error!void {
         const parent = std.Io.Dir.path.dirname(self.path.items) orelse return;
-        try self.request(parent, std.Io.Dir.path.basename(self.path.items));
+        try self.request(parent, std.Io.Dir.path.basename(self.path.items), false);
     }
 
-    /// Opens the selected folder.
+    /// Opens the selected folder, or the enclosing one when ".." is selected.
     ///
     /// - `self`: the state.
     /// - Returns: whether a folder was selected (and so opened or refused); as `open`.
     pub fn enter(self: *Self) std.mem.Allocator.Error!bool {
+        if (self.parent_selected) {
+            try self.up();
+            return true;
+        }
         const node = self.selected() orelse return false;
         if (node.kind != .directory) return false;
         const target = try std.Io.Dir.path.join(self.allocator, &.{ self.path.items, node.name });
         defer self.allocator.free(target);
-        try self.request(target, null);
+        try self.request(target, null, false);
         return true;
     }
 
@@ -335,61 +358,198 @@ pub const FileBrowserState = struct {
     /// - `index`: an index into `nodes`.
     pub fn select(self: *Self, index: usize) void {
         self.selection = if (index < self.nodes.len) index else null;
+        self.parent_selected = false;
     }
 
-    /// Moves the selection by `delta` shown entries, skipping hidden ones while they are hidden.
+    /// Selects the ".." row; a no-op at the root, which has none.
     ///
     /// - `self`: the state.
-    /// - `delta`: entries to move; negative moves up.
+    pub fn selectParent(self: *Self) void {
+        if (!self.hasParent()) return;
+        self.selection = null;
+        self.parent_selected = true;
+    }
+
+    /// Whether the folder on show has an enclosing one, and so a ".." row.
+    ///
+    /// - `self`: the state.
+    /// - Returns: false at the root and before a folder is listed.
+    pub fn hasParent(self: *const Self) bool {
+        return std.Io.Dir.path.dirname(self.path.items) != null;
+    }
+
+    /// Moves the selection by `delta` rows, the ".." row first, skipping the
+    /// entries that do not show (`shows`), and scrolls it into view. With
+    /// nothing selected, a move down starts at the first row, a move up at
+    /// the last.
+    ///
+    /// - `self`: the state.
+    /// - `delta`: rows to move; negative moves up.
     pub fn move(self: *Self, delta: isize) void {
-        if (self.nodes.len == 0) return;
-        var index: isize = if (self.selection) |at| @intCast(at) else if (delta > 0) -1 else @intCast(self.nodes.len);
+        // Rows by entry index: -1 is "..", -2 before every row.
+        const first: isize = if (self.hasParent()) -1 else 0;
+        const count: isize = @intCast(self.nodes.len);
+        if (count == 0 and first == 0) return;
+        var index: isize = if (self.parent_selected) -1 else if (self.selection) |at| @intCast(at) else if (delta > 0) first - 1 else count;
         var steps = @abs(delta);
         const step: isize = if (delta < 0) -1 else 1;
-        var landed: ?usize = self.selection;
+        var landed: ?isize = if (self.parent_selected) -1 else if (self.selection) |at| @intCast(at) else null;
         while (steps > 0) {
             index += step;
-            if (index < 0 or index >= @as(isize, @intCast(self.nodes.len))) break;
-            if (!self.shows(self.nodes[@intCast(index)])) continue;
-            landed = @intCast(index);
+            if (index < first or index >= count) break;
+            if (index >= 0 and !self.shows(self.nodes[@intCast(index)])) continue;
+            landed = index;
             steps -= 1;
         }
-        self.selection = landed;
+        const row = landed orelse return;
+        if (row < 0) self.selectParent() else self.select(@intCast(row));
+        if (self.selectedRow()) |position| self.scroll.reveal(position, row_height);
+    }
+
+    /// Handles a key pressed while the browser has the keyboard: ↑/↓ move,
+    /// Page Up/Page Down move a page, Home/End go to the first and last rows,
+    /// Return, → and ⌘↓ (Ctrl+↓ off macOS) open the selected folder (".."
+    /// goes up), Backspace, ← and ⌘↑ (Ctrl+↑) open the enclosing folder, and
+    /// a letter or digit selects the next entry starting with it. A key with
+    /// any other modifier (Alt; Ctrl on macOS, where ⌃↑ is Mission Control;
+    /// the Windows key elsewhere) is left to the app. The app forwards
+    /// key-downs while the browser is focused and no text field is.
+    ///
+    /// - `self`: the state.
+    /// - `keycode`: the key's `SDL_Keycode` (`SdlKey`).
+    /// - `modifiers`: its `SDL_Keymod` mask.
+    /// - `mac`: whether the command key is ⌘ (macOS) rather than Ctrl.
+    /// - Returns: whether the browser used the key (Return on a file is left
+    ///   to the app, which may take it as the pick); propagates allocation failure.
+    pub fn keyDown(self: *Self, keycode: u32, modifiers: u16, mac: bool) std.mem.Allocator.Error!bool {
+        const command_mask = if (mac) mod.SdlKey.gui_mask else mod.SdlKey.ctrl_mask;
+        const other_mask = mod.SdlKey.alt_mask | (if (mac) mod.SdlKey.ctrl_mask else mod.SdlKey.gui_mask);
+        if (modifiers & other_mask != 0) return false;
+        const command = modifiers & command_mask != 0;
+        // More rows than there are, so Home and End reach the ends.
+        const every_row: isize = @intCast(self.nodes.len + 1);
+        switch (keycode) {
+            mod.SdlKey.up_arrow => if (command) return self.leave() else self.move(-1),
+            mod.SdlKey.down_arrow => if (command) return self.enter() else self.move(1),
+            mod.SdlKey.page_up => self.move(-self.pageRows()),
+            mod.SdlKey.page_down => self.move(self.pageRows()),
+            mod.SdlKey.home => self.move(-every_row),
+            mod.SdlKey.end => self.move(every_row),
+            mod.SdlKey.enter, mod.SdlKey.keypad_enter, mod.SdlKey.right_arrow => return self.enter(),
+            mod.SdlKey.backspace, mod.SdlKey.left_arrow => return self.leave(),
+            else => {
+                if (command or keycode > 0x7e or !std.ascii.isAlphanumeric(@intCast(keycode))) return false;
+                return self.typeSelect(@intCast(keycode));
+            },
+        }
+        return true;
+    }
+
+    /// Selects the next shown entry after the selection whose name starts
+    /// with `character`, case aside, wrapping around to the first.
+    ///
+    /// - `self`: the state.
+    /// - `character`: the letter or digit typed.
+    /// - Returns: whether an entry starts with it.
+    pub fn typeSelect(self: *Self, character: u8) bool {
+        const count = self.nodes.len;
+        const after: usize = if (self.selection) |at| at + 1 else 0;
+        for (0..count) |step| {
+            const index = (after + step) % count;
+            const node = self.nodes[index];
+            if (!self.shows(node) or node.name.len == 0) continue;
+            if (std.ascii.toLower(node.name[0]) != std.ascii.toLower(character)) continue;
+            self.select(index);
+            if (self.selectedRow()) |row| self.scroll.reveal(row, row_height);
+            return true;
+        }
+        return false;
+    }
+
+    /// The row the selection is drawn on, counting the ".." row and only the
+    /// entries shown.
+    ///
+    /// - `self`: the state.
+    /// - Returns: the row, or null when nothing shown is selected.
+    pub fn selectedRow(self: *const Self) ?usize {
+        if (self.parent_selected) return 0;
+        const index = self.selection orelse return null;
+        if (!self.shows(self.nodes[index])) return null;
+        var row: usize = if (self.hasParent()) 1 else 0;
+        for (self.nodes[0..index]) |node| {
+            if (self.shows(node)) row += 1;
+        }
+        return row;
     }
 
     /// The selected entry.
     ///
     /// - `self`: the state.
-    /// - Returns: the entry, or null when none is selected or it is hidden.
+    /// - Returns: the entry, or null when none is selected or it does not
+    ///   show (hidden, or a file `shows_file` leaves out).
     pub fn selected(self: *const Self) ?FileNode {
         const index = self.selection orelse return null;
         const node = self.nodes[index];
         return if (self.shows(node)) node else null;
     }
 
-    /// The selected entry's path, or the folder on show's when none is selected.
+    /// The selected entry's path, the enclosing folder's when ".." is
+    /// selected, or the folder on show's when nothing is.
     ///
-    /// A selection the hidden-names setting hides picks nothing, rather than
+    /// A selection that does not show (`shows`) picks nothing, rather than
     /// the folder: a dotfile selected, then hidden, must not turn into the
     /// whole folder around it.
     ///
     /// - `self`: the state.
     /// - `allocator`: owns the result.
-    /// - Returns: the pick, or null while the selection is hidden; propagates allocation failure.
+    /// - Returns: the pick, or null while the selection does not show;
+    ///   propagates allocation failure.
     pub fn pickAlloc(self: *const Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!?FilePick {
+        if (self.parent_selected) {
+            if (std.Io.Dir.path.dirname(self.path.items)) |parent| return .{ .path = try allocator.dupe(u8, parent), .kind = .directory };
+        }
         const index = self.selection orelse return .{ .path = try allocator.dupe(u8, self.path.items), .kind = .directory };
         const node = self.nodes[index];
         if (!self.shows(node)) return null;
         return .{ .path = try std.Io.Dir.path.join(allocator, &.{ self.path.items, node.name }), .kind = node.kind };
     }
 
-    /// Whether an entry shows under the hidden-names setting.
+    /// Whether an entry shows under the hidden-names setting and, for a
+    /// file, `shows_file`.
     ///
     /// - `self`: the state.
     /// - `node`: the entry.
     /// - Returns: true when it shows.
     pub fn shows(self: *const Self, node: FileNode) bool {
-        return !node.hidden or self.show_hidden.get();
+        if (node.hidden and !self.show_hidden.get()) return false;
+        if (node.kind == .directory) return true;
+        const shows_file = self.shows_file orelse return true;
+        return shows_file(node.name);
+    }
+
+    /// Opens the enclosing folder, for a key.
+    ///
+    /// - `self`: the state.
+    /// - Returns: whether it went up (not at the root, which has no
+    ///   enclosing folder); propagates allocation failure.
+    fn leave(self: *Self) std.mem.Allocator.Error!bool {
+        if (!self.hasParent()) return false;
+        try self.up();
+        return true;
+    }
+
+    /// How many rows a Page Up or Page Down moves: a screenful less one, so
+    /// the row moved from stays in view.
+    ///
+    /// - `self`: the state.
+    /// - Returns: at least 1, and never more than the entries.
+    fn pageRows(self: *const Self) isize {
+        const screenful = self.scroll.viewport_height / row_height;
+        // A height not yet laid out, or not finite, pages by one row.
+        if (!std.math.isFinite(screenful) or screenful < 2) return 1;
+        const limit: f32 = @floatFromInt(self.nodes.len + 1);
+        const rows: isize = @intFromFloat(@min(@floor(screenful), limit));
+        return @max(1, rows - 1);
     }
 
     /// Lists `path` next, selecting `selected_name` once listed: now, or once the
@@ -398,9 +558,11 @@ pub const FileBrowserState = struct {
     /// - `self`: the state.
     /// - `path`: the folder; copied.
     /// - `selected_name`: the entry to select, by name; copied; null for none.
+    /// - `select_parent`: whether to select the ".." row instead.
     /// - Returns: nothing; propagates allocation failure.
-    fn request(self: *Self, path: []const u8, selected_name: ?[]const u8) std.mem.Allocator.Error!void {
+    fn request(self: *Self, path: []const u8, selected_name: ?[]const u8, select_parent: bool) std.mem.Allocator.Error!void {
         const listing = try FolderListing.create(self.allocator, self.io, path, selected_name);
+        listing.select_parent = select_parent;
         if (self.listing != null) {
             if (self.queued) |stale| stale.destroy();
             self.queued = listing;
@@ -446,13 +608,19 @@ pub const FileBrowserState = struct {
         self.arena = listing.arena;
         self.nodes = listing.nodes;
         self.selection = null;
+        self.parent_selected = false;
+        // Only an entry that shows: a folder left with Hidden on, then hidden,
+        // must not be a selection nothing draws.
         if (listing.selected_name) |name| {
             for (self.nodes, 0..) |node, index| {
-                if (std.mem.eql(u8, node.name, name)) self.selection = index;
+                if (std.mem.eql(u8, node.name, name) and self.shows(node)) self.selection = index;
             }
         }
+        if (listing.select_parent) self.selectParent();
         self.failure = null;
         self.scroll.offset = 0;
+        // The folder left, selected after going up, may lie below the first screenful.
+        if (self.selectedRow()) |row| self.scroll.reveal(row, row_height);
         listing.release();
     }
 };
@@ -494,11 +662,18 @@ test "a file browser state lists folders first, moves past hidden names, and ope
     try std.testing.expectEqualStrings("A.txt", state.nodes[2].name);
     try std.testing.expectEqual(@as(u64, 2), state.nodes[3].size);
 
-    // Hidden names are stepped over while hidden.
+    // The ".." row comes first; hidden names are stepped over while hidden.
+    try std.testing.expect(state.hasParent());
     state.move(1);
+    try std.testing.expect(state.parent_selected);
+    try std.testing.expect(state.selected() == null);
+    try std.testing.expectEqual(@as(?usize, 0), state.selectedRow());
+    state.move(1);
+    try std.testing.expect(!state.parent_selected);
     try std.testing.expectEqualStrings("deep", state.selected().?.name);
     state.move(1);
     try std.testing.expectEqualStrings("A.txt", state.selected().?.name);
+    try std.testing.expectEqual(@as(?usize, 2), state.selectedRow());
     state.show_hidden.set(true);
     state.move(-1);
     try std.testing.expectEqualStrings(".hidden", state.selected().?.name);
@@ -519,6 +694,20 @@ test "a file browser state lists folders first, moves past hidden names, and ope
     try std.testing.expectEqualStrings(root, state.path.items);
     try std.testing.expectEqualStrings("deep", state.selected().?.name);
 
+    // ".." picks the enclosing folder, and entering it goes up.
+    state.move(-1);
+    try std.testing.expect(state.parent_selected);
+    const parent = (try state.pickAlloc(allocator)).?;
+    defer allocator.free(parent.path);
+    try std.testing.expectEqual(FileNodeKind.directory, parent.kind);
+    try std.testing.expectEqualStrings(std.Io.Dir.path.dirname(root).?, parent.path);
+    try std.testing.expect(try state.enter());
+    state.wait();
+    try std.testing.expectEqualStrings("photos", state.selected().?.name);
+    try std.testing.expect(try state.enter());
+    state.wait();
+    try std.testing.expectEqualStrings(root, state.path.items);
+
     // A selection hidden after it was made picks nothing, never the folder around it.
     state.select(1);
     state.show_hidden.set(false);
@@ -530,6 +719,84 @@ test "a file browser state lists folders first, moves past hidden names, and ope
     state.wait();
     try std.testing.expect(state.failure != null);
     try std.testing.expectEqualStrings(root, state.path.items);
+}
+
+test "a file browser state takes the arrows, Return, Backspace, Home and End, and a letter" {
+    const allocator = std.testing.allocator;
+    const io = std.Io.Threaded.global_single_threaded.io();
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "root/beta");
+    try temporary.dir.createDirPath(io, "root/bravo");
+    try temporary.dir.writeFile(io, .{ .sub_path = "root/alpha.txt", .data = "a" });
+    try temporary.dir.writeFile(io, .{ .sub_path = "root/.hidden", .data = "h" });
+    try temporary.dir.writeFile(io, .{ .sub_path = "root/zulu.txt", .data = "z" });
+    const root = try temporary.dir.realPathFileAlloc(io, "root", allocator);
+    defer allocator.free(root);
+
+    // Listed in place: rows "..", beta, bravo, alpha.txt, zulu.txt.
+    var state = FileBrowserState.init(allocator, io);
+    defer state.deinit();
+    try state.open(root);
+
+    try std.testing.expect(try state.keyDown(mod.SdlKey.down_arrow, 0, false));
+    try std.testing.expect(state.parent_selected);
+    try std.testing.expect(try state.keyDown(mod.SdlKey.end, 0, false));
+    try std.testing.expectEqualStrings("zulu.txt", state.selected().?.name);
+    try std.testing.expect(try state.keyDown(mod.SdlKey.home, 0, false));
+    try std.testing.expect(state.parent_selected);
+
+    // A letter jumps to the next entry starting with it, wrapping; one none
+    // starts with is left to the app, as is a shortcut.
+    try std.testing.expect(try state.keyDown('b', 0, false));
+    try std.testing.expectEqualStrings("beta", state.selected().?.name);
+    try std.testing.expect(try state.keyDown('b', 0, false));
+    try std.testing.expectEqualStrings("bravo", state.selected().?.name);
+    try std.testing.expect(try state.keyDown('b', 0, false));
+    try std.testing.expectEqualStrings("beta", state.selected().?.name);
+    try std.testing.expect(!try state.keyDown('q', 0, false));
+    try std.testing.expect(!try state.keyDown('a', mod.SdlKey.left_gui_mask, true));
+
+    // Return opens a folder; Backspace comes back, selecting it; Return on a
+    // file is the app's.
+    try std.testing.expect(try state.keyDown(mod.SdlKey.enter, 0, false));
+    try std.testing.expect(std.mem.endsWith(u8, state.path.items, "beta"));
+    try std.testing.expect(try state.keyDown(mod.SdlKey.backspace, 0, false));
+    try std.testing.expectEqualStrings(root, state.path.items);
+    try std.testing.expectEqualStrings("beta", state.selected().?.name);
+    try std.testing.expect(try state.keyDown('a', 0, false));
+    try std.testing.expect(!try state.keyDown(mod.SdlKey.enter, 0, false));
+
+    // Ctrl+↑ goes up off macOS; on macOS ⌃↑ is the system's, and ⌘↓
+    // opens ".." as Return does.
+    try std.testing.expect(!try state.keyDown(mod.SdlKey.up_arrow, mod.SdlKey.left_ctrl_mask, true));
+    try std.testing.expect(!try state.keyDown(mod.SdlKey.up_arrow, mod.SdlKey.left_gui_mask, false));
+    try std.testing.expect(try state.keyDown(mod.SdlKey.up_arrow, mod.SdlKey.left_ctrl_mask, false));
+    try std.testing.expectEqualStrings("root", state.selected().?.name);
+    try std.testing.expect(try state.keyDown(mod.SdlKey.down_arrow, mod.SdlKey.left_gui_mask, true));
+    try std.testing.expectEqualStrings(root, state.path.items);
+
+    // A refresh keeps ".." selected; going up out of a folder Hidden now
+    // hides selects nothing rather than a row nothing draws.
+    try std.testing.expect(try state.keyDown(mod.SdlKey.home, 0, false));
+    try std.testing.expect(state.parent_selected);
+    try state.refresh();
+    try std.testing.expect(state.parent_selected);
+    try temporary.dir.createDirPath(io, "root/.config");
+    try state.refresh();
+    state.show_hidden.set(true);
+    try std.testing.expect(state.typeSelect('.'));
+    try std.testing.expect(try state.enter());
+    state.show_hidden.set(false);
+    try std.testing.expect(try state.keyDown(mod.SdlKey.left_arrow, 0, false));
+    try std.testing.expectEqualStrings(root, state.path.items);
+    try std.testing.expect(state.selection == null);
+
+    // Page Down never traps, laid out or not.
+    state.scroll.viewport_height = std.math.inf(f32);
+    try std.testing.expect(try state.keyDown(mod.SdlKey.page_down, 0, false));
+    state.scroll.viewport_height = 0;
+    try std.testing.expect(try state.keyDown(mod.SdlKey.page_up, 0, false));
 }
 
 test "a folder asked for while another lists replaces it, and in-place listing needs no wait" {
@@ -584,4 +851,53 @@ test "a listing that lands off the UI thread wakes the window" {
     try state.open(".");
     state.wait();
     try std.testing.expect(Waker.wakes.load(.monotonic) >= 1);
+}
+
+test "a file browser state shows only the files its filter takes, and every folder" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "data/nested.txt");
+    try temporary.dir.writeFile(io, .{ .sub_path = "data/notes.txt", .data = "n" });
+    try temporary.dir.writeFile(io, .{ .sub_path = "data/store.db", .data = "d" });
+    try temporary.dir.writeFile(io, .{ .sub_path = "data/zebra.db", .data = "z" });
+    const root = try temporary.dir.realPathFileAlloc(io, "data", allocator);
+    defer allocator.free(root);
+
+    const Filter = struct {
+        const Self = @This();
+
+        /// Takes database files.
+        ///
+        /// - `name`: the file's name.
+        /// - Returns: true for a `.db`.
+        fn databases(name: []const u8) bool {
+            return std.mem.endsWith(u8, name, ".db");
+        }
+    };
+
+    var state = FileBrowserState.init(allocator, io);
+    defer state.deinit();
+    state.shows_file = Filter.databases;
+    try state.open(root);
+    state.wait();
+    try std.testing.expectEqual(@as(usize, 4), state.nodes.len);
+    // A folder shows whatever its name; a file only when the filter takes it.
+    try std.testing.expect(state.shows(state.nodes[0]));
+    try std.testing.expectEqualStrings("notes.txt", state.nodes[1].name);
+    try std.testing.expect(!state.shows(state.nodes[1]));
+
+    // Moving steps over the files the filter leaves out, as over hidden ones.
+    state.select(0);
+    state.move(1);
+    try std.testing.expectEqualStrings("store.db", state.selected().?.name);
+    // Row 0 is "..", row 1 the folder: the filtered-out file takes no row.
+    try std.testing.expectEqual(@as(?usize, 2), state.selectedRow());
+    state.move(-1);
+    try std.testing.expectEqualStrings("nested.txt", state.selected().?.name);
+
+    // A filtered-out file selected directly is no pick.
+    state.select(1);
+    try std.testing.expect(state.selected() == null);
 }

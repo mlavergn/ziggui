@@ -373,15 +373,17 @@ pub const ViewPainter = struct {
         state.viewport_y = rect.y;
         state.viewport_x = rect.x;
         // The scrollbar's strip takes clicks over the content's edge: press to grab
-        // (or jump to) the thumb, then drag it.
-        if (state.maxOffset() > 0.5) try context.hit_regions.append(context.arena, .{
+        // (or jump to) the thumb, then drag it. A hidden bar has no strip, so
+        // nothing unseen takes the content's taps there.
+        const bars = context.scroll_indicators.draws();
+        if (bars and state.maxOffset() > 0.5) try context.hit_regions.append(context.arena, .{
             .rect = mod.Scrollbar.strip(rect),
             .action = .{ .callback = .{ .context = state, .function = mod.Scrollbar.press } },
             .disabled = false,
         });
         // The horizontal bar's strip along the bottom, registered after the
         // vertical one so it takes the corner the two share.
-        if (scroll.horizontal and state.maxOffsetX() > 0.5) try context.hit_regions.append(context.arena, .{
+        if (bars and scroll.horizontal and state.maxOffsetX() > 0.5) try context.hit_regions.append(context.arena, .{
             .rect = mod.Scrollbar.stripHorizontal(rect),
             .action = .{ .callback = .{ .context = state, .function = mod.Scrollbar.pressHorizontal } },
             .disabled = false,

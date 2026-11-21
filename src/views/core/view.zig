@@ -607,6 +607,21 @@ pub const View = struct {
         return view;
     }
 
+    /// Sets whether the scroll views in this subtree draw their scrollbars, as
+    /// SwiftUI's `.scrollIndicators()`: `.visible` keeps a bar up while the
+    /// content overflows, `.hidden` draws none and leaves its edge to the
+    /// content's taps; `.automatic` (the default) shows it briefly after a
+    /// scroll.
+    ///
+    /// - `self`: the view.
+    /// - `visibility`: the visibility.
+    /// - Returns: the view.
+    pub fn scrollIndicators(self: *const Self, visibility: mod.ScrollIndicatorVisibility) Self {
+        var view = self.*;
+        view.modifiers.scroll_indicators = visibility;
+        return view;
+    }
+
     /// Sets how the `Toggle`s in this subtree draw, as SwiftUI's
     /// `.toggleStyle()`: `.checkbox` puts a box before the label, `.switch` a
     /// switch after it; `.automatic` (the default) is a checkbox in a `Form`.

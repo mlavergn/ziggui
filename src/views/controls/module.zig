@@ -16,6 +16,8 @@ pub const RichText = @import("text.zig").RichText;
 pub const RichTextPreformatted = @import("text.zig").RichTextPreformatted;
 /// A wrapped paragraph of styled spans at a given line height.
 pub const RichTextSpaced = @import("text.zig").RichTextSpaced;
+/// One line of text with runs of it marked, as search results mark a match.
+pub const HighlightedText = @import("text.zig").HighlightedText;
 /// A filled rectangle.
 pub const Rectangle = @import("shapes.zig").Rectangle;
 /// A filled rounded rectangle.
@@ -62,6 +64,10 @@ pub const Icon = @import("icon.zig").Icon;
 pub const IconButton = @import("icon.zig").IconButton;
 /// A view that paints itself through a callback.
 pub const Canvas = @import("canvas.zig").Canvas;
+/// A picture that zooms and pans, with an overlay drawn through its geometry.
+pub const ZoomableImage = @import("zoomable_image.zig").ZoomableImage;
+/// The picture a `ZoomableImage` shows.
+pub const ZoomPicture = @import("zoomable_image.zig").ZoomPicture;
 /// A push button with its keyboard shortcut in a key cap after the label.
 pub const ButtonKeyed = @import("button.zig").ButtonKeyed;
 /// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
@@ -76,6 +82,10 @@ pub const SegmentedControl = @import("segmented_control.zig").SegmentedControl;
 pub const IconSegmentedControl = @import("segmented_control.zig").IconSegmentedControl;
 /// One segment of an `IconSegmentedControl`: its icon and title.
 pub const IconSegment = @import("icon_segment.zig").IconSegment;
+/// An app's appearance setting: follow the system, light or dark.
+pub const Appearance = @import("appearance.zig").Appearance;
+/// A settings page's appearance choice: Auto, Light and Dark as little windows.
+pub const AppearancePicker = @import("appearance_picker.zig").AppearancePicker;
 
 /// A node of the view tree (from the views module).
 pub const View = @import("../module.zig").View;
@@ -89,12 +99,22 @@ pub const Binding = @import("../module.zig").Binding;
 pub const ButtonRole = @import("../module.zig").ButtonRole;
 /// A text field's buffer, caret and selection (from the views module).
 pub const TextFieldState = @import("../module.zig").TextFieldState;
+/// Line and character stepping over UTF-8 text (from the views module).
+pub const TextLines = @import("../module.zig").TextLines;
 /// A scroll view's app-owned offsets (from the views module).
 pub const ScrollState = @import("../module.zig").ScrollState;
 /// What a `Canvas` draws with (from the views module).
 pub const GraphicsContext = @import("../module.zig").GraphicsContext;
+/// Markers a `Canvas` draws over a picture (from the views module).
+pub const CanvasMarkers = @import("../module.zig").CanvasMarkers;
+/// A `ZoomableImage`'s zoom and pan (from the views module).
+pub const ZoomState = @import("../module.zig").ZoomState;
+/// A zoomed picture's layout (from the views module).
+pub const ZoomGeometry = @import("../module.zig").ZoomGeometry;
 /// One styled run of a `RichText` (from the views module).
 pub const Span = @import("../module.zig").Span;
+/// A run of a text's bytes, as `HighlightedText` marks them (from the views module).
+pub const TextRange = @import("../module.zig").TextRange;
 /// Children side by side (from the views module).
 pub const HStack = @import("../module.zig").HStack;
 /// Flexible space in a stack (from the views module).
@@ -131,7 +151,10 @@ test {
     _ = @import("image.zig");
     _ = @import("icon.zig");
     _ = @import("canvas.zig");
+    _ = @import("zoomable_image.zig");
     _ = @import("badge.zig");
     _ = @import("key_cap.zig");
     _ = @import("segmented_control.zig");
+    _ = @import("appearance.zig");
+    _ = @import("appearance_picker.zig");
 }

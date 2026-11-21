@@ -645,6 +645,38 @@ test "view: ScrollViewState registers one region and offset moves the content" {
     try std.testing.expect(framebuffer1.at(25, 35).approxEql(renderer.Color.blue, 0.05));
 }
 
+test "view: .scrollIndicators(.visible) keeps the bar up, headless and never scrolled" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var scroll_state = mod.ScrollState{};
+    const content = mod.Rectangle(renderer.Color.white).frame(50, 200);
+    const viewport = renderer.Rect{ .x = 0, .y = 0, .width = 50, .height = 40 };
+
+    // Automatic: the overlay bar shows only after a scroll, so not here.
+    var automatic = try environment.renderToFramebuffer(&context, mod.ScrollViewState(&scroll_state, content), viewport, 50, 40);
+    defer automatic.deinit();
+    try std.testing.expect(automatic.at(46, 10).approxEql(renderer.Color.white, 0.01));
+
+    // Visible: the thumb sits on the right edge at the top.
+    environment.hits.clearRetainingCapacity();
+    var visible = try environment.renderToFramebuffer(&context, mod.ScrollViewState(&scroll_state, content).scrollIndicators(.visible), viewport, 50, 40);
+    defer visible.deinit();
+    try std.testing.expect(!visible.at(46, 10).approxEql(renderer.Color.white, 0.05));
+
+    // A shown bar's edge strip takes presses.
+    try std.testing.expectEqual(@as(usize, 1), environment.hits.items.len);
+
+    // Inherited from an ancestor; `.hidden` below it draws none, and leaves
+    // no strip to take the content's taps at its edge.
+    environment.hits.clearRetainingCapacity();
+    var hidden = try environment.renderToFramebuffer(&context, mod.VStack(.{mod.ScrollViewState(&scroll_state, content).scrollIndicators(.hidden)}).scrollIndicators(.visible), viewport, 50, 40);
+    defer hidden.deinit();
+    try std.testing.expect(hidden.at(46, 10).approxEql(renderer.Color.white, 0.01));
+    try std.testing.expectEqual(@as(usize, 0), environment.hits.items.len);
+}
+
 test "view: ScrollView clips content to its frame" {
     var environment = mod.TestEnvironment.init();
     environment.setup();
@@ -1820,6 +1852,49 @@ test "view: a Canvas's picture skips the atlas and stays inside the clip" {
     try std.testing.expect(framebuffer.at(20, 10).r > 0.9 and framebuffer.at(20, 10).g < 0.1);
     // Past the clip the picture is not drawn.
     try std.testing.expect(framebuffer.at(50, 10).g > 0.9);
+}
+
+test "view: a ZoomableImage lays its picture out, draws its overlay, and chips a zoom" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const Overlay = struct {
+        const Self = @This();
+        drawn_at: *renderer.Point,
+        /// Marks the picture's centre, through the geometry.
+        ///
+        /// - `self`: the probe.
+        /// - `graphics`: what it draws with.
+        /// - `geometry`: the picture's layout.
+        /// - Returns: nothing; propagates allocation failure.
+        fn draw(self: *const Self, graphics: *mod.GraphicsContext, geometry: mod.ZoomGeometry) std.mem.Allocator.Error!void {
+            self.drawn_at.* = geometry.at(.{ .x = 2, .y = 2 });
+            try mod.CanvasMarkers.crosshair(graphics, self.drawn_at.*, 4, renderer.Color.blue, renderer.Color.white);
+        }
+    };
+    var pixels: [4 * 4 * 4]u8 = undefined;
+    for (0..16) |index| pixels[index * 4 ..][0..4].* = .{ 255, 0, 0, 255 };
+    var drawn_at = renderer.Point{ .x = 0, .y = 0 };
+    const overlay = Overlay{ .drawn_at = &drawn_at };
+    var state = mod.ZoomState{};
+    const picture = mod.ZoomPicture{ .image = .{ .width = 4, .height = 4, .pixels = &pixels }, .key = @intFromPtr(&pixels) };
+    const root = renderer.Rect{ .x = 0, .y = 0, .width = 80, .height = 40 };
+    try mod.ViewRenderer.render(&context, mod.ZoomableImage(Overlay, &overlay, Overlay.draw, &state, picture).frame(80, 40), root, &display_list);
+    // Fitted: 4 px to 40 pt high, centered across; the overlay saw the picture's centre; no chip.
+    try std.testing.expectApproxEqAbs(@as(f32, 10), state.geometry.scale, 1e-4);
+    try std.testing.expectApproxEqAbs(@as(f32, 40), drawn_at.x, 1e-3);
+    try std.testing.expectEqual(null, state.chip);
+
+    // Zoomed: the chip is drawn and a click on it would fit.
+    state.zoomAt(.{ .x = 40, .y = 20 }, 2);
+    display_list.clearCommands();
+    try mod.ViewRenderer.render(&context, mod.ZoomableImage(Overlay, &overlay, Overlay.draw, &state, picture).frame(80, 40), root, &display_list);
+    const chip = state.chip.?;
+    try std.testing.expect(state.chipContains(.{ .x = chip.x + 1, .y = chip.y + 1 }));
+    try std.testing.expectApproxEqAbs(@as(f32, 20), state.geometry.scale, 1e-4);
 }
 
 test "view: an alert widens to content that cannot be narrower" {

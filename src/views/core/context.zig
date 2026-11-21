@@ -79,6 +79,8 @@ pub const Context = struct {
     toggle_style: mod.ToggleStyle = .automatic,
     /// How the subtree's `Picker`s draw (`.pickerStyle()`).
     picker_style: mod.PickerStyle = .automatic,
+    /// Whether the subtree's scroll views draw their scrollbars (`.scrollIndicators()`).
+    scroll_indicators: mod.ScrollIndicatorVisibility = .automatic,
     /// The subtree is inside a `Form`: its automatic toggles are checkboxes,
     /// its automatic pickers menus.
     in_form: bool = false,
@@ -245,13 +247,14 @@ pub const Context = struct {
     }
 
     /// Folds a view's environment modifiers into the inherited context: its
-    /// toggle and picker styles, and whether the subtree is inside a `Form`.
+    /// toggle and picker styles, its scroll indicators, and whether the subtree is inside a `Form`.
     ///
     /// - `self`: the context, changed in place.
     /// - `view`: the view.
     pub fn applyEnvironment(self: *Self, view: mod.View) void {
         if (view.modifiers.toggle_style) |style| self.toggle_style = style;
         if (view.modifiers.picker_style) |style| self.picker_style = style;
+        if (view.modifiers.scroll_indicators) |visibility| self.scroll_indicators = visibility;
         if (view.modifiers.form_columns) self.in_form = true;
     }
 

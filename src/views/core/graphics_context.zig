@@ -39,6 +39,20 @@ pub const GraphicsContext = struct {
         try self.display_list.fillRoundedRect(rect, radius, self.tint(color));
     }
 
+    /// Strokes a rounded rectangle's outline, as SwiftUI's `stroke`: a circle
+    /// when `radius` is half a square's side. One command, so a translucent
+    /// outline blends once all the way round.
+    ///
+    /// - `self`: the pen.
+    /// - `rect`: the rectangle.
+    /// - `radius`: its corner radius.
+    /// - `width`: the stroke's width.
+    /// - `color`: the color.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn stroke(self: *Self, rect: renderer.Rect, radius: f32, width: f32, color: renderer.Color) std.mem.Allocator.Error!void {
+        try self.display_list.strokeRoundedRect(rect, radius, width, self.tint(color));
+    }
+
     /// Draws a picture from a texture of its own rather than the shared atlas:
     /// an image too large to share it (a photo) or one whose pixels change
     /// (a frame). The GPU backend uploads it once per `generation` of `key`

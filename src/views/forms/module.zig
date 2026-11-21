@@ -1,7 +1,8 @@
 //! Form editors: name/value rows (`KeyValueEditor` over `KeyValueState`) and
 //! token fields (`TokenField` over `TokenFieldState`), and a local file and
 //! folder picker (`FileBrowser` over `FileBrowserState`), and a search field
-//! with a clear button (`SearchField`), composed from text
+//! with a clear button (`SearchField`) and the find bar around one
+//! (`FindBar`), composed from text
 //! fields, buttons, rows and stacks.
 
 const std = @import("std");
@@ -29,6 +30,12 @@ pub const FileBrowserState = @import("file_browser_state.zig").FileBrowserState;
 pub const FileBrowser = @import("file_browser.zig").FileBrowser;
 /// A search field: a magnifying glass, the text, and a clear button.
 pub const SearchField = @import("search_field.zig").SearchField;
+/// Where a find stands: which match is current, of how many.
+pub const FindCount = @import("find_count.zig").FindCount;
+/// What a `FindBar`'s field, buttons and keys do (`handleKey`).
+pub const FindActions = @import("find_actions.zig").FindActions;
+/// A find bar: a search field, the count, and Previous, Next and Done.
+pub const FindBar = @import("find_bar.zig").FindBar;
 /// A composed field's look: the raised ground, a strong hairline border, a 6pt corner.
 pub const FieldChrome = @import("field_chrome.zig").FieldChrome;
 
@@ -43,6 +50,10 @@ pub const Callback = @import("../module.zig").Callback;
 pub const FrameClock = @import("../module.zig").FrameClock;
 /// The keyboard focus (`Focus.shared()`), from the views module.
 pub const Focus = @import("../module.zig").Focus;
+/// A push button with a role (from the views module).
+pub const ButtonRoled = @import("../module.zig").ButtonRoled;
+/// A key press, platform-neutral (from the views module).
+pub const Key = @import("../module.zig").Key;
 /// A push button with a leading glyph and a role (from the views module).
 pub const ButtonIconRoled = @import("../module.zig").ButtonIconRoled;
 /// A borderless tappable glyph (from the views module).
@@ -61,6 +72,8 @@ pub const Text = @import("../module.zig").Text;
 pub const TextField = @import("../module.zig").TextField;
 /// A text field's buffer, caret and selection (from the views module).
 pub const TextFieldState = @import("../module.zig").TextFieldState;
+/// The right-click menu of text fields (from the views module).
+pub const TextContextMenu = @import("../module.zig").TextContextMenu;
 /// Nothing, taking no room (from the views module).
 pub const Empty = @import("../module.zig").Empty;
 /// A full-width rule (from the views module).
@@ -69,6 +82,8 @@ pub const Divider = @import("../module.zig").Divider;
 pub const PointerInput = @import("../module.zig").PointerInput;
 /// A scroll offset kept across frames (from the views module).
 pub const ScrollState = @import("../module.zig").ScrollState;
+/// SDL3 keycodes and modifier bits as named constants (from the views module).
+pub const SdlKey = @import("../module.zig").SdlKey;
 /// A vertical list of equal rows that builds only the rows in view (from the views module).
 pub const VirtualList = @import("../module.zig").VirtualList;
 /// The build-time theme colors (from the views module).

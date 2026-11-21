@@ -30,7 +30,8 @@ const status_capacity: usize = 256;
 
 /// A small plain-text editor in the spirit of TextEdit, gedit or Notepad,
 /// folded in from zigui's edit example: a toolbar, a multi-line
-/// `TextEditor` with line numbers, a find bar (⌘F) with wrap-around, zoom
+/// `TextEditor` with line numbers, a `FindBar` (⌘F) with wrap-around and
+/// its match count, zoom
 /// (⌘+, ⌘-, ⌘0), a status bar, and a path dialog for Open and Save As.
 ///
 /// It edits text in memory: Open loads the sample document under the name
@@ -147,7 +148,7 @@ pub const Editor = struct {
         rows[count] = editor;
         count += 1;
         if (self.show_find.get()) {
-            rows[count] = self.findBar(theme);
+            rows[count] = ziggui.FindBar("Find", &self.find_field, self.findCount(), self.findActions());
             count += 1;
         }
         rows[count] = ziggui.Divider();
@@ -162,17 +163,24 @@ pub const Editor = struct {
             .alert(self.show_dialog.binding(), self.dialogView(theme));
     }
 
-    /// A key went down while the editor shows: its ⌘ (Ctrl off macOS)
-    /// shortcuts. Copy, cut, paste and select all are left to the loop,
-    /// which does them for the focused field.
+    /// A key went down while the editor shows: the find bar's keys while it
+    /// shows (`ziggui.FindActions.handleKey`: Esc, Shift-Enter, ⌘G), then
+    /// the ⌘ (Ctrl off macOS) shortcuts. Copy, cut, paste and select all are
+    /// left to the loop, which does them for the focused field.
     ///
     /// - `self`: the editor.
     /// - `keycode`: the key's `SDL_Keycode`.
     /// - `modifiers`: its `SDL_Keymod` mask.
-    /// - Returns: true when the key was a shortcut, so no field takes it;
-    ///   false for every key while the path dialog is up, which is modal.
+    /// - Returns: true when the key was the find bar's or a shortcut, so no
+    ///   field takes it; false for every key while the path dialog is up,
+    ///   which is modal.
     pub fn keyDown(self: *Self, keycode: u32, modifiers: u16) bool {
         if (self.show_dialog.get()) return false;
+        if (self.show_find.get()) {
+            if (ziggui.Key.fromSdl(keycode, modifiers, gallery.is_macos)) |key| {
+                if (self.findActions().handleKey(key, &self.find_field)) return true;
+            }
+        }
         if (modifiers & (ziggui.SdlKey.gui_mask | ziggui.SdlKey.ctrl_mask) == 0) return false;
         switch (keycode) {
             's' => self.save(),
@@ -320,6 +328,43 @@ pub const Editor = struct {
         if (hit) |index| self.selectMatch(index, needle.len) else self.setStatus("Not found", .{});
     }
 
+    /// What the find bar's field, buttons and keys do: Enter and Next find
+    /// the next match, Previous the one before, Done closes the bar.
+    ///
+    /// - `self`: the editor.
+    /// - Returns: the actions, pointing at the editor.
+    pub fn findActions(self: *Self) ziggui.FindActions {
+        return .{
+            .on_submit = ziggui.Callback.init(Self, self, Self.findNext),
+            .on_next = ziggui.Callback.init(Self, self, Self.findNext),
+            .on_previous = ziggui.Callback.init(Self, self, Self.findPrevious),
+            .on_done = ziggui.Callback.init(Self, self, Self.toggleFind),
+        };
+    }
+
+    /// Where the find stands: the find field's matches in the document
+    /// (each found past the one before it, as Next steps), and which is
+    /// selected.
+    ///
+    /// - `self`: the editor.
+    /// - Returns: the count, or null while the field is empty.
+    pub fn findCount(self: *const Self) ?ziggui.FindCount {
+        const needle = self.find_field.text();
+        if (needle.len == 0) return null;
+        const haystack = self.document.text();
+        const selected = self.document.selectionRange();
+        var count: ziggui.FindCount = .{ .total = 0 };
+        var from: usize = 0;
+        while (std.mem.findPos(u8, haystack, from, needle)) |index| {
+            if (selected) |range| {
+                if (range.start == index and range.end == index + needle.len) count.current = count.total;
+            }
+            count.total += 1;
+            from = index + needle.len;
+        }
+        return count;
+    }
+
     /// Shows the find bar searching for `needle`, its first match after the
     /// caret selected (the `--find` demo).
     ///
@@ -464,26 +509,6 @@ pub const Editor = struct {
             .frameMaxWidth();
     }
 
-    /// The find bar: the field, Previous, Next and Done.
-    ///
-    /// - `self`: the editor.
-    /// - `theme`: the theme this frame draws with.
-    /// - Returns: the find bar.
-    fn findBar(self: *Self, theme: ziggui.Theme) ziggui.View {
-        return ziggui.HStack(.{
-            ziggui.Text("Find").font(.subheadline).foreground(theme.colors.secondary_label),
-            ziggui.TextField("Search…", &self.find_field)
-                .frameMaxWidth()
-                .onSubmit(ziggui.Callback.init(Self, self, Self.findNext)),
-            ziggui.ButtonRoled("Prev", .plain, ziggui.Callback.init(Self, self, Self.findPrevious)),
-            ziggui.ButtonRoled("Next", .plain, ziggui.Callback.init(Self, self, Self.findNext)),
-            ziggui.ButtonRoled("Done", .plain, ziggui.Callback.init(Self, self, Self.toggleFind)),
-        }).spacing(10)
-            .paddingInsets(.{ .top = 7, .leading = 14, .bottom = 7, .trailing = 14 })
-            .background(theme.colors.secondary_background)
-            .frameMaxWidth();
-    }
-
     /// The status bar: the caret's line and column, the document's
     /// characters and lines, the code name it shows, and the status message.
     ///
@@ -499,7 +524,7 @@ pub const Editor = struct {
         return ziggui.HStack(.{
             ziggui.Text(counts).font(.footnote).foreground(theme.colors.secondary_label),
             ziggui.Spacer(),
-            ziggui.Text("ziggui.TextEditor").font(.caption).mono().foreground(theme.colors.tertiary_label),
+            ziggui.Text(if (self.show_find.get()) "ziggui.TextEditor · ziggui.FindBar · ziggui.FindCount · ziggui.FindActions" else "ziggui.TextEditor").font(.caption).mono().foreground(theme.colors.tertiary_label),
             ziggui.Text(self.status()).font(.footnote).foreground(theme.colors.tertiary_label),
         }).spacing(14)
             .paddingInsets(.{ .top = 6, .leading = 14, .bottom = 6, .trailing = 14 })
@@ -588,6 +613,46 @@ test "find selects the next match, wraps, and says when there is none" {
     try editor.find_field.setText("absent");
     editor.findNext();
     try std.testing.expectEqualStrings("Not found", editor.status());
+}
+
+test "the find count says which match is selected, of how many" {
+    const allocator = std.testing.allocator;
+
+    var editor = try Editor.init(allocator);
+    defer editor.deinit();
+
+    try std.testing.expectEqual(@as(?ziggui.FindCount, null), editor.findCount());
+    try editor.find_field.setText("greeting");
+    try std.testing.expectEqual(@as(?ziggui.FindCount, .{ .total = 2 }), editor.findCount());
+    editor.findNext();
+    try std.testing.expectEqual(@as(?ziggui.FindCount, .{ .current = 0, .total = 2 }), editor.findCount());
+    editor.findNext();
+    try std.testing.expectEqual(@as(?ziggui.FindCount, .{ .current = 1, .total = 2 }), editor.findCount());
+    try editor.find_field.setText("absent");
+    try std.testing.expectEqual(@as(?ziggui.FindCount, .{ .total = 0 }), editor.findCount());
+}
+
+test "the find bar takes Shift-Enter in its field and Esc, and leaves Shift-Enter to the document" {
+    const allocator = std.testing.allocator;
+
+    var editor = try Editor.init(allocator);
+    defer editor.deinit();
+
+    editor.showMatch("greeting");
+    editor.findNext();
+    const second = editor.document.selection_anchor;
+    // In the document, Shift-Enter is the document's newline.
+    ziggui.Focus.shared().set(&editor.document);
+    try std.testing.expect(!editor.keyDown(ziggui.SdlKey.enter, ziggui.SdlKey.left_shift_mask));
+    try std.testing.expectEqual(second, editor.document.selection_anchor);
+    // In the find field, it goes to the previous match.
+    ziggui.Focus.shared().set(&editor.find_field);
+    try std.testing.expect(editor.keyDown(ziggui.SdlKey.enter, ziggui.SdlKey.left_shift_mask));
+    try std.testing.expect(editor.document.selection_anchor != second);
+    // Esc closes the bar, back to the document.
+    try std.testing.expect(editor.keyDown(ziggui.SdlKey.escape, 0));
+    try std.testing.expect(!editor.show_find.get());
+    try std.testing.expectEqual(@as(?*ziggui.TextFieldState, &editor.document), ziggui.Focus.shared().focused());
 }
 
 test "Save As names the document and marks it saved; New empties it" {

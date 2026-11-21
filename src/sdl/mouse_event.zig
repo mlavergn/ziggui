@@ -18,6 +18,8 @@ pub const MouseEventKind = enum {
     motion,
     /// The wheel turned.
     wheel,
+    /// A trackpad pinch changed its scale (`scale`), at the pointer.
+    pinch,
 };
 
 /// A mouse event in the main window, in logical points (see
@@ -49,6 +51,10 @@ pub const MouseEvent = struct {
     /// Sideways wheel lines, positive = to the right (wheel only).
     delta_x: f32 = 0,
 
+    /// The pinch's scale change since its last update: above 1 zooms in,
+    /// below 1 out (pinch only).
+    scale: f32 = 1,
+
     /// `SDL_KMOD_*` mask.
     modifiers: u16 = 0,
 
@@ -72,8 +78,22 @@ pub const MouseEvent = struct {
                 const point = app.eventPoint(event.wheel.mouse_x, event.wheel.mouse_y);
                 break :blk .{ .kind = .wheel, .x = point.x, .y = point.y, .delta_y = event.wheel.y, .delta_x = event.wheel.x, .modifiers = modifiers };
             },
+            // A pinch has no position of its own: it acts where the pointer rests.
+            sdl_c.SDL_EVENT_PINCH_UPDATE => blk: {
+                const point = app.hover_point orelse break :blk null;
+                break :blk .{ .kind = .pinch, .x = point.x, .y = point.y, .scale = event.pinch.scale, .modifiers = modifiers };
+            },
             else => null,
         };
+    }
+
+    /// Whether ⌘ or Ctrl was held: what makes a wheel turn zoom rather than
+    /// scroll (`ZoomState.wheel`'s `zooming`).
+    ///
+    /// - `self`: the event.
+    /// - Returns: true when either was held.
+    pub fn commandOrControl(self: *const Self) bool {
+        return (self.modifiers & (sdl_c.SDL_KMOD_GUI | sdl_c.SDL_KMOD_CTRL)) != 0;
     }
 };
 
