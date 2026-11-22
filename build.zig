@@ -336,6 +336,12 @@ const AppSteps = struct {
 const Gallery = struct {
     const Self = @This();
 
+    /// The gallery's name as an app (its window's title): the macOS bundle
+    /// `ziggui Gallery.app`, its menu bar's and Dock's name.
+    const app_name = "ziggui Gallery";
+    /// The gallery app's bundle identifier.
+    const app_identifier = "com.marclavergne.ziggui.gallery";
+
     /// The `gallery_config` options the gallery barrel reads: where the
     /// fixtures it shows live, found from the build root so the gallery
     /// finds them from any working directory.
@@ -349,10 +355,16 @@ const Gallery = struct {
         return gallery_options;
     }
 
-    /// Declares the gallery executable and its `gallery` and `run-gallery` steps.
+    /// Declares the gallery executable and its `gallery`, `gallery-app` and
+    /// `run-gallery` steps.
     ///
     /// The executable builds the gallery on the app `ziggui`, which links SDL3.
-    /// Neither step is part of the default install.
+    /// `gallery` installs it as `bin/ziggui-gallery` (the headless checks run
+    /// it there); `gallery-app` installs it as its platform's app, laid out by
+    /// `zigbuildx.App`: on macOS `ziggui Gallery.app` at the top of the prefix
+    /// (`Info.plist` from build.zig.zon, the `.icns` icon, unsigned), on Linux
+    /// the executable with a desktop entry and icon. No step is part of the
+    /// default install.
     ///
     /// - `b`: the build graph.
     /// - `config`: the build's configuration.
@@ -400,6 +412,18 @@ const Gallery = struct {
 
         const gallery_run_step = b.step("run-gallery", "Run the component gallery");
         gallery_run_step.dependOn(&gallery_run.step);
+
+        const bundle: zigbuildx.AppBundle = .{
+            .name = Self.app_name,
+            .identifier = Self.app_identifier,
+            .version = zon.version,
+            .exe = gallery,
+            .icns = b.path("assets/icon/zigz.icns"),
+            .png = b.path("assets/icon/zigz.png"),
+            .comment = "Every ziggui component, in every theme",
+        };
+        const app_step = b.step("gallery-app", "Build the component gallery as an app (a .app bundle on macOS)");
+        app_step.dependOn(zigbuildx.App.addInstall(b, bundle, null));
     }
 };
 

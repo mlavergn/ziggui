@@ -71,7 +71,7 @@ git clone git@github.com:mlavergn/ziggui.git
 cd ziggui
 make build
 make test     # headless: never builds SDL or opens a window
-make demo     # the component gallery, in a window
+make app     # the component gallery, in a window (an app bundle on macOS)
 ```
 
 The gallery also renders without a window, which is how changes are checked:

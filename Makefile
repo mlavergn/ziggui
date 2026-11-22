@@ -11,7 +11,7 @@
 
 .DEFAULT_GOAL := all
 
-.PHONY: build dist demo
+.PHONY: build dist app
 
 # ---------------------------------------------
 # Configuration
@@ -21,8 +21,18 @@
 # `tag` reads it, so `=` defers the sed until then (Windows has no sed).
 VERSION = $(shell sed -n -E 's/^[[:space:]]*\.version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' build.zig.zon)
 
-# The Zig compiler: `make demo ZIG=C:/zig-0.17.1/zig.exe` picks one.
+# The Zig compiler: `make app ZIG=C:/zig-0.17.1/zig.exe` picks one.
 ZIG ?= zig
+
+# The host's OS, for `app` (Windows has no uname).
+ifeq ($(OS),Windows_NT)
+HOST_OS := Windows
+else
+HOST_OS := $(shell uname -s)
+endif
+
+# The gallery's macOS app bundle, under the install prefix (`zig build gallery-app`).
+GALLERY_APP := zig-out/ziggui Gallery.app
 
 # The Zig source roots `format` and `lint` walk (see ../styleguide/Makefile.in).
 ZIG_DIRS := src gallery build
@@ -50,9 +60,17 @@ dist:
 # Build and launch the gallery (every ziggui component, with theme and
 # light/dark switchers) in a window. SDL3 is fetched and built by Zig on first
 # use. ReleaseFast because the software fallback is ~10x slower in Debug.
-# Pass arguments with `make demo ARGS="--dark"`.
-demo:
+# On macOS it is built as $(GALLERY_APP) and opened with `open`, so it
+# launches as an app (its name, icon and menu from the bundle; unsigned, the
+# linker signing the executable ad hoc); elsewhere it runs directly.
+# Pass arguments with `make app ARGS="--dark"`.
+app:
+ifeq ($(HOST_OS),Darwin)
+	$(ZIG) build gallery-app -Doptimize=ReleaseFast
+	open -n "$(GALLERY_APP)" --args $(ARGS)
+else
 	$(ZIG) build run-gallery -Doptimize=ReleaseFast -- $(ARGS)
+endif
 
 # ---------------------------------------------
 # Cross-compilation
