@@ -66,6 +66,12 @@ pub const CanvasData = @import("core/module.zig").CanvasData;
 pub const VideoPlayerData = @import("core/module.zig").VideoPlayerData;
 /// A `NativeView`'s payload.
 pub const NativeViewData = @import("core/module.zig").NativeViewData;
+/// A `SceneView`'s payload.
+pub const SceneViewData = @import("core/module.zig").SceneViewData;
+/// How a `SceneView` draws its scene and takes gestures.
+pub const SceneViewOptions = @import("core/module.zig").SceneViewOptions;
+/// The wheel and pinch that zoom a `SceneView`'s camera.
+pub const SceneCameraInput = @import("core/module.zig").SceneCameraInput;
 /// The modifiers applied around a view's content.
 pub const Modifiers = @import("core/module.zig").Modifiers;
 /// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
@@ -306,6 +312,8 @@ pub const Canvas = @import("controls/module.zig").Canvas;
 pub const ZoomableImage = @import("controls/module.zig").ZoomableImage;
 /// The picture a `ZoomableImage` shows.
 pub const ZoomPicture = @import("controls/module.zig").ZoomPicture;
+/// An app-owned 3D scene, drawn on the GPU.
+pub const SceneView = @import("controls/module.zig").SceneView;
 /// A push button with its keyboard shortcut in a key cap after the label.
 pub const ButtonKeyed = @import("controls/module.zig").ButtonKeyed;
 /// What a `Badge` says: its soft ground and strong text (`ground`, `text`).

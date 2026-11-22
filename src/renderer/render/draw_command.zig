@@ -139,6 +139,54 @@ pub const EraseRectCommand = struct {
     radius: f32 = 0,
 };
 
+/// Draw a 3D scene into a rect: the GPU backend draws the scene there (with
+/// its own depth buffer, over what is drawn already, under what is drawn
+/// after); the software rasterizer, and a GPU that cannot draw it, draw the
+/// placeholder (`placeholder`). The renderer cannot see the scene's type
+/// (`scenes` imports `renderer`), so it is carried as an opaque pointer.
+pub const SceneCommand = struct {
+    const Self = @This();
+
+    /// How many commands the placeholder is: a fill and a cube's nine edges.
+    pub const placeholder_count = 10;
+
+    /// Where the scene is drawn.
+    rect: mod.Rect,
+    /// The scene (a `scenes.Scene`), valid until the frame is drawn.
+    scene: *const anyopaque,
+    /// The placeholder's ground.
+    ground: mod.Color,
+    /// The placeholder's cube.
+    ink: mod.Color,
+
+    /// What stands in for the scene where it cannot be drawn: the rect
+    /// filled with `ground` and an isometric cube in `ink` at its center.
+    ///
+    /// - `self`: the command.
+    /// - Returns: the placeholder's commands.
+    pub fn placeholder(self: *const Self) [placeholder_count]DrawCommand {
+        var commands: [placeholder_count]DrawCommand = undefined;
+        commands[0] = .{ .fillRoundedRect = .{ .rect = self.rect, .color = self.ground } };
+        const center = mod.Point{ .x = self.rect.x + self.rect.width / 2, .y = self.rect.y + self.rect.height / 2 };
+        const radius = @min(self.rect.width, self.rect.height) * 0.18;
+        const width = @max(1, radius * 0.08);
+        // A pointy-top hexagon (its corners clockwise from the top), then
+        // the three edges meeting at its center that make it a cube.
+        var corners: [6]mod.Point = undefined;
+        for (&corners, 0..) |*corner, index| {
+            const angle = std.math.degreesToRadians(-90 + 60 * @as(f32, @floatFromInt(index)));
+            corner.* = .{ .x = center.x + radius * @cos(angle), .y = center.y + radius * @sin(angle) };
+        }
+        for (corners, 0..) |corner, index| {
+            commands[1 + index] = .{ .line = .{ .start = corner, .end = corners[(index + 1) % 6], .width = width, .color = self.ink } };
+        }
+        for ([_]usize{ 1, 3, 5 }, 0..) |corner, index| {
+            commands[7 + index] = .{ .line = .{ .start = center, .end = corners[corner], .width = width, .color = self.ink } };
+        }
+        return commands;
+    }
+};
+
 /// Push a clip region; subsequent draws are masked to the intersection of
 /// all clips on the stack until the matching `popClip`.
 pub const PushClipCommand = struct {
@@ -173,6 +221,8 @@ pub const DrawCommand = union(enum) {
     blurRect: BlurRectCommand,
     /// Erase what is beneath a rect to transparent.
     eraseRect: EraseRectCommand,
+    /// Draw a 3D scene.
+    scene: SceneCommand,
     /// Push a clip region.
     pushClip: PushClipCommand,
     /// Pop the innermost clip region.
@@ -187,3 +237,17 @@ test {
     // Nothing here does I/O to trace.
     _ = log;
 }
+
+test "a scene's placeholder fills its rect and draws a cube inside it" {
+    const command = SceneCommand{ .rect = .{ .x = 10, .y = 20, .width = 200, .height = 100 }, .scene = &command_marker, .ground = mod.Color.black, .ink = mod.Color.white };
+    const commands = command.placeholder();
+    try std.testing.expectEqual(command.rect, commands[0].fillRoundedRect.rect);
+    for (commands[1..]) |edge| {
+        for ([_]mod.Point{ edge.line.start, edge.line.end }) |point| {
+            try std.testing.expect(command.rect.contains(point));
+        }
+    }
+}
+
+/// Something for a test command's scene pointer to point at.
+const command_marker: u8 = 0;

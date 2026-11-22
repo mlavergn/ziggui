@@ -174,6 +174,7 @@ pub const ViewRenderer = struct {
                 .glyph => |*glyph| glyph.rect = Self.scaleRect(glyph.rect, factor),
                 .image => |*image| image.rect = Self.scaleRect(image.rect, factor),
                 .videoFrame => |*frame| frame.rect = Self.scaleRect(frame.rect, factor),
+                .scene => |*scene| scene.rect = Self.scaleRect(scene.rect, factor),
                 .blurRect => |*blur| {
                     blur.rect = Self.scaleRect(blur.rect, factor);
                     blur.radius *= factor;

@@ -286,8 +286,8 @@ pub const ViewLowering = struct {
                 .ideal = .{ .width = 480, .height = 270 },
                 .max = .{ .width = infinity, .height = infinity },
             } },
-            // A platform view fills what it is offered, like a picture.
-            .nativeView => return .{ .leaf = .{
+            // A platform view, or a 3D scene, fills what it is offered, like a picture.
+            .nativeView, .sceneView => return .{ .leaf = .{
                 .min = .{},
                 .ideal = .{ .width = 480, .height = 320 },
                 .max = .{ .width = infinity, .height = infinity },

@@ -5,6 +5,7 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_view_engine_test);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
+const scenes = @import("scenes");
 
 /// Counts the taps `Callback.action` handlers make.
 const Counter = struct {
@@ -3025,4 +3026,66 @@ test "a segmented picker's segments are each its label and room either side, as 
         index += 1;
     }
     try std.testing.expectEqual(options.len, index);
+}
+
+test "a SceneView paints its background, then the scene's command, and notes where it drew it" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    scene.background = renderer.Color.black;
+    const view = mod.SceneView(&scene, .{ .allows_camera_control = true });
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const rect = renderer.Rect{ .x = 10, .y = 20, .width = 300, .height = 200 };
+    try mod.ViewRenderer.render(&context, view, rect, &display_list);
+
+    var background_at: ?usize = null;
+    var scene_at: ?usize = null;
+    for (display_list.commands.items, 0..) |command, index| switch (command) {
+        .fillRoundedRect => |fill| if (fill.rect.x == rect.x and fill.color.approxEql(renderer.Color.black, 0)) {
+            background_at = index;
+        },
+        .scene => |drawn| {
+            try std.testing.expectEqual(rect, drawn.rect);
+            try std.testing.expectEqual(@as(*const anyopaque, &scene), drawn.scene);
+            scene_at = index;
+        },
+        else => {},
+    };
+    try std.testing.expect(background_at.? < scene_at.?);
+    const viewport = scene.viewport.?;
+    try std.testing.expectEqual([4]f32{ 10, 20, 300, 200 }, viewport.rect);
+    try std.testing.expect(viewport.camera_control);
+    try std.testing.expect(mod.BuildScope.shared().isLatest(.{ .popover_window = viewport.popover_window, .number = viewport.frame_number }));
+    // With camera control, a drag region covers the view.
+    var drags: usize = 0;
+    for (environment.hits.items) |hit| {
+        if (hit.action == .drag) drags += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 1), drags);
+}
+
+test "a SceneView ignores .opacity(): its background draws at full strength" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    scene.background = renderer.Color.black;
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const rect = renderer.Rect{ .x = 0, .y = 0, .width = 100, .height = 100 };
+    try mod.ViewRenderer.render(&context, mod.SceneView(&scene, .{}).opacity(0.5), rect, &display_list);
+    var backgrounds: usize = 0;
+    for (display_list.commands.items) |command| switch (command) {
+        .fillRoundedRect => |fill| if (fill.color.approxEql(renderer.Color.black, 0)) {
+            backgrounds += 1;
+        },
+        else => {},
+    };
+    try std.testing.expectEqual(@as(usize, 1), backgrounds);
 }

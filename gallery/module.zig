@@ -31,6 +31,8 @@ pub const Editor = @import("editor.zig").Editor;
 pub const Kit = @import("kit.zig").Kit;
 /// The Media Video panel: a `VideoPlayer` and its player.
 pub const Media = @import("media.zig").Media;
+/// The Scenes section's 3D card: a `SceneView` and its scene.
+pub const SceneDemo = @import("scene_demo.zig").SceneDemo;
 /// The Pickers panel: menu-style pickers in a form, and outside one.
 pub const Pickers = @import("pickers.zig").Pickers;
 /// The Settings panel: an app's settings (`ziggui.Settings`), and their state.

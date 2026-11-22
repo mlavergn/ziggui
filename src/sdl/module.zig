@@ -77,6 +77,10 @@ pub const Win32 = @import("windows/module.zig").Win32;
 pub const WindowHitTest = @import("window_hit_test.zig").WindowHitTest;
 /// The SDL_GPU backend.
 pub const Gpu = @import("gpu/gpu.zig").Gpu;
+/// Draws 3D scenes (`SceneView`) on the GPU device `Gpu` draws with.
+pub const SceneRenderer = @import("gpu/scene_renderer.zig").SceneRenderer;
+/// The shaders a `SceneRenderer`'s pipelines are made from.
+pub const SceneShaders = @import("gpu/scene_renderer.zig").SceneShaders;
 /// This OS's media player for `Player`, and the placement of its pictures.
 pub const VideoBackend = @import("video_backend.zig").VideoBackend;
 /// This OS's audio output listing for `AudioOutputs`.

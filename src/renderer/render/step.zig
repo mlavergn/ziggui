@@ -1,4 +1,5 @@
-//! One run of the GPU scene's instance stream, or a blur or erase break in it.
+//! One run of the GPU scene's instance stream, or a blur, erase, video-frame
+//! or 3D-scene break in it.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_step);
@@ -51,6 +52,23 @@ pub const FrameStep = struct {
     generation: u64,
 };
 
+/// Draw a 3D scene into a rect (`DrawCommand.scene`): the backend breaks the
+/// instance stream there, draws the scene with its own depth buffer, then
+/// carries on; one that cannot draw it draws `placeholder` instead.
+pub const SceneStep = struct {
+    const Self = @This();
+
+    /// Where the scene is drawn (x, y, width, height), in pixels.
+    rect: [4]f32,
+    /// The axis-aligned intersection of every clip rect (x, y, width,
+    /// height): the scene is cut to it (rounded clips draw square).
+    clip: [4]f32,
+    /// The scene (a `scenes.Scene`), valid until the frame is drawn.
+    scene: *const anyopaque,
+    /// The placeholder's instances, drawn only where the scene cannot be.
+    placeholder: DrawStep,
+};
+
 /// The instance stream split into draw runs, blur breaks, erase runs and
 /// video frames, in paint order.
 pub const Step = union(enum) {
@@ -65,6 +83,8 @@ pub const Step = union(enum) {
     erase: DrawStep,
     /// Draw a picture from a texture of its own (`DrawCommand.videoFrame`).
     frame: FrameStep,
+    /// Draw a 3D scene (`DrawCommand.scene`).
+    scene: SceneStep,
 };
 
 // -----------------------------------------------------------------------------

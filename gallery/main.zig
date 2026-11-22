@@ -660,6 +660,11 @@ const Window = struct {
         const point = ziggui.Point{ .x = event.x, .y = event.y };
         if (event.kind == .down) target.menu_bar.pointerDown();
         if (event.kind == .down and event.button == 1) target.pointerDown(point);
+        if (target.shownScene()) |scene| return switch (event.kind) {
+            .pinch => ziggui.SceneCameraInput.pinch(scene, point, event.scale),
+            .wheel => event.commandOrControl() and ziggui.SceneCameraInput.wheel(scene, point, event.delta_y),
+            else => false,
+        };
         const zoom = target.pictureZoom() orelse return false;
         if (event.kind == .down and event.button == 1 and zoom.chipContains(point)) {
             zoom.fit();

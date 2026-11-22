@@ -172,88 +172,29 @@ pub const GpuScene = struct {
                     try steps.append(arena, .{ .erase = .{ .first = count, .count = 1 } });
                     run_start = count + 1;
                 },
+                .scene => |scene| {
+                    // The scene breaks the stream; its placeholder's instances
+                    // follow, drawn only where the scene cannot be.
+                    const count: u32 = @intCast(instances.items.len);
+                    if (count > run_start) {
+                        try steps.append(arena, .{ .draw = .{ .first = run_start, .count = count - run_start } });
+                    }
+                    const clip = ClipState.resolve(clip_rects.items, clip_radii.items, framebuffer_width, framebuffer_height);
+                    for (scene.placeholder()) |placeholder| {
+                        if (try Self.primitive(arena, placeholder, clip, atlas)) |instance| try instances.append(arena, instance);
+                    }
+                    const placed: u32 = @intCast(instances.items.len);
+                    try steps.append(arena, .{ .scene = .{
+                        .rect = Self.rectArray(scene.rect),
+                        .clip = clip.rect,
+                        .scene = scene.scene,
+                        .placeholder = .{ .first = count, .count = placed - count },
+                    } });
+                    run_start = placed;
+                },
                 else => {
                     const clip = ClipState.resolve(clip_rects.items, clip_radii.items, framebuffer_width, framebuffer_height);
-                    var instance = mod.Instance{
-                        .quad = undefined,
-                        .shape = .{ 0, 0, 0, 0 },
-                        .color0 = .{ 0, 0, 0, 0 },
-                        .color1 = .{ 0, 0, 0, 0 },
-                        .points = .{ 0, 0, 0, 0 },
-                        .atlas_rect = .{ 0, 0, 0, 0 },
-                        .clip = clip.rect,
-                        .clip_rounded_rect = clip.rounded_rect,
-                        .parameters = .{ 0, 0, 0, clip.radius },
-                    };
-                    switch (command) {
-                        .fillRoundedRect => |fill| {
-                            instance.quad = Self.paddedQuad(fill.rect, 1);
-                            instance.shape = Self.rectArray(fill.rect);
-                            instance.color0 = Self.colorArray(fill.color);
-                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.fill));
-                            instance.parameters[1] = fill.radius;
-                        },
-                        .strokeRoundedRect => |stroke| {
-                            instance.quad = Self.paddedQuad(stroke.rect, stroke.width / 2 + 1);
-                            instance.shape = Self.rectArray(stroke.rect);
-                            instance.color0 = Self.colorArray(stroke.color);
-                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.stroke));
-                            instance.parameters[1] = stroke.radius;
-                            instance.parameters[2] = stroke.width / 2;
-                        },
-                        .linearGradient => |gradient| {
-                            instance.quad = Self.paddedQuad(gradient.rect, 1);
-                            instance.shape = Self.rectArray(gradient.rect);
-                            instance.color0 = Self.colorArray(gradient.start_color);
-                            instance.color1 = Self.colorArray(gradient.end_color);
-                            instance.points = .{ gradient.start.x, gradient.start.y, gradient.end.x, gradient.end.y };
-                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.gradient));
-                            instance.parameters[1] = gradient.radius;
-                        },
-                        .line => |segment| {
-                            const bounding_box = mod.Rect{
-                                .x = @min(segment.start.x, segment.end.x),
-                                .y = @min(segment.start.y, segment.end.y),
-                                .width = @abs(segment.end.x - segment.start.x),
-                                .height = @abs(segment.end.y - segment.start.y),
-                            };
-                            instance.quad = Self.paddedQuad(bounding_box, segment.width / 2 + 1);
-                            instance.color0 = Self.colorArray(segment.color);
-                            instance.points = .{ segment.start.x, segment.start.y, segment.end.x, segment.end.y };
-                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.line));
-                            instance.parameters[2] = segment.width / 2;
-                        },
-                        .glyph => |glyph| {
-                            if (glyph.coverage.width == 0 or glyph.coverage.height == 0) continue;
-                            instance.quad = Self.glyphQuad(glyph.rect, glyph.coverage);
-                            instance.color0 = Self.colorArray(glyph.color);
-                            // Expand the coverage to RGBA only when the atlas lacks it.
-                            const pointer = @intFromPtr(glyph.coverage.data.ptr);
-                            instance.atlas_rect = atlas.lookup(pointer, glyph.coverage.width, glyph.coverage.height) orelse
-                                try atlas.place(pointer, glyph.coverage.width, glyph.coverage.height, try Self.coverageToRgba(arena, glyph.coverage));
-                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.glyph));
-                            // parameters[1] (unused by glyphs — no corner radius) carries
-                            // the coverage gamma the fragment shader applies, matching
-                            // the software rasterizer's `drawGlyph`.
-                            instance.parameters[1] = glyph.gamma;
-                        },
-                        .image => |image| {
-                            if (image.image.width == 0 or image.image.height == 0) continue;
-                            // Fewer pixels than its size says: drawn as nothing,
-                            // as the rasterizer draws it, never read past.
-                            if (!image.image.isWhole()) continue;
-                            instance.quad = Self.rectArray(image.rect);
-                            instance.atlas_rect = try atlas.place(
-                                @intFromPtr(image.image.pixels.ptr),
-                                image.image.width,
-                                image.image.height,
-                                image.image.pixels,
-                            );
-                            instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.image));
-                        },
-                        else => unreachable,
-                    }
-                    try instances.append(arena, instance);
+                    if (try Self.primitive(arena, command, clip, atlas)) |instance| try instances.append(arena, instance);
                 },
             }
         }
@@ -263,6 +204,98 @@ pub const GpuScene = struct {
         }
         const self = Self{ .instances = instances.items, .steps = steps.items };
         return self;
+    }
+
+    /// The instance one primitive command draws (a fill, stroke, gradient,
+    /// line, glyph or image), placing a glyph's or image's pixels in the atlas.
+    ///
+    /// - `arena`: per-frame allocator, for a glyph's expanded coverage.
+    /// - `command`: the command.
+    /// - `clip`: the clip state it is drawn under.
+    /// - `atlas`: the texture atlas.
+    /// - Returns: the instance, or null for an empty glyph or an image with no pixels to read;
+    ///   `error.AtlasFull` when the atlas has no room; propagates allocation failure.
+    fn primitive(arena: std.mem.Allocator, command: mod.DrawCommand, clip: ClipState, atlas: *mod.TextureAtlas) error{ OutOfMemory, AtlasFull }!?mod.Instance {
+        var instance = mod.Instance{
+            .quad = undefined,
+            .shape = .{ 0, 0, 0, 0 },
+            .color0 = .{ 0, 0, 0, 0 },
+            .color1 = .{ 0, 0, 0, 0 },
+            .points = .{ 0, 0, 0, 0 },
+            .atlas_rect = .{ 0, 0, 0, 0 },
+            .clip = clip.rect,
+            .clip_rounded_rect = clip.rounded_rect,
+            .parameters = .{ 0, 0, 0, clip.radius },
+        };
+        switch (command) {
+            .fillRoundedRect => |fill| {
+                instance.quad = Self.paddedQuad(fill.rect, 1);
+                instance.shape = Self.rectArray(fill.rect);
+                instance.color0 = Self.colorArray(fill.color);
+                instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.fill));
+                instance.parameters[1] = fill.radius;
+            },
+            .strokeRoundedRect => |stroke| {
+                instance.quad = Self.paddedQuad(stroke.rect, stroke.width / 2 + 1);
+                instance.shape = Self.rectArray(stroke.rect);
+                instance.color0 = Self.colorArray(stroke.color);
+                instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.stroke));
+                instance.parameters[1] = stroke.radius;
+                instance.parameters[2] = stroke.width / 2;
+            },
+            .linearGradient => |gradient| {
+                instance.quad = Self.paddedQuad(gradient.rect, 1);
+                instance.shape = Self.rectArray(gradient.rect);
+                instance.color0 = Self.colorArray(gradient.start_color);
+                instance.color1 = Self.colorArray(gradient.end_color);
+                instance.points = .{ gradient.start.x, gradient.start.y, gradient.end.x, gradient.end.y };
+                instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.gradient));
+                instance.parameters[1] = gradient.radius;
+            },
+            .line => |segment| {
+                const bounding_box = mod.Rect{
+                    .x = @min(segment.start.x, segment.end.x),
+                    .y = @min(segment.start.y, segment.end.y),
+                    .width = @abs(segment.end.x - segment.start.x),
+                    .height = @abs(segment.end.y - segment.start.y),
+                };
+                instance.quad = Self.paddedQuad(bounding_box, segment.width / 2 + 1);
+                instance.color0 = Self.colorArray(segment.color);
+                instance.points = .{ segment.start.x, segment.start.y, segment.end.x, segment.end.y };
+                instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.line));
+                instance.parameters[2] = segment.width / 2;
+            },
+            .glyph => |glyph| {
+                if (glyph.coverage.width == 0 or glyph.coverage.height == 0) return null;
+                instance.quad = Self.glyphQuad(glyph.rect, glyph.coverage);
+                instance.color0 = Self.colorArray(glyph.color);
+                // Expand the coverage to RGBA only when the atlas lacks it.
+                const pointer = @intFromPtr(glyph.coverage.data.ptr);
+                instance.atlas_rect = atlas.lookup(pointer, glyph.coverage.width, glyph.coverage.height) orelse
+                    try atlas.place(pointer, glyph.coverage.width, glyph.coverage.height, try Self.coverageToRgba(arena, glyph.coverage));
+                instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.glyph));
+                // parameters[1] (unused by glyphs — no corner radius) carries
+                // the coverage gamma the fragment shader applies, matching
+                // the software rasterizer's `drawGlyph`.
+                instance.parameters[1] = glyph.gamma;
+            },
+            .image => |image| {
+                if (image.image.width == 0 or image.image.height == 0) return null;
+                // Fewer pixels than its size says: drawn as nothing,
+                // as the rasterizer draws it, never read past.
+                if (!image.image.isWhole()) return null;
+                instance.quad = Self.rectArray(image.rect);
+                instance.atlas_rect = try atlas.place(
+                    @intFromPtr(image.image.pixels.ptr),
+                    image.image.width,
+                    image.image.height,
+                    image.image.pixels,
+                );
+                instance.parameters[0] = @floatFromInt(@backingInt(mod.InstanceKind.image));
+            },
+            else => unreachable,
+        }
+        return instance;
     }
 
     /// A color as a shader float4.
@@ -458,6 +491,35 @@ test "gpu_scene: blur splits the instance stream into steps" {
     try std.testing.expectEqual(@as(f32, 4), scene.steps[1].blur.sigma);
     try std.testing.expectEqual(@as(u32, 1), scene.steps[2].draw.first);
     try std.testing.expectEqual(@as(u32, 1), scene.steps[2].draw.count);
+}
+
+test "gpu_scene: a scene breaks the stream, its placeholder's instances kept apart" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    var atlas = mod.TextureAtlas.init(std.testing.allocator, 64);
+    defer atlas.deinit();
+
+    const rect = mod.Rect{ .x = 10, .y = 10, .width = 40, .height = 30 };
+    const marker: u8 = 0;
+    const commands = [_]mod.DrawCommand{
+        .{ .fillRoundedRect = .{ .rect = rect, .color = mod.Color.red } },
+        .{ .pushClip = .{ .rect = .{ .x = 0, .y = 0, .width = 30, .height = 30 } } },
+        .{ .scene = .{ .rect = rect, .scene = &marker, .ground = mod.Color.black, .ink = mod.Color.white } },
+        .popClip,
+        .{ .fillRoundedRect = .{ .rect = rect, .color = mod.Color.blue } },
+    };
+    const scene = try TestScene.translate(arena_state.allocator(), &commands, &atlas);
+
+    try std.testing.expectEqual(@as(usize, 3), scene.steps.len);
+    try std.testing.expectEqual(@as(u32, 1), scene.steps[0].draw.count);
+    const step = scene.steps[1].scene;
+    try std.testing.expectEqual(@as(*const anyopaque, &marker), step.scene);
+    try std.testing.expectEqual([4]f32{ 10, 10, 40, 30 }, step.rect);
+    try std.testing.expectEqual([4]f32{ 0, 0, 30, 30 }, step.clip);
+    try std.testing.expectEqual(@as(u32, 1), step.placeholder.first);
+    try std.testing.expectEqual(@as(u32, mod.SceneCommand.placeholder_count), step.placeholder.count);
+    // The fill after it starts a run past the placeholder.
+    try std.testing.expectEqual(@as(u32, 1 + mod.SceneCommand.placeholder_count), scene.steps[2].draw.first);
 }
 
 test "gpu_scene: an erase is a fill instance in a step of its own" {

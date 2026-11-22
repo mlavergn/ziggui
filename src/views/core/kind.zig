@@ -5,6 +5,7 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_kind);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
+const scenes = @import("scenes");
 
 /// A one-line `Text`.
 pub const TextData = struct {
@@ -321,6 +322,17 @@ pub const NativeViewData = struct {
     placeholder: renderer.Icon = .appWindow,
 };
 
+/// A `SceneView`: an app-owned 3D scene.
+pub const SceneViewData = struct {
+    const Self = @This();
+
+    /// The scene shown; the app owns it. The painter writes where it drew it
+    /// (`Scene.viewport`).
+    scene: *scenes.Scene,
+    /// Camera control, animation and its accessibility label.
+    options: mod.SceneViewOptions,
+};
+
 /// What a view is.
 pub const Kind = union(enum) {
     const Self = @This();
@@ -385,6 +397,8 @@ pub const Kind = union(enum) {
     videoPlayer: VideoPlayerData,
     /// A platform view the app owns (see `NativeView`).
     nativeView: NativeViewData,
+    /// An app-owned 3D scene (see `SceneView`).
+    sceneView: SceneViewData,
     /// A transparent container whose children are spliced into the enclosing
     /// stack (used by `ForEach`).
     group: []const mod.View,

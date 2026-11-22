@@ -70,6 +70,8 @@ pub const Canvas = @import("canvas.zig").Canvas;
 pub const ZoomableImage = @import("zoomable_image.zig").ZoomableImage;
 /// The picture a `ZoomableImage` shows.
 pub const ZoomPicture = @import("zoomable_image.zig").ZoomPicture;
+/// An app-owned 3D scene, drawn on the GPU.
+pub const SceneView = @import("scene_view.zig").SceneView;
 /// A push button with its keyboard shortcut in a key cap after the label.
 pub const ButtonKeyed = @import("button.zig").ButtonKeyed;
 /// What a `Badge` says: its soft ground and strong text (`ground`, `text`).
@@ -125,6 +127,8 @@ pub const Accent = @import("../module.zig").Accent;
 pub const CanvasMarkers = @import("../module.zig").CanvasMarkers;
 /// A `ZoomableImage`'s zoom and pan (from the views module).
 pub const ZoomState = @import("../module.zig").ZoomState;
+/// How a `SceneView` draws its scene (from the views module).
+pub const SceneViewOptions = @import("../module.zig").SceneViewOptions;
 /// A zoomed picture's layout (from the views module).
 pub const ZoomGeometry = @import("../module.zig").ZoomGeometry;
 /// One styled run of a `RichText` (from the views module).
@@ -177,6 +181,7 @@ test {
     _ = @import("icon.zig");
     _ = @import("canvas.zig");
     _ = @import("zoomable_image.zig");
+    _ = @import("scene_view.zig");
     _ = @import("badge.zig");
     _ = @import("key_cap.zig");
     _ = @import("segmented_control.zig");

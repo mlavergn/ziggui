@@ -213,6 +213,7 @@ pub const ViewPainter = struct {
             .geometry => |geometry| try Self.paintGeometry(context, geometry, rect, display_list),
             .videoPlayer => |video| try Self.paintVideoPlayer(context, view, video, rect, display_list),
             .nativeView => |native| try Self.paintNativeView(context, view, native, rect, display_list),
+            .sceneView => |scene_view| try Self.paintSceneView(context, view, scene_view, rect, display_list),
             .textField => |field| {
                 try mod.TextViewPainter.paintTextField(context, view, field, rect, display_list);
                 // The buffer is copied only for an accessibility pass, not every paint.
@@ -478,6 +479,43 @@ pub const ViewPainter = struct {
         const side = @min(32, @min(rect.width, rect.height));
         const glyph = renderer.Rect{ .x = rect.midX() - side / 2, .y = rect.midY() - side / 2, .width = side, .height = side };
         try mod.ControlPainter.paintIcon(context, .{ .icon = native.placeholder, .size = side, .color = colors.tertiary_label }, glyph, display_list);
+    }
+
+    /// Paints a `SceneView`: its scene's background, then the command the GPU
+    /// draws the scene for (its placeholder, the frame and a cube, where it
+    /// cannot), after noting in the scene where it drew it, for the camera
+    /// gestures; while the scene animates, it asks for the next frame. It
+    /// ignores `.opacity()`.
+    ///
+    /// - `context`: the context.
+    /// - `view`: the view (its accessibility identifier).
+    /// - `scene_view`: the scene and options.
+    /// - `rect`: its frame.
+    /// - `display_list`: where it is painted.
+    /// - Returns: nothing; propagates allocation failure.
+    fn paintSceneView(context: *const mod.Context, view: mod.View, scene_view: mod.SceneViewData, rect: renderer.Rect, display_list: *renderer.DisplayList) std.mem.Allocator.Error!void {
+        const visible = if (context.visible) |shown| (shown.intersection(rect) orelse renderer.Rect{}) else rect;
+        const stamp = mod.BuildScope.shared().stamp();
+        scene_view.scene.viewport = .{
+            .rect = .{ rect.x, rect.y, rect.width, rect.height },
+            .visible = .{ visible.x, visible.y, visible.width, visible.height },
+            .frame_number = stamp.number,
+            .popover_window = stamp.popover_window,
+            .camera_control = scene_view.options.allows_camera_control,
+        };
+        // `.opacity()` is not applied: the 3D content could only fade as a whole
+        // through an offscreen layer, so the background and placeholder do not
+        // fade either (a node fades with `SceneNode.opacity`).
+        const colors = context.theme.colors;
+        if (scene_view.scene.background) |background| try display_list.fillRect(rect, background);
+        // The cube's ink laid over the ground first, so its edges, meeting, blend once.
+        const ground = colors.control_background;
+        try display_list.drawScene(rect, scene_view.scene, ground, colors.tertiary_label.over(ground));
+        if (scene_view.options.animating) {
+            const clock = mod.FrameClock.shared();
+            clock.requestFrameAt(clock.time() + 16);
+        }
+        try context.emitAccessibility(view, rect, .image, scene_view.options.label, "");
     }
 };
 

@@ -174,6 +174,18 @@ pub const DisplayList = struct {
         try self.push(.{ .videoFrame = .{ .rect = rect, .image = image, .key = key, .generation = generation } });
     }
 
+    /// Draw a 3D scene into a rect (`DrawCommand.scene`).
+    ///
+    /// - `self`: the display list.
+    /// - `rect`: where it is drawn.
+    /// - `scene`: the scene, a `scenes.Scene`, valid until the frame is drawn.
+    /// - `ground`: the placeholder's ground.
+    /// - `ink`: the placeholder's cube.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn drawScene(self: *Self, rect: mod.Rect, scene: *const anyopaque, ground: mod.Color, ink: mod.Color) !void {
+        try self.push(.{ .scene = .{ .rect = rect, .scene = scene, .ground = ground, .ink = ink } });
+    }
+
     /// Frost what is already drawn beneath a rect.
     ///
     /// - `self`: the display list.

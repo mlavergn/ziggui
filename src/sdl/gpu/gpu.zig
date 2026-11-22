@@ -37,6 +37,7 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_gpu);
 const mod = @import("../module.zig");
 const renderer = @import("renderer");
+const scenes = @import("scenes");
 const views = @import("views");
 const sdl_c = @import("sdl_c");
 
@@ -49,6 +50,13 @@ const primitive_msl = @embedFile("shaders/prim.metal");
 const blur_msl = @embedFile("shaders/blur.metal");
 const primitive_hlsl = @embedFile("shaders/prim.hlsl");
 const blur_hlsl = @embedFile("shaders/blur.hlsl");
+const scene_vertex_spirv = @embedFile("shaders/scene.vert.spv");
+const scene_fragment_spirv = @embedFile("shaders/scene.frag.spv");
+const scene_shadow_vertex_spirv = @embedFile("shaders/scene_shadow.vert.spv");
+const scene_shadow_fragment_spirv = @embedFile("shaders/scene_shadow.frag.spv");
+const scene_msl = @embedFile("shaders/scene.metal");
+const scene_hlsl = @embedFile("shaders/scene.hlsl");
+const scene_shadow_hlsl = @embedFile("shaders/scene_shadow.hlsl");
 
 const is_windows = mod.os_tag == .windows;
 
@@ -334,6 +342,22 @@ const GpuEncoder = struct {
         sdl_c.SDL_BindGPUFragmentSamplers(pass, 0, &.{ .texture = self.gpu.atlas_texture, .sampler = self.gpu.sampler }, 1);
     }
 
+    /// Draws a 3D scene: the UI's pass ends, the scene renderer draws the
+    /// scene into the scene texture, and the next draw opens a pass again;
+    /// where the scene cannot be drawn, its placeholder is.
+    ///
+    /// - `self`: the encoder.
+    /// - `arena`: the frame's arena.
+    /// - `step`: the scene step.
+    fn sceneStep(self: *Self, arena: std.mem.Allocator, step: renderer.SceneStep) void {
+        self.endPass();
+        self.ensureCleared();
+        if (self.gpu.sceneRenderer()) |scene_renderer| if (self.gpu.scene_texture) |target| {
+            if (scene_renderer.draw(arena, self.command_buffer, step, target, self.width, self.height)) return;
+        };
+        self.drawStep(step.placeholder.first, step.placeholder.count);
+    }
+
     /// Blurs a region: a horizontal pass into scratch, then a vertical pass
     /// with the tint back into the scene.
     ///
@@ -597,6 +621,13 @@ pub const Gpu = struct {
     /// Counts frames that drew underlays, for `VideoTexture.drawn_in_frame`.
     underlay_frame: u64 = 0,
 
+    /// Draws 3D scenes, made on the first scene step (`sceneRenderer`).
+    scene_renderer: ?mod.SceneRenderer = null,
+
+    /// Whether the scene renderer could not be made, so it is not tried
+    /// again and scene steps draw their placeholders.
+    scene_renderer_failed: bool = false,
+
     /// Creates the device and pipelines, claiming `window`'s swapchain when
     /// given.
     ///
@@ -622,6 +653,7 @@ pub const Gpu = struct {
     /// - `self`: the backend.
     pub fn deinit(self: *Self) void {
         const device = self.device;
+        if (self.scene_renderer) |*scene_renderer| scene_renderer.deinit();
         if (self.instance_buffer) |buffer| sdl_c.SDL_ReleaseGPUBuffer(device, buffer);
         if (self.transfer) |transfer| sdl_c.SDL_ReleaseGPUTransferBuffer(device, transfer);
         if (self.atlas_texture) |texture| sdl_c.SDL_ReleaseGPUTexture(device, texture);
@@ -716,7 +748,7 @@ pub const Gpu = struct {
             return false;
         }
 
-        self.encode(command_buffer, scene, clear, scene_width, scene_height);
+        self.encode(arena, command_buffer, scene, clear, scene_width, scene_height);
         if (underlays.len > 0) self.drawUnderlays(command_buffer, underlays, scale, scene_width, scene_height);
 
         sdl_c.SDL_BlitGPUTexture(command_buffer, &.{
@@ -765,7 +797,7 @@ pub const Gpu = struct {
             _ = sdl_c.SDL_SubmitGPUCommandBuffer(command_buffer);
             return null;
         }
-        self.encode(command_buffer, scene, clear, width, height);
+        self.encode(arena, command_buffer, scene, clear, width, height);
 
         const byte_count: u32 = width * height * 4;
         const download = sdl_c.SDL_CreateGPUTransferBuffer(self.device, &.{
@@ -859,6 +891,51 @@ pub const Gpu = struct {
             return null;
         }
         return self;
+    }
+
+    /// The scene renderer, made with its shaders on first need. A device
+    /// that takes SPIR-V needs the scene shaders compiled (`compile.sh`);
+    /// until they are, and wherever it cannot be made, scenes draw their
+    /// placeholders.
+    ///
+    /// - `self`: the device.
+    /// - Returns: the renderer, or null when it cannot be made (logged once).
+    fn sceneRenderer(self: *Self) ?*mod.SceneRenderer {
+        if (self.scene_renderer) |*scene_renderer| return scene_renderer;
+        if (self.scene_renderer_failed) return null;
+        self.scene_renderer_failed = true;
+        const formats = sdl_c.SDL_GetGPUShaderFormats(self.device);
+        if (formats & sdl_c.SDL_GPU_SHADERFORMAT_SPIRV != 0 and (scene_vertex_spirv.len == 0 or scene_fragment_spirv.len == 0 or scene_shadow_vertex_spirv.len == 0 or scene_shadow_fragment_spirv.len == 0)) {
+            log.warn("3D scenes draw as placeholders: the scene shaders' SPIR-V is not compiled (src/sdl/gpu/shaders/compile.sh)", .{});
+            return null;
+        }
+        const hlsl: ?HlslCompiler = if (is_windows and formats & sdl_c.SDL_GPU_SHADERFORMAT_DXBC != 0) HlslCompiler.load() else null;
+        defer if (hlsl) |compiler| compiler.unload();
+        const lit_vertex = self.createShader(.{ .spirv = scene_vertex_spirv, .msl = scene_msl, .hlsl = scene_hlsl, .entry = "scene_vertex", .stage = sdl_c.SDL_GPU_SHADERSTAGE_VERTEX, .num_uniform_buffers = 1 }, hlsl) orelse return Self.noSceneShader("lit vertex");
+        defer sdl_c.SDL_ReleaseGPUShader(self.device, lit_vertex);
+        const lit_fragment = self.createShader(.{ .spirv = scene_fragment_spirv, .msl = scene_msl, .hlsl = scene_hlsl, .entry = "scene_fragment", .stage = sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT, .num_samplers = 1 + scenes.SceneFrame.max_directional_lights, .num_uniform_buffers = 2 }, hlsl) orelse return Self.noSceneShader("lit fragment");
+        defer sdl_c.SDL_ReleaseGPUShader(self.device, lit_fragment);
+        const shadow_vertex = self.createShader(.{ .spirv = scene_shadow_vertex_spirv, .msl = scene_msl, .hlsl = scene_shadow_hlsl, .entry = "scene_shadow_vertex", .stage = sdl_c.SDL_GPU_SHADERSTAGE_VERTEX, .num_uniform_buffers = 1 }, hlsl) orelse return Self.noSceneShader("shadow vertex");
+        defer sdl_c.SDL_ReleaseGPUShader(self.device, shadow_vertex);
+        const shadow_fragment = self.createShader(.{ .spirv = scene_shadow_fragment_spirv, .msl = scene_msl, .hlsl = scene_shadow_hlsl, .entry = "scene_shadow_fragment", .stage = sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT }, hlsl) orelse return Self.noSceneShader("shadow fragment");
+        defer sdl_c.SDL_ReleaseGPUShader(self.device, shadow_fragment);
+        self.scene_renderer = mod.SceneRenderer.init(self.allocator, self.device, self.target_format, .{
+            .lit_vertex = lit_vertex,
+            .lit_fragment = lit_fragment,
+            .shadow_vertex = shadow_vertex,
+            .shadow_fragment = shadow_fragment,
+        }) orelse return null;
+        self.scene_renderer_failed = false;
+        return &self.scene_renderer.?;
+    }
+
+    /// Logs a scene shader that could not be made.
+    ///
+    /// - `which`: the shader.
+    /// - Returns: null, for the caller to return.
+    fn noSceneShader(which: []const u8) ?*mod.SceneRenderer {
+        log.warn("3D scenes draw as placeholders: no {s} shader [{s}]", .{ which, sdl_c.SDL_GetError() });
+        return null;
     }
 
     /// Creates one shader from the format the device takes.
@@ -1578,6 +1655,7 @@ pub const Gpu = struct {
     /// scene texture (cleared to `clear` on first use).
     ///
     /// - `self`: the device.
+    /// - `arena`: the frame's arena, for the 3D scenes it draws.
     /// - `command_buffer`: the frame's command buffer.
     /// - `scene`: the translated scene.
     /// - `clear`: the color the scene texture starts as.
@@ -1585,6 +1663,7 @@ pub const Gpu = struct {
     /// - `height`: the frame's height, in pixels.
     fn encode(
         self: *Self,
+        arena: std.mem.Allocator,
         command_buffer: *sdl_c.SDL_GPUCommandBuffer,
         scene: renderer.GpuScene,
         clear: renderer.Color,
@@ -1592,6 +1671,7 @@ pub const Gpu = struct {
         height: u32,
     ) void {
         var encoder = GpuEncoder{ .gpu = self, .command_buffer = command_buffer, .width = width, .height = height, .clear = clear };
+        if (self.scene_renderer) |*scene_renderer| scene_renderer.nextFrame();
         var frame_index: usize = 0;
         for (scene.steps) |step| {
             switch (step) {
@@ -1604,6 +1684,7 @@ pub const Gpu = struct {
                     };
                     frame_index += 1;
                 },
+                .scene => |scene_step| encoder.sceneStep(arena, scene_step),
             }
         }
         encoder.endPass();

@@ -84,6 +84,10 @@ pub const Section = enum {
     /// A selectable diff with links on its hunk headers.
     diffs,
 
+    /// A 3D scene (`SceneView`): a lit, textured cube casting a shadow, a sphere and a
+    /// translucent pane, its camera orbited and zoomed.
+    scenes,
+
     /// Every section, as sidebar rows, in the enum's order: a section's index
     /// (`--section`, the screenshots) is its place here.
     pub const items = blk: {
@@ -142,6 +146,7 @@ pub const Section = enum {
             .mediaNative => "Media Native",
             .chat => "Chat",
             .diffs => "Diffs",
+            .scenes => "Scenes",
         };
     }
 
@@ -172,6 +177,7 @@ pub const Section = enum {
             .mediaNative => .pictureInPicture2,
             .chat => .messageSquare,
             .diffs => .gitCompare,
+            .scenes => .box,
         };
     }
 
@@ -205,6 +211,7 @@ pub const Section = enum {
             .mediaNative => &.{"ziggui.NativeView"},
             .chat => &.{ "ziggui.StatusMark", "ziggui.Chip", "ziggui.Bubble · ziggui.CodeBlock · ziggui.Quote" },
             .diffs => &.{ "ziggui.DiffView · ziggui.DiffLine", "ziggui.SelectableDiffView", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection" },
+            .scenes => &.{"ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput"},
         };
     }
 
@@ -430,6 +437,8 @@ pub const Gallery = struct {
     /// The design-kit cards and panels (in Controls, Pickers, Lists, Forms &
     /// Settings, Files) and their state.
     kit: gallery.Kit,
+    /// The Scenes section's 3D scene.
+    scene_demo: gallery.SceneDemo,
 
     /// The Media Video panel and its player.
     media: gallery.Media,
@@ -529,6 +538,8 @@ pub const Gallery = struct {
         errdefer editor.deinit();
         var kit = try gallery.Kit.init(allocator);
         errdefer kit.deinit();
+        var scene_demo = try gallery.SceneDemo.init(allocator);
+        errdefer scene_demo.deinit();
         const web = try gallery.WebPanel.init(allocator);
         var self = Self{
             .allocator = allocator,
@@ -540,6 +551,7 @@ pub const Gallery = struct {
             .showcase = showcase,
             .editor = editor,
             .kit = kit,
+            .scene_demo = scene_demo,
             .media = gallery.Media.init(allocator),
             .pickers = gallery.Pickers.init(allocator),
             .settings = gallery.SettingsPanel.init(allocator),
@@ -563,6 +575,7 @@ pub const Gallery = struct {
         self.settings.deinit();
         self.pickers.deinit();
         self.media.deinit();
+        self.scene_demo.deinit();
         self.kit.deinit();
         self.editor.deinit();
         self.showcase.deinit();
@@ -738,6 +751,17 @@ pub const Gallery = struct {
         if (Section.at(self.section.get()) == .table) {
             for (self.tables()) |table| table.focused = Self.listContains(&table.scroll, point);
         }
+    }
+
+    /// The Scenes section's scene, for the event loop's pinches and
+    /// ⌘-scrolls, while that section shows with nothing modal over it.
+    ///
+    /// - `self`: the gallery.
+    /// - Returns: the scene, or null when it is not showing.
+    pub fn shownScene(self: *Self) ?*ziggui.Scene {
+        if (self.presentsModal()) return null;
+        if (Section.at(self.section.get()) != .scenes) return null;
+        return &self.scene_demo.scene;
     }
 
     /// The Images & Drawing section's picture zoom, for the event loop's pinches
@@ -947,6 +971,7 @@ pub const Gallery = struct {
             .mediaNative => self.media.nativePanel(active_theme),
             .chat => self.chatPanel(active_theme),
             .diffs => Self.cards(.{ self.diffViewCard(active_theme), self.selectableDiffCard(active_theme), self.diffCard(active_theme) }),
+            .scenes => self.scene_demo.card(active_theme),
         };
     }
 
@@ -1736,9 +1761,9 @@ test "the sidebar lists the sections by label; each keeps its index" {
     var search = gallery.SectionSearch.init(std.testing.allocator);
     defer search.deinit();
     for (Section.sorted, search.shown()) |section, row| try std.testing.expectEqual(section, row.section);
-    // Indices are the enum's, whatever the rows: Text first, Diffs last.
+    // Indices are the enum's, whatever the rows: Text first, Scenes last.
     try std.testing.expectEqual(Section.text, Section.at(0));
-    try std.testing.expectEqual(Section.diffs, Section.at(@intCast(Section.items.len - 1)));
+    try std.testing.expectEqual(Section.scenes, Section.at(@intCast(Section.items.len - 1)));
     try std.testing.expectEqualStrings("Chat", Section.sorted[0].label());
 }
 

@@ -40,6 +40,8 @@ const Modules = struct {
 
     /// The name the renderer module is registered under, for `linkApp`.
     const renderer_name = "ziggui_renderer";
+    /// The name the scenes module is registered under, for `linkApp`.
+    const scenes_name = "ziggui_scenes";
     /// The name the views module is registered under, for `linkApp`.
     const views_name = "ziggui_views";
     /// The name the app barrel is memoized under, so `linkApp` builds it once.
@@ -53,14 +55,15 @@ const Modules = struct {
     var app_options: std.AutoHashMapUnmanaged(*std.Build, AppOptions) = .empty;
 
     renderer: *std.Build.Module,
+    scenes: *std.Build.Module,
     views: *std.Build.Module,
     core: *std.Build.Module,
 
-    /// Declare the renderer, views and core `ziggui` modules.
+    /// Declare the renderer, scenes, views and core `ziggui` modules.
     ///
     /// - `b`: ziggui's build graph.
     /// - `config`: the build's configuration.
-    /// - Returns: the three modules.
+    /// - Returns: the four modules.
     fn init(b: *std.Build, config: Config) Self {
         const renderer = b.addModule(Self.renderer_name, .{
             .root_source_file = b.path("src/renderer/module.zig"),
@@ -69,11 +72,21 @@ const Modules = struct {
         });
         Self.addFonts(b, renderer);
 
+        const scenes = b.addModule(Self.scenes_name, .{
+            .root_source_file = b.path("src/scenes/module.zig"),
+            .target = config.target,
+            .optimize = config.optimize,
+            .imports = &.{.{ .name = "renderer", .module = renderer }},
+        });
+
         const views = b.addModule(Self.views_name, .{
             .root_source_file = b.path("src/views/module.zig"),
             .target = config.target,
             .optimize = config.optimize,
-            .imports = &.{.{ .name = "renderer", .module = renderer }},
+            .imports = &.{
+                .{ .name = "renderer", .module = renderer },
+                .{ .name = "scenes", .module = scenes },
+            },
         });
 
         const core = b.addModule(config.name, .{
@@ -82,12 +95,13 @@ const Modules = struct {
             .optimize = config.optimize,
             .imports = &.{
                 .{ .name = "renderer", .module = renderer },
+                .{ .name = "scenes", .module = scenes },
                 .{ .name = "views", .module = views },
             },
         });
         core.addOptions("config", Self.barrelOptions(b, false));
 
-        const self = Self{ .renderer = renderer, .views = views, .core = core };
+        const self = Self{ .renderer = renderer, .scenes = scenes, .views = views, .core = core };
         return self;
     }
 
@@ -101,6 +115,7 @@ const Modules = struct {
     /// - Returns: the app `ziggui` module.
     fn app(b: *std.Build, options: AppOptions) *std.Build.Module {
         const renderer = b.modules.get(Self.renderer_name).?;
+        const scenes = b.modules.get(Self.scenes_name).?;
         const views = b.modules.get(Self.views_name).?;
         Self.expectSameBuild(renderer.resolved_target.?, renderer.optimize.?, options);
         if (b.modules.get(Self.app_name)) |built| {
@@ -126,6 +141,7 @@ const Modules = struct {
             .link_libc = true,
             .imports = &.{
                 .{ .name = "renderer", .module = renderer },
+                .{ .name = "scenes", .module = scenes },
                 .{ .name = "views", .module = views },
                 .{ .name = "sdl_c", .module = sdl_c.createModule() },
             },
@@ -148,6 +164,7 @@ const Modules = struct {
             .optimize = options.optimize,
             .imports = &.{
                 .{ .name = "renderer", .module = renderer },
+                .{ .name = "scenes", .module = scenes },
                 .{ .name = "views", .module = views },
                 .{ .name = "sdl", .module = sdl },
             },
@@ -434,7 +451,7 @@ const Docs = struct {
     /// named for the module, or failing that at whichever of its files comes
     /// first. ZIGSTYLE names every barrel `module.zig`, so the site starts at
     /// `src/root.zig`, which re-exports the barrel (as zigstorage's does). The
-    /// barrel re-exports from the `renderer` and `views` modules, whose own
+    /// barrel re-exports from the `renderer`, `scenes` and `views` modules, whose own
     /// barrels autodoc would miss the same way and resolve `views.View`
     /// against an arbitrary file; so the docs build those two from a staged
     /// copy of their sources with each barrel also saved as `root.zig`. The
@@ -452,11 +469,20 @@ const Docs = struct {
             .optimize = config.optimize,
         });
         Modules.addFonts(b, renderer);
+        const scenes = b.createModule(.{
+            .root_source_file = Self.stage(b, staged, "scenes"),
+            .target = config.target,
+            .optimize = config.optimize,
+            .imports = &.{.{ .name = "renderer", .module = renderer }},
+        });
         const views = b.createModule(.{
             .root_source_file = Self.stage(b, staged, "views"),
             .target = config.target,
             .optimize = config.optimize,
-            .imports = &.{.{ .name = "renderer", .module = renderer }},
+            .imports = &.{
+                .{ .name = "renderer", .module = renderer },
+                .{ .name = "scenes", .module = scenes },
+            },
         });
         const root = b.createModule(.{
             .root_source_file = b.path("src/root.zig"),
@@ -464,6 +490,7 @@ const Docs = struct {
             .optimize = config.optimize,
             .imports = &.{
                 .{ .name = "renderer", .module = renderer },
+                .{ .name = "scenes", .module = scenes },
                 .{ .name = "views", .module = views },
             },
         });
@@ -573,7 +600,7 @@ pub fn build(b: *std.Build) !void {
     // separate `test-sdl` step (`SdlTests`).
 
     const tests_step = b.step("test", "Run unit tests");
-    for ([_]*std.Build.Module{ modules.renderer, modules.views, modules.core, gallery_module }) |module| {
+    for ([_]*std.Build.Module{ modules.renderer, modules.scenes, modules.views, modules.core, gallery_module }) |module| {
         const tests = b.addTest(.{ .root_module = module, .filters = filters });
         const tests_run = b.addRunArtifact(tests);
         // force tests to run on every test run

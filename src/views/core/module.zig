@@ -61,6 +61,12 @@ pub const CanvasData = @import("kind.zig").CanvasData;
 pub const VideoPlayerData = @import("kind.zig").VideoPlayerData;
 /// A `NativeView`'s payload.
 pub const NativeViewData = @import("kind.zig").NativeViewData;
+/// A `SceneView`'s payload.
+pub const SceneViewData = @import("kind.zig").SceneViewData;
+/// How a `SceneView` draws its scene and takes gestures.
+pub const SceneViewOptions = @import("scene_view_options.zig").SceneViewOptions;
+/// The wheel and pinch that zoom a `SceneView`'s camera.
+pub const SceneCameraInput = @import("scene_camera_input.zig").SceneCameraInput;
 /// The modifiers applied around a view's content.
 pub const Modifiers = @import("modifiers.zig").Modifiers;
 /// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
@@ -316,6 +322,8 @@ test {
     _ = @import("graphics_context.zig");
     _ = @import("canvas_markers.zig");
     _ = @import("zoom_state.zig");
+    _ = @import("scene_view_options.zig");
+    _ = @import("scene_camera_input.zig");
     _ = @import("annotation_state.zig");
     _ = @import("frame_stamp.zig");
     _ = @import("visibility.zig");

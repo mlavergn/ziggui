@@ -134,21 +134,36 @@ pub const Rasterizer = struct {
                 .popClip => {
                     if (clips.items.len > 0) _ = clips.pop();
                 },
-                .fillRoundedRect => |fill| self.fillShape(clips.items, fill.rect, fill.radius, .{ .solid = fill.color }),
-                .strokeRoundedRect => |stroke| self.strokeShape(clips.items, stroke.rect, stroke.radius, stroke.width, stroke.color),
-                .linearGradient => |gradient| self.fillShape(clips.items, gradient.rect, gradient.radius, .{ .gradient = .{
-                    .start = gradient.start,
-                    .end = gradient.end,
-                    .start_color = gradient.start_color,
-                    .end_color = gradient.end_color,
-                } }),
-                .line => |segment| self.drawLine(clips.items, segment.start, segment.end, segment.width, segment.color),
-                .glyph => |glyph| self.drawGlyph(clips.items, glyph.rect, glyph.color, glyph.coverage, glyph.gamma),
-                .image => |image| self.drawImage(clips.items, image.rect, image.image),
-                .videoFrame => |frame| self.drawImage(clips.items, frame.rect, frame.image),
-                .blurRect => |blur| try self.blurRect(clips.items, blur.rect, blur.radius, blur.sigma, blur.tint),
-                .eraseRect => |erase| self.eraseShape(clips.items, erase.rect, erase.radius),
+                // No 3D here: the placeholder stands in for the scene, under the clips around it.
+                .scene => |scene| for (scene.placeholder()) |placeholder| try self.draw(clips.items, placeholder),
+                else => try self.draw(clips.items, command),
             }
+        }
+    }
+
+    /// Draws one command that is neither a clip nor a scene under a clip stack.
+    ///
+    /// - `self`: the rasterizer.
+    /// - `clips`: the clip stack.
+    /// - `command`: the command.
+    /// - Returns: nothing; propagates allocation failure.
+    fn draw(self: *const Self, clips: []const Clip, command: mod.DrawCommand) !void {
+        switch (command) {
+            .pushClip, .popClip, .scene => unreachable,
+            .fillRoundedRect => |fill| self.fillShape(clips, fill.rect, fill.radius, .{ .solid = fill.color }),
+            .strokeRoundedRect => |stroke| self.strokeShape(clips, stroke.rect, stroke.radius, stroke.width, stroke.color),
+            .linearGradient => |gradient| self.fillShape(clips, gradient.rect, gradient.radius, .{ .gradient = .{
+                .start = gradient.start,
+                .end = gradient.end,
+                .start_color = gradient.start_color,
+                .end_color = gradient.end_color,
+            } }),
+            .line => |segment| self.drawLine(clips, segment.start, segment.end, segment.width, segment.color),
+            .glyph => |glyph| self.drawGlyph(clips, glyph.rect, glyph.color, glyph.coverage, glyph.gamma),
+            .image => |image| self.drawImage(clips, image.rect, image.image),
+            .videoFrame => |frame| self.drawImage(clips, frame.rect, frame.image),
+            .blurRect => |blur| try self.blurRect(clips, blur.rect, blur.radius, blur.sigma, blur.tint),
+            .eraseRect => |erase| self.eraseShape(clips, erase.rect, erase.radius),
         }
     }
 
@@ -754,6 +769,38 @@ test "raster: fill rect paints interior, leaves outside untouched" {
 
     try std.testing.expect(framebuffer.at(10, 10).approxEql(mod.Color.red, 0.02)); // inside
     try std.testing.expect(framebuffer.at(0, 0).approxEql(mod.Color.white, 0.02)); // outside
+}
+
+test "raster: a scene draws as its placeholder, its ground with the cube's edges over it" {
+    var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 100, 100);
+    defer framebuffer.deinit();
+    framebuffer.clear(mod.Color.white);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const marker: u8 = 0;
+    try display_list.drawScene(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, &marker, mod.Color.black, mod.Color.red);
+    try TestRender.canvasInto(&framebuffer, &display_list);
+
+    try std.testing.expect(framebuffer.at(2, 2).approxEql(mod.Color.black, 0.02)); // the ground
+    // The spoke from the center to the bottom corner runs straight down the middle.
+    const spoke = framebuffer.at(50, 58);
+    try std.testing.expect(spoke.r > spoke.g + 0.3);
+}
+
+test "raster: a scene's placeholder stays inside the clip around it" {
+    var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 100, 100);
+    defer framebuffer.deinit();
+    framebuffer.clear(mod.Color.white);
+    var display_list = mod.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const marker: u8 = 0;
+    try display_list.pushClip(.{ .x = 0, .y = 0, .width = 50, .height = 100 }, 0);
+    try display_list.drawScene(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, &marker, mod.Color.black, mod.Color.red);
+    try display_list.popClip();
+    try TestRender.canvasInto(&framebuffer, &display_list);
+
+    try std.testing.expect(framebuffer.at(10, 10).approxEql(mod.Color.black, 0.02)); // inside the clip
+    try std.testing.expect(framebuffer.at(90, 10).approxEql(mod.Color.white, 0.02)); // outside it
 }
 
 test "raster: rounded rect clips its corners" {

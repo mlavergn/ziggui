@@ -18,6 +18,7 @@ const log = std.log.scoped(.ziggui_module);
 const builtin = @import("builtin");
 const config = @import("config");
 const renderer = @import("renderer");
+const scenes = @import("scenes");
 const views = @import("views");
 
 /// Whether this is a debug build.
@@ -536,6 +537,80 @@ pub const ThemeFamilyPicker = views.ThemeFamilyPicker;
 pub const EditableText = views.EditableText;
 /// An `EditableText`'s text, edit and armed click; app-owned.
 pub const EditableTextState = views.EditableTextState;
+
+// -----------------------------------------------------------------------------
+// 3D scenes
+
+/// An app-owned 3D scene, drawn on the GPU (SwiftUI's SceneKit `SceneView`).
+pub const SceneView = views.SceneView;
+/// How a `SceneView` draws its scene and takes gestures.
+pub const SceneViewOptions = views.SceneViewOptions;
+/// A `SceneView`'s payload.
+pub const SceneViewData = views.SceneViewData;
+/// The wheel and pinch that zoom a `SceneView`'s camera.
+pub const SceneCameraInput = views.SceneCameraInput;
+/// A 3D scene: a graph of nodes under a root (SceneKit's `SCNScene`).
+pub const Scene = scenes.Scene;
+/// A node reached by walking a scene's graph.
+pub const SceneVisit = scenes.SceneVisit;
+/// A node of a scene (SceneKit's `SCNNode`).
+pub const SceneNode = scenes.SceneNode;
+/// A stable handle to a scene's node.
+pub const SceneNodeId = scenes.SceneNodeId;
+/// A node's place in its parent's space.
+pub const SceneTransform = scenes.SceneTransform;
+/// A node's shape.
+pub const SceneGeometry = scenes.SceneGeometry;
+/// A box primitive.
+pub const SceneBox = scenes.SceneBox;
+/// A sphere primitive.
+pub const SceneSphere = scenes.SceneSphere;
+/// A rectangle primitive facing +Z.
+pub const ScenePlane = scenes.ScenePlane;
+/// A capped cylinder primitive.
+pub const SceneCylinder = scenes.SceneCylinder;
+/// Triangles the app supplies.
+pub const SceneMesh = scenes.SceneMesh;
+/// One vertex as the scene shaders read it.
+pub const SceneVertex = scenes.SceneVertex;
+/// The vertices and triangles a geometry is drawn with.
+pub const SceneGeometryData = scenes.SceneGeometryData;
+/// An axis-aligned box holding geometry.
+pub const SceneBounds = scenes.SceneBounds;
+/// How a node's surface looks.
+pub const SceneMaterial = scenes.SceneMaterial;
+/// A material's base-color texture.
+pub const SceneTexture = scenes.SceneTexture;
+/// A light a node carries (SceneKit's `SCNLight`).
+pub const SceneLight = scenes.SceneLight;
+/// What kind of light it is.
+pub const SceneLightKind = scenes.SceneLightKind;
+/// A directional light's settings.
+pub const SceneDirectionalLight = scenes.SceneDirectionalLight;
+/// A point light's settings.
+pub const ScenePointLight = scenes.ScenePointLight;
+/// A camera a node carries (SceneKit's `SCNCamera`).
+pub const SceneCamera = scenes.SceneCamera;
+/// Where a view last drew a scene.
+pub const SceneViewport = scenes.SceneViewport;
+/// One frame of a scene as the GPU draws it.
+pub const SceneFrame = scenes.SceneFrame;
+/// A shape a frame draws.
+pub const SceneDraw = scenes.SceneDraw;
+/// A directional light as the shaders read it.
+pub const SceneFrameDirectionalLight = scenes.SceneFrameDirectionalLight;
+/// A point light as the shaders read it.
+pub const SceneFramePointLight = scenes.SceneFramePointLight;
+/// Orbits and zooms a scene's point of view about its camera target.
+pub const SceneCameraControl = scenes.SceneCameraControl;
+/// A point or a direction in a scene.
+pub const Vec3 = scenes.Vec3;
+/// A point in homogeneous coordinates, or a matrix column.
+pub const Vec4 = scenes.Vec4;
+/// A 4×4 column-major matrix.
+pub const Mat4 = scenes.Mat4;
+/// A rotation as a unit quaternion.
+pub const Quaternion = scenes.Quaternion;
 
 // -----------------------------------------------------------------------------
 // Containers

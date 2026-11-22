@@ -7,7 +7,7 @@
 # regenerated .spv files.
 set -e
 cd "$(dirname "$0")"
-for f in prim.vert quad.vert prim.frag blur_h.frag blur_v.frag; do
+for f in prim.vert quad.vert prim.frag blur_h.frag blur_v.frag scene.vert scene.frag scene_shadow.vert scene_shadow.frag; do
     glslc --target-env=vulkan1.0 -O "$f" -o "$f.spv"
     echo "compiled $f -> $f.spv"
 done
