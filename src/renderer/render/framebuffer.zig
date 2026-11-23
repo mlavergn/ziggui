@@ -67,7 +67,16 @@ pub const Framebuffer = struct {
     /// - `self`: the framebuffer.
     /// - `color`: the color.
     pub fn clear(self: *Self, color: mod.Color) void {
-        @memset(self.pixels, color);
+        self.clearRows(color, .all(self.height));
+    }
+
+    /// Set every pixel of `rows` to `color`; rows past the bottom are ignored.
+    ///
+    /// - `self`: the framebuffer.
+    /// - `color`: the color.
+    /// - `rows`: the rows to set.
+    pub fn clearRows(self: *Self, color: mod.Color, rows: mod.RowBand) void {
+        @memset(self.clampedRows(rows).slice(mod.Color, self.pixels, self.width), color);
     }
 
     /// The pixel at (`x`, `y`).
@@ -115,14 +124,39 @@ pub const Framebuffer = struct {
     /// - `self`: the framebuffer.
     /// - `bytes`: receives the pixels.
     pub fn toRgba8(self: *const Self, bytes: []u8) void {
-        std.debug.assert(bytes.len == self.width * self.height * 4);
-        for (self.pixels, 0..) |color, index| {
+        self.toRgba8Rows(bytes, .all(self.height));
+    }
+
+    /// Convert only `rows` into the whole image's tightly-packed RGBA8 buffer,
+    /// leaving its other rows alone, so bands convert apart. `bytes.len` must
+    /// be `width * height * 4`, checked in every build mode (a short buffer
+    /// panics rather than being written past); rows past the bottom are ignored.
+    ///
+    /// - `self`: the framebuffer.
+    /// - `bytes`: the whole image's pixels; receives the band's.
+    /// - `rows`: the rows to convert.
+    pub fn toRgba8Rows(self: *const Self, bytes: []u8, rows: mod.RowBand) void {
+        if (bytes.len != @as(usize, self.width) * self.height * 4) @panic("Framebuffer.toRgba8Rows: the buffer is not width * height * 4 bytes");
+        const band = self.clampedRows(rows);
+        const colors = band.slice(mod.Color, self.pixels, self.width);
+        const destination = band.slice(u8, bytes, @as(usize, self.width) * 4);
+        for (colors, 0..) |color, index| {
             const pixel = color.toRgba8();
-            bytes[index * 4 + 0] = pixel.r;
-            bytes[index * 4 + 1] = pixel.g;
-            bytes[index * 4 + 2] = pixel.b;
-            bytes[index * 4 + 3] = pixel.a;
+            destination[index * 4 + 0] = pixel.r;
+            destination[index * 4 + 1] = pixel.g;
+            destination[index * 4 + 2] = pixel.b;
+            destination[index * 4 + 3] = pixel.a;
         }
+    }
+
+    /// `rows` cut to the framebuffer's height.
+    ///
+    /// - `self`: the framebuffer.
+    /// - `rows`: the rows asked for.
+    /// - Returns: the rows that exist, empty when none do.
+    fn clampedRows(self: *const Self, rows: mod.RowBand) mod.RowBand {
+        const top = @min(rows.top, self.height);
+        return .{ .top = top, .bottom = std.math.clamp(rows.bottom, top, self.height) };
     }
 
     /// Export to a freshly-allocated RGBA8 buffer (caller owns the memory).
@@ -156,4 +190,20 @@ test "raster: toRgba8Alloc exports packed bytes" {
     try std.testing.expectEqual(@as(u8, 255), bytes[0]); // R
     try std.testing.expectEqual(@as(u8, 0), bytes[1]); // G
     try std.testing.expectEqual(@as(u8, 255), bytes[3]); // A
+}
+
+test "raster: clearRows and toRgba8Rows touch only their rows" {
+    var framebuffer = try mod.Framebuffer.init(std.testing.allocator, 2, 3);
+    defer framebuffer.deinit();
+    framebuffer.clear(mod.Color.red);
+    framebuffer.clearRows(mod.Color.blue, .{ .top = 1, .bottom = 9 });
+    try std.testing.expectEqual(mod.Color.red, framebuffer.at(1, 0));
+    try std.testing.expectEqual(mod.Color.blue, framebuffer.at(0, 1));
+    try std.testing.expectEqual(mod.Color.blue, framebuffer.at(1, 2));
+    var bytes: [2 * 3 * 4]u8 = @splat(7);
+    framebuffer.toRgba8Rows(&bytes, .{ .top = 1, .bottom = 2 });
+    try std.testing.expectEqual(@as(u8, 7), bytes[0]);
+    try std.testing.expectEqual(@as(u8, 0), bytes[8]); // row 1, R
+    try std.testing.expectEqual(@as(u8, 255), bytes[10]); // row 1, B
+    try std.testing.expectEqual(@as(u8, 7), bytes[16]);
 }

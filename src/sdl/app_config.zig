@@ -51,6 +51,23 @@ pub const AppConfig = struct {
     /// at runtime.
     gpu: bool = true,
 
+    /// How many workers rasterize a software-drawn window (the main window on
+    /// the software path, and the popover window), the calling thread
+    /// included: null or 0 picks `WorkerPool.defaultWorkerCount` (the logical
+    /// CPUs, at most 16), 1 draws on the UI thread alone, and a count past
+    /// `WorkerPool.max_workers` (256) is held to it. Each worker fills its own
+    /// bands of rows, so the image is the same whatever the count. The
+    /// `ZIGGUI_RASTER_WORKERS` environment variable overrides it at runtime.
+    raster_workers: ?u32 = null,
+
+    /// Windows: when no GPU device can be made (a driver SDL_GPU cannot use),
+    /// draw on WARP, the Direct3D 12 renderer Windows runs on the CPU, rather
+    /// than the software rasterizer. WARP draws what the rasterizer cannot (3D
+    /// scenes) but is several times slower (77 ms a frame against 4 on a
+    /// 2015 dual-core laptop), so it is off by default. `ZIGGUI_D3D12_WARP`
+    /// puts it on WARP whatever this says. Ignored elsewhere.
+    warp_fallback: bool = false,
+
     /// Optional window/taskbar icon, set via `SDL_SetWindowIcon` after the window
     /// is created. `rgba` is row-major RGBA8 (`width * height * 4` bytes); the
     /// surface is copied by SDL, so the caller may free `rgba` after `run` sets it.

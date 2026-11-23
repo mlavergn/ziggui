@@ -12,7 +12,7 @@ pub const std_options: std.Options = .{
 /// [--dark] [--menu <n>] [--sheet] [--alert] [--popover] [--passthrough]
 /// [--options-menu] [--picker-menu] [--find] [--dialog] [--select] [--rename] [--path-entry]
 /// [--search <text>] [--components] [--video <url or path>] [--ray-traced]
-/// [--screenshot <out.bmp> [--gpu] [--bench <n>]]`.
+/// [--screenshot <out.bmp> [--size <w>x<h>] [--gpu] [--workers <n>] [--bench <n>]]`.
 ///
 /// `--video` is what the Media Video section's "Load sample stream" plays instead
 /// of Apple's HLS example: a URL or a local path (a Linux system may have no
@@ -45,6 +45,11 @@ pub const std_options: std.Options = .{
 /// size and theme, so the two BMPs differ only by the backend (to within 1 LSB
 /// a channel). `--bench <n>` then draws that frame `n` times more and prints
 /// the milliseconds per frame, read back to RGBA8 (on the GPU, a full sync).
+/// `--size` draws at another size than 980×660 points, one pixel each (a 4K
+/// window is `--size 3840x2160`). `--workers <n>` rasterizes with `n`
+/// workers (`ziggui.ParallelRasterizer`, as a window's software path does; 0
+/// picks the machine's default), into buffers kept across `--bench`'s draws,
+/// as a window keeps them; the image is the same bytes whatever `n`.
 const Arguments = struct {
     const Self = @This();
 
@@ -53,6 +58,10 @@ const Arguments = struct {
 
     /// The height `--screenshot` draws at, in points.
     const screenshot_height: u32 = 660;
+
+    /// The largest side `--size` takes, in points (16K, the largest texture
+    /// side GPUs commonly allow).
+    const max_screenshot_side: u32 = 16384;
 
     /// The sidebar row to open on.
     section: i64 = 0,
@@ -116,6 +125,16 @@ const Arguments = struct {
     /// How many more times to draw the screenshot, timed (0: none).
     bench: u32 = 0,
 
+    /// The screenshot's width, in points.
+    width: u32 = Self.screenshot_width,
+
+    /// The screenshot's height, in points.
+    height: u32 = Self.screenshot_height,
+
+    /// How many workers rasterize the screenshot (0: the machine's default),
+    /// or null for `ziggui.Screenshot.render`'s one thread.
+    workers: ?u32 = null,
+
     /// What the Media Video section plays instead of its sample, or null.
     video: ?[:0]const u8 = null,
 
@@ -167,6 +186,15 @@ const Arguments = struct {
                     log.warn("ignoring --bench {s} [{t}]", .{ argument_vector[index], err });
                     break :blk 0;
                 };
+            } else if (std.mem.eql(u8, argument, "--workers") and index + 1 < argument_vector.len) {
+                index += 1;
+                arguments.workers = std.fmt.parseInt(u32, argument_vector[index], 10) catch |err| blk: {
+                    log.warn("ignoring --workers {s} [{t}]", .{ argument_vector[index], err });
+                    break :blk null;
+                };
+            } else if (std.mem.eql(u8, argument, "--size") and index + 1 < argument_vector.len) {
+                index += 1;
+                arguments.parseSize(argument_vector[index]);
             } else if (std.mem.eql(u8, argument, "--theme") and index + 1 < argument_vector.len) {
                 index += 1;
                 arguments.theme = std.fmt.parseInt(i64, argument_vector[index], 10) catch |err| blk: {
@@ -205,6 +233,36 @@ const Arguments = struct {
             }
         }
         return arguments;
+    }
+
+    /// Reads `--size`'s `<width>x<height>`, each at least 1; a malformed
+    /// size is logged and the default kept.
+    ///
+    /// - `self`: the arguments.
+    /// - `text`: the size as typed.
+    fn parseSize(self: *Self, text: []const u8) void {
+        const separator = std.mem.findScalar(u8, text, 'x') orelse {
+            log.warn("ignoring --size {s}: not <width>x<height>", .{text});
+            return;
+        };
+        const width = std.fmt.parseInt(u32, text[0..separator], 10) catch |err| {
+            log.warn("ignoring --size {s} [{t}]", .{ text, err });
+            return;
+        };
+        const height = std.fmt.parseInt(u32, text[separator + 1 ..], 10) catch |err| {
+            log.warn("ignoring --size {s} [{t}]", .{ text, err });
+            return;
+        };
+        if (width == 0 or height == 0) {
+            log.warn("ignoring --size {s}: empty", .{text});
+            return;
+        }
+        if (width > Self.max_screenshot_side or height > Self.max_screenshot_side) {
+            log.warn("ignoring --size {s}: a side past {d}", .{ text, Self.max_screenshot_side });
+            return;
+        }
+        self.width = width;
+        self.height = height;
     }
 
     /// Sets up the overlays and demos the arguments ask for.
@@ -259,15 +317,15 @@ pub fn main(init: std.process.Init) !void {
 
     if (arguments.screenshot) |out| {
         const options: ziggui.ScreenshotOptions = .{
-            .width = Arguments.screenshot_width,
-            .height = Arguments.screenshot_height,
+            .width = arguments.width,
+            .height = arguments.height,
             .theme = shown.theme(),
         };
-        if (!arguments.gpu and arguments.bench == 0) {
+        if (!arguments.gpu and arguments.bench == 0 and arguments.workers == null) {
             const rgba = try ziggui.Screenshot.render(allocator, shown, gallery.Gallery.body, options);
             defer allocator.free(rgba);
             try Frame.write(allocator, init.io, out, rgba, options);
-            std.debug.print("wrote {s} ({d}x{d})\n", .{ out, options.width, options.height });
+            try Frame.report(init.io, "wrote {s} ({d}x{d})\n", .{ out, options.width, options.height });
             return;
         }
 
@@ -276,16 +334,18 @@ pub fn main(init: std.process.Init) !void {
         // The GPU first, so the frame is built knowing what it can draw (the
         // Scenes section's ray tracing).
         if (arguments.gpu) try frame.useGpu();
+        if (arguments.workers) |workers| try frame.useWorkers(init.io, workers);
         try frame.build(shown);
         const rgba = try frame.draw();
-        defer allocator.free(rgba);
         try Frame.write(allocator, init.io, out, rgba, options);
-        std.debug.print("wrote {s} ({d}x{d}, {s})\n", .{ out, options.width, options.height, frame.backendName() });
+        try Frame.report(init.io, "wrote {s} ({d}x{d}, {s})\n", .{ out, options.width, options.height, frame.backendName() });
         if (arguments.bench > 0) try frame.bench(init.io, arguments.bench);
         return;
     }
-    if (arguments.gpu or arguments.bench > 0) log.warn("--gpu and --bench draw a --screenshot; ignoring them", .{});
+    if (arguments.gpu or arguments.bench > 0 or arguments.workers != null) log.warn("--gpu, --workers and --bench draw a --screenshot; ignoring them", .{});
 
+    WindowSettings.load(allocator, init.io, init.environ_map);
+    defer WindowSettings.unload();
     try Window.run(allocator, shown, !arguments.dark);
 }
 
@@ -310,6 +370,16 @@ const Frame = struct {
     /// The offscreen GPU backend once `useGpu` started it (SDL's video is up while it is set).
     gpu: ?ziggui.sdl.Gpu = null,
 
+    /// The software path's workers once `useWorkers` made them; null draws
+    /// on this thread alone.
+    pool: ?*ziggui.WorkerPool = null,
+
+    /// The software path's pixels, kept across draws as a window keeps them.
+    framebuffer: ziggui.Framebuffer = .empty,
+
+    /// The last draw's image, RGBA8; owned by the frame.
+    rgba: []u8 = &.{},
+
     /// Makes a frame with nothing built yet.
     ///
     /// - `allocator`: allocator for the frame, its caches and its images.
@@ -333,6 +403,9 @@ const Frame = struct {
             gpu.deinit();
             ziggui.sdl.sdl_c.SDL_Quit();
         }
+        if (self.pool) |pool| pool.destroy();
+        self.framebuffer.deinit();
+        if (self.rgba.len > 0) self.allocator.free(self.rgba);
         self.scene_arena.deinit();
         self.screenshot.destroy();
         self.allocator.destroy(self);
@@ -383,6 +456,40 @@ const Frame = struct {
         self.gpu.?.noteRayTracing();
     }
 
+    /// Rasterizes with `count` workers from now on (`--workers`), as a
+    /// window's software path does; 0 picks the machine's default.
+    ///
+    /// - `self`: the frame.
+    /// - `io`: the I/O the workers sleep and wake through.
+    /// - `count`: how many workers, the calling thread included; 0 for the default.
+    /// - Returns: nothing; propagates allocation failure.
+    fn useWorkers(self: *Self, io: std.Io, count: u32) !void {
+        const workers: usize = if (count == 0) ziggui.WorkerPool.defaultWorkerCount() else count;
+        self.pool = try ziggui.WorkerPool.create(self.allocator, io, workers);
+    }
+
+    /// How many workers the software path draws with.
+    ///
+    /// - `self`: the frame.
+    /// - Returns: the worker count, 1 without a pool.
+    fn workerCount(self: *const Self) usize {
+        return if (self.pool) |pool| pool.workerCount() else 1;
+    }
+
+    /// Writes a line of the headless run's report (what was written, the
+    /// bench's timing) to standard output.
+    ///
+    /// - `io`: the I/O that writes it.
+    /// - `format`: the line's format string.
+    /// - `args`: the values it formats.
+    /// - Returns: nothing; propagates a failed write.
+    fn report(io: std.Io, comptime format: []const u8, args: anytype) !void {
+        var buffer: [256]u8 = undefined;
+        var stdout = std.Io.File.stdout().writerStreaming(io, &buffer);
+        try stdout.interface.print(format, args);
+        try stdout.interface.flush();
+    }
+
     /// What `draw` draws with, for the log lines.
     ///
     /// - `self`: the frame.
@@ -393,22 +500,35 @@ const Frame = struct {
     }
 
     /// Draws the built commands over the theme's window background: through
-    /// the GPU after `useGpu`, else with the software rasterizer.
+    /// the GPU after `useGpu`, else with the software rasterizer, on the
+    /// workers after `useWorkers`, into the pixels kept from the last draw.
     ///
     /// - `self`: the frame.
-    /// - Returns: the image as RGBA8, rows top-down, owned by the caller;
-    ///   `error.GpuRenderFailed` when the GPU fails; propagates allocation and rasterizing failures.
-    fn draw(self: *Self) ![]u8 {
+    /// - Returns: the image as RGBA8, rows top-down, owned by the frame until
+    ///   the next draw; `error.GpuRenderFailed` when the GPU fails; propagates
+    ///   allocation and rasterizing failures.
+    fn draw(self: *Self) ![]const u8 {
         const options = self.screenshot.options;
         if (self.gpu) |*gpu| {
             _ = self.scene_arena.reset(.retain_capacity);
-            return gpu.renderToRgba(self.scene_arena.allocator(), self.screenshot.commands, options.theme.colors.window_background, options.width, options.height) orelse error.GpuRenderFailed;
+            const rgba = gpu.renderToRgba(self.scene_arena.allocator(), self.screenshot.commands, options.theme.colors.window_background, options.width, options.height) orelse return error.GpuRenderFailed;
+            if (self.rgba.len > 0) self.allocator.free(self.rgba);
+            self.rgba = rgba;
+            return self.rgba;
         }
-        return self.screenshot.rasterize();
+        const byte_count = @as(usize, options.width) * options.height * 4;
+        if (self.rgba.len != byte_count) {
+            if (self.rgba.len > 0) self.allocator.free(self.rgba);
+            self.rgba = &.{};
+            self.rgba = try self.allocator.alloc(u8, byte_count);
+        }
+        try self.screenshot.rasterizeInto(&self.framebuffer, self.rgba, self.pool);
+        return self.rgba;
     }
 
     /// Draws the frame `count` times and prints the wall-clock milliseconds a
-    /// frame took (`--bench`), each read back to RGBA8, so on the GPU a full sync.
+    /// frame took (`--bench`), each read back to RGBA8, so on the GPU a full
+    /// sync; the software path reuses its pixels, as a window does.
     ///
     /// - `self`: the frame.
     /// - `io`: the I/O whose clock times the draws.
@@ -416,11 +536,178 @@ const Frame = struct {
     /// - Returns: nothing; propagates `draw`'s failures.
     fn bench(self: *Self, io: std.Io, count: u32) !void {
         const start = std.Io.Timestamp.now(io, .awake);
-        for (0..count) |_| self.allocator.free(try self.draw());
+        for (0..count) |_| _ = try self.draw();
         const elapsed = start.untilNow(io, .awake);
         const nanoseconds: f64 = @floatFromInt(elapsed.toNanoseconds());
         const milliseconds = nanoseconds / std.time.ns_per_ms / @as(f64, @floatFromInt(count));
-        std.debug.print("{s}: {d:.2} ms/frame over {d} frames ({d} commands)\n", .{ self.backendName(), milliseconds, count, self.screenshot.commands.len });
+        const options = self.screenshot.options;
+        try Self.report(io, "{s}: {d:.2} ms/frame over {d} frames ({d} commands, {d}x{d}, {d} workers)\n", .{ self.backendName(), milliseconds, count, self.screenshot.commands.len, options.width, options.height, self.workerCount() });
+    }
+};
+
+/// Where the gallery's window was left, kept in a file of the user's
+/// settings (`gallery-window.zon` in `%APPDATA%\ziggui` on Windows,
+/// `~/Library/Application Support/ziggui` on macOS, `$XDG_CONFIG_HOME/ziggui`
+/// or `~/.config/ziggui` elsewhere), so the window reopens where and as
+/// large as it was. ziggui keeps no settings; `WindowMemory` says when to
+/// save. A file that cannot be read or parsed is logged and ignored (the
+/// window opens at its default), and replaced by the next save.
+const WindowSettings = struct {
+    const Self = @This();
+
+    /// How often the window wakes while a moved or resized window settles,
+    /// so it is saved once it rests, in milliseconds.
+    const settle_wake_ms = 100;
+
+    /// The file's name in the settings folder.
+    const file_name = "gallery-window.zon";
+
+    /// The longest file read; a saved place is a few dozen bytes.
+    const most_bytes = 4096;
+
+    /// Where the window was last left, from the file, then from each frame.
+    var saved: ?ziggui.WindowPlace = null;
+
+    /// When the place changed, so it is saved once it rests.
+    var memory: ziggui.WindowMemory = .{};
+
+    /// The settings folder, null where the environment names none.
+    var folder: ?[]const u8 = null;
+
+    /// The allocator `folder` and the reads use.
+    var settings_allocator: std.mem.Allocator = undefined;
+
+    /// The I/O the file is read and written through.
+    var settings_io: std.Io = undefined;
+
+    /// Finds the settings folder and reads the saved place, if any.
+    ///
+    /// - `allocator`: allocator for the folder's path and the read.
+    /// - `io`: the I/O the file is read and written through.
+    /// - `environment`: the process's environment, which names the folder.
+    fn load(allocator: std.mem.Allocator, io: std.Io, environment: *const std.process.Environ.Map) void {
+        Self.settings_allocator = allocator;
+        Self.settings_io = io;
+        Self.folder = Self.folderOf(allocator, environment) catch |err| blk: {
+            log.warn("window place not kept: {s}", .{@errorName(err)});
+            break :blk null;
+        };
+        const folder_path = Self.folder orelse return;
+        const path = std.fs.path.join(allocator, &.{ folder_path, file_name }) catch |err| {
+            log.warn("window place not read: {s}", .{@errorName(err)});
+            return;
+        };
+        defer allocator.free(path);
+        const source = std.Io.Dir.cwd().readFileAllocOptions(io, path, allocator, .limited(most_bytes), .of(u8), 0) catch |err| {
+            if (err != error.FileNotFound) log.warn("window place not read from {s}: {s}", .{ path, @errorName(err) });
+            return;
+        };
+        defer allocator.free(source);
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        var diagnostics: std.zon.parse.Diagnostics = undefined;
+        Self.saved = std.zon.parse.fromSlice(ziggui.WindowPlace, .{
+            .gpa = allocator,
+            .arena = arena.allocator(),
+            .source = source,
+            .diagnostics = &diagnostics,
+            .ignore_unknown_fields = true,
+        }) catch |err| blk: {
+            log.warn("window place in {s} ignored: {s}", .{ path, @errorName(err) });
+            break :blk null;
+        };
+    }
+
+    /// Frees the folder's path.
+    fn unload() void {
+        if (Self.folder) |folder_path| Self.settings_allocator.free(folder_path);
+        Self.folder = null;
+    }
+
+    /// The frame hook: notes where the window is, and saves it once it has
+    /// rested `WindowMemory.settle_ms`.
+    fn note() void {
+        const now = ziggui.FrameClock.shared().time();
+        Self.memory.noteWindow(&Self.saved, ziggui.App.shared().windowPlace(), now);
+        if (Self.memory.due(now)) Self.write();
+    }
+
+    /// Saves a change that has not rested yet, as the loop ends. The window
+    /// is gone by then, so only what `note` saw last frame is left to write.
+    fn flush() void {
+        if (Self.memory.due(null)) Self.write();
+    }
+
+    /// Writes the saved place to the file, making the folder if need be;
+    /// a failure is logged and the place kept for the next save.
+    fn write() void {
+        const place = Self.saved orelse return;
+        const folder_path = Self.folder orelse return;
+        var buffer: [512]u8 = undefined;
+        var writer: std.Io.Writer = .fixed(&buffer);
+        var serializer: std.zon.Serializer = .{ .writer = &writer };
+        serializer.value(place, .{}) catch |err| {
+            log.warn("window place not saved: {s}", .{@errorName(err)});
+            return;
+        };
+        writer.writeByte('\n') catch |err| {
+            log.warn("window place not saved: {s}", .{@errorName(err)});
+            return;
+        };
+        const path = std.fs.path.join(Self.settings_allocator, &.{ folder_path, file_name }) catch |err| {
+            log.warn("window place not saved: {s}", .{@errorName(err)});
+            return;
+        };
+        defer Self.settings_allocator.free(path);
+        std.Io.Dir.cwd().createDirPath(Self.settings_io, folder_path) catch |err| {
+            log.warn("window place not saved: no folder {s}: {s}", .{ folder_path, @errorName(err) });
+            return;
+        };
+        Self.replaceFile(path, writer.buffered()) catch |err| {
+            log.warn("window place not saved to {s}: {s}", .{ path, @errorName(err) });
+        };
+    }
+
+    /// Writes `data` to a temporary file beside `path`, then renames it over
+    /// `path`, so a crash mid-write leaves the old file whole, never a torn one.
+    ///
+    /// - `path`: the file replaced.
+    /// - `data`: its new contents.
+    /// - Returns: nothing; propagates a failed create, write or rename.
+    fn replaceFile(path: []const u8, data: []const u8) !void {
+        var atomic = try std.Io.Dir.cwd().createFileAtomic(Self.settings_io, path, .{ .replace = true });
+        defer atomic.deinit(Self.settings_io);
+        try atomic.file.writeStreamingAll(Self.settings_io, data);
+        try atomic.replace(Self.settings_io);
+    }
+
+    /// The folder the gallery keeps its settings in, as this OS keeps them.
+    /// A variable that is empty or relative is taken as unset (as the XDG
+    /// base directory spec says), so the file never lands under the working
+    /// directory.
+    ///
+    /// - `allocator`: allocator for the path.
+    /// - `environment`: the process's environment.
+    /// - Returns: the folder, owned by the caller, or null where the environment names none; propagates allocation failure.
+    fn folderOf(allocator: std.mem.Allocator, environment: *const std.process.Environ.Map) !?[]const u8 {
+        if (ziggui.sdl.os_tag == .windows) {
+            const app_data = Self.absoluteVariable(environment, "APPDATA") orelse return null;
+            return try std.fs.path.join(allocator, &.{ app_data, "ziggui" });
+        }
+        const home = Self.absoluteVariable(environment, "HOME");
+        if (gallery.is_macos) return try std.fs.path.join(allocator, &.{ home orelse return null, "Library", "Application Support", "ziggui" });
+        if (Self.absoluteVariable(environment, "XDG_CONFIG_HOME")) |config_home| return try std.fs.path.join(allocator, &.{ config_home, "ziggui" });
+        return try std.fs.path.join(allocator, &.{ home orelse return null, ".config", "ziggui" });
+    }
+
+    /// An environment variable naming an absolute path.
+    ///
+    /// - `environment`: the process's environment.
+    /// - `name`: the variable.
+    /// - Returns: its value, or null when it is unset, empty or relative.
+    fn absoluteVariable(environment: *const std.process.Environ.Map, name: []const u8) ?[]const u8 {
+        const value = environment.get(name) orelse return null;
+        return if (std.fs.path.isAbsolute(value)) value else null;
     }
 };
 
@@ -488,7 +775,13 @@ const Window = struct {
         app.setQuitHandler(Self.onQuit);
         app.setMouseHandler(Self.onMouse);
         app.setBusyInterval(Self.wakeInterval);
-        try app.run(allocator, gallery.Gallery, target, .{
+        // The window reopens where and as large as it was left.
+        app.setFrameHook(WindowSettings.note);
+        defer {
+            app.setFrameHook(null);
+            WindowSettings.flush();
+        }
+        const config: ziggui.AppConfig = .{
             .title = "ziggui — Gallery",
             .width = 980,
             .height = 660,
@@ -499,7 +792,12 @@ const Window = struct {
             // lights in its inset, its empty space dragging the window.
             .unified_titlebar = gallery.is_macos,
             .drag_band = if (gallery.is_macos) ziggui.WindowChrome.top_bar_height else 0,
-        }, gallery.Gallery.body, null);
+            // A Windows machine whose GPU SDL_GPU cannot use draws on WARP,
+            // slower than the software rasterizer, so the Scenes section
+            // still shows its scene.
+            .warp_fallback = true,
+        };
+        try app.run(allocator, gallery.Gallery, target, config.restoring(WindowSettings.saved), gallery.Gallery.body, null);
     }
 
     /// Makes the Media Native section's platform view: on macOS a layer-hosting
@@ -633,6 +931,8 @@ const Window = struct {
     ///
     /// - Returns: milliseconds between wakes, 0 for none.
     fn wakeInterval() u32 {
+        // A moved or resized window is saved once it rests, which needs a wake.
+        if (WindowSettings.memory.settling()) return WindowSettings.settle_wake_ms;
         const target = Self.shown orelse return 0;
         return if (target.hoverWaiting()) 16 else 0;
     }

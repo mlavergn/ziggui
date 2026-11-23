@@ -12,6 +12,8 @@ const log = std.log.scoped(.ziggui_windows_module);
 pub const Win32 = @import("win32.zig").Win32;
 /// The bits of COM the web view and the player share.
 pub const Com = @import("com.zig").Com;
+/// SDL's Direct3D 12 backend put on WARP, the CPU renderer Windows ships.
+pub const D3d12Interop = @import("d3d12_interop.zig").D3d12Interop;
 /// COM's `HRESULT`, shared by the Windows files: negative is a failure.
 pub const HRESULT = @import("com.zig").HRESULT;
 /// COM's `PROPVARIANT`, as far as a string or GUID value reads it.
@@ -49,6 +51,8 @@ pub const WindowIcon = @import("../module.zig").WindowIcon;
 pub const VideoUnderlay = @import("../module.zig").VideoUnderlay;
 /// The origin rule the web view's bridges apply, from the sdl module.
 pub const WebOrigin = @import("../module.zig").WebOrigin;
+/// Whether SDL was built with `d3d12_interop.c` (`D3d12Interop`), from the sdl module.
+pub const has_d3d12_interop = @import("../module.zig").has_d3d12_interop;
 /// The target OS, from the sdl module.
 pub const os_tag = @import("../module.zig").os_tag;
 /// The target CPU (`WebView2Backend` picks the runtime's library by it), from the sdl module.

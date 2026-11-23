@@ -36,38 +36,11 @@
 //! it only behind `os_tag == .macos`, and `supported` is false there.
 
 const std = @import("std");
-const log = std.log.scoped(.ziggui_scene_ray_tracer);
+const log = std.log.scoped(.ziggui_metal_scene_ray_tracer);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 const scenes = @import("scenes");
 const sdl_c = @import("sdl_c");
-
-/// An opaque shape rays meet: its mesh (key, geometry and SDL buffers), where
-/// the frame places it, its surface, and whether it casts shadows.
-pub const SceneRayShape = struct {
-    const Self = @This();
-
-    /// The mesh's key (`SceneGeometry.key`): its primitive structure is kept by it.
-    key: u64,
-    /// The mesh's geometry, built again for its triangles' normals when its structure is.
-    geometry: scenes.SceneGeometry,
-    /// The mesh's vertices (`scenes.SceneVertex`, position first).
-    vertex_buffer: *sdl_c.SDL_GPUBuffer,
-    /// The mesh's indices, 32-bit, three a triangle.
-    index_buffer: *sdl_c.SDL_GPUBuffer,
-    /// How many indices it has.
-    index_count: u32,
-    /// The shape's transform into the scene's space.
-    world: scenes.Mat4,
-    /// Its normals' transform into the scene's space.
-    normal: scenes.Mat4,
-    /// Its surface, as a reflection shows it.
-    material: scenes.SceneMaterial,
-    /// Its texture on the GPU, null for a material with none.
-    texture: ?*sdl_c.SDL_GPUTexture,
-    /// Whether shadow rays meet it.
-    casts_shadows: bool,
-};
 
 /// A mesh triangle's vertex normals and texture coordinates, as
 /// `SceneHitTriangle` in the shader.
@@ -180,12 +153,12 @@ const FrameSet = struct {
     }
 };
 
-/// What a pooled object is made as (`SceneRayTracer.grown`).
+/// What a pooled object is made as (`MetalSceneRayTracer.grown`).
 const PooledKind = enum {
     const Self = @This();
 
     /// A buffer the CPU writes and the GPU reads, made half as large again
-    /// as asked (at least `SceneRayTracer.least_buffer_length`), so a
+    /// as asked (at least `MetalSceneRayTracer.least_buffer_length`), so a
     /// growing scene seldom makes it anew.
     sharedBuffer,
     /// A buffer only the GPU uses (a build's scratch), made as large as asked.
@@ -223,7 +196,7 @@ const InstanceDescriptor = extern struct {
 };
 
 /// Builds and binds the acceleration structures of a scene's opaque shapes.
-pub const SceneRayTracer = struct {
+pub const MetalSceneRayTracer = struct {
     const Self = @This();
 
     /// Whether this build traces rays at all: SDL built with `MetalInterop`,
@@ -417,7 +390,7 @@ pub const SceneRayTracer = struct {
     /// - `command_buffer`: the frame's command buffer, no pass open.
     /// - `shapes`: the opaque shapes, at least one.
     /// - Returns: true when the structures are ready for `bind`; false (logged) when they could not be made, so the frame draws shadow maps.
-    pub fn prepare(self: *Self, arena: std.mem.Allocator, command_buffer: *sdl_c.SDL_GPUCommandBuffer, shapes: []const SceneRayShape) bool {
+    pub fn prepare(self: *Self, arena: std.mem.Allocator, command_buffer: *sdl_c.SDL_GPUCommandBuffer, shapes: []const mod.SceneRayShape) bool {
         if (comptime !enabled) return false;
         if (shapes.len == 0) return false;
         const metal_command_buffer = self.interop.commandBuffer(command_buffer);
@@ -468,10 +441,14 @@ pub const SceneRayTracer = struct {
     ///
     /// - `self`: the ray tracer.
     /// - `command_buffer`: the frame's command buffer, the lit pass open on it.
+    /// - `pass`: the lit pass (unused: Metal binds on its encoder).
     /// - `sky`: what a reflection that meets nothing shows, linear.
     /// - `blank`: a texture bound in the texture slots no texture fills.
+    /// - `sampler`: unused: the shader samples with its own (`reflected_sampler`).
     /// - Returns: false when nothing was prepared or no render pass is open.
-    pub fn bind(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, sky: scenes.Vec3, blank: *sdl_c.SDL_GPUTexture) bool {
+    pub fn bind(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, pass: *sdl_c.SDL_GPURenderPass, sky: scenes.Vec3, blank: *sdl_c.SDL_GPUTexture, sampler: *sdl_c.SDL_GPUSampler) bool {
+        _ = pass;
+        _ = sampler;
         if (comptime !enabled) return false;
         if (self.instances == null or self.surfaces == null or self.triangles == null) return false;
         const encoder = self.interop.renderEncoder(command_buffer);
@@ -520,7 +497,7 @@ pub const SceneRayTracer = struct {
     /// - `builds`: the open build encoder, or null until one is needed.
     /// - `shape`: the shape whose mesh it is.
     /// - Returns: the structure, or null when it could not be made (logged).
-    fn primitiveFor(self: *Self, arena: std.mem.Allocator, metal_command_buffer: mod.Id, builds: *mod.Id, shape: SceneRayShape) mod.Id {
+    fn primitiveFor(self: *Self, arena: std.mem.Allocator, metal_command_buffer: mod.Id, builds: *mod.Id, shape: mod.SceneRayShape) mod.Id {
         for (self.primitives.items) |*primitive| {
             if (primitive.key != shape.key) continue;
             primitive.used_in = self.frame_number;
@@ -663,7 +640,7 @@ pub const SceneRayTracer = struct {
     /// - `places`: each shape's mesh's index among the placed ones.
     /// - `set_index`: the frame set's index (`takeSet`).
     /// - Returns: the buffer, or null when it could not be made (logged).
-    fn makeSurfaces(self: *Self, arena: std.mem.Allocator, shapes: []const SceneRayShape, places: []const u32, set_index: usize) mod.Id {
+    fn makeSurfaces(self: *Self, arena: std.mem.Allocator, shapes: []const mod.SceneRayShape, places: []const u32, set_index: usize) mod.Id {
         const surfaces = arena.alloc(HitInstance, shapes.len) catch |err| {
             log.warn("scene not ray traced: {s}", .{@errorName(err)});
             return null;
@@ -926,7 +903,7 @@ test "the instance, surface and triangle records have the shader's layout, and a
     try std.testing.expectEqual(@as(usize, 48), @offsetOf(HitTriangle, "uvs"));
     try std.testing.expectEqual(@as(usize, 72), @offsetOf(HitInstance, "texture"));
     const moved = scenes.Mat4.translation(scenes.Vec3.init(1, 2, 3));
-    const columns = SceneRayTracer.packedTransform(moved);
+    const columns = MetalSceneRayTracer.packedTransform(moved);
     try std.testing.expectEqualSlices(f32, &.{ 1, 2, 3 }, &columns[3]);
     try std.testing.expectEqualSlices(f32, &.{ 1, 0, 0 }, &columns[0]);
 }

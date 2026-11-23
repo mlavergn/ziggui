@@ -9,16 +9,6 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_rasterizer);
 const mod = @import("module.zig");
 
-/// One clip region on the clip stack.
-const Clip = struct {
-    const Self = @This();
-
-    /// The clip's rect.
-    rect: mod.Rect,
-    /// The clip's corner radius.
-    radius: f32,
-};
-
 /// A linear gradient's endpoints and colors.
 const GradientPaint = struct {
     const Self = @This();
@@ -104,30 +94,49 @@ const ClippedBounds = struct {
 pub const Rasterizer = struct {
     const Self = @This();
 
-    /// Allocator for the transient clip stack and blur scratch.
+    /// Allocator for the clip stack and the blur's scratch.
     allocator: std.mem.Allocator,
     /// The framebuffer painted into.
     framebuffer: *mod.Framebuffer,
+    /// The only rows painted: every row unless `limitedTo` narrowed it, so
+    /// rasterizers of disjoint bands can paint one framebuffer at once.
+    rows: mod.RowBand,
 
-    /// A rasterizer painting into `framebuffer`.
+    /// A rasterizer painting every row of `framebuffer`.
     ///
-    /// - `allocator`: allocator for the transient clip stack and blur scratch.
+    /// - `allocator`: allocator for the clip stack and the blur's scratch.
     /// - `framebuffer`: the framebuffer painted into.
     /// - Returns: the rasterizer.
     pub fn init(allocator: std.mem.Allocator, framebuffer: *mod.Framebuffer) Self {
-        const self = Self{ .allocator = allocator, .framebuffer = framebuffer };
+        const self = Self{ .allocator = allocator, .framebuffer = framebuffer, .rows = .all(framebuffer.height) };
         return self;
     }
 
+    /// The same rasterizer painting only `rows` (clamped to the framebuffer).
+    /// A pixel's value never depends on which band drew it: the band only
+    /// narrows the pixels a command visits, so bands drawn apart make the
+    /// same image as one rasterizer drawing every row.
+    ///
+    /// - `self`: the rasterizer.
+    /// - `rows`: the rows to paint.
+    /// - Returns: the limited rasterizer.
+    pub fn limitedTo(self: *const Self, rows: mod.RowBand) Self {
+        var limited = self.*;
+        limited.rows = .{ .top = @min(rows.top, self.framebuffer.height), .bottom = @min(rows.bottom, self.framebuffer.height) };
+        return limited;
+    }
+
     /// Render `commands` into the framebuffer, in order.
+    /// Walks the commands with one clip stack, so drawing on one thread
+    /// copies nothing; `ParallelRasterizer` flattens them into a `RasterPlan`
+    /// for bands drawn at once, to the same pixels.
     ///
     /// - `self`: the rasterizer.
     /// - `commands`: the commands.
     /// - Returns: nothing; propagates allocation failure.
     pub fn render(self: *const Self, commands: []const mod.DrawCommand) !void {
-        var clips: std.ArrayList(Clip) = .empty;
+        var clips: std.ArrayList(mod.RasterClip) = .empty;
         defer clips.deinit(self.allocator);
-
         for (commands) |command| {
             switch (command) {
                 .pushClip => |clip| try clips.append(self.allocator, .{ .rect = clip.rect, .radius = clip.radius }),
@@ -135,21 +144,49 @@ pub const Rasterizer = struct {
                     if (clips.items.len > 0) _ = clips.pop();
                 },
                 // No 3D here: the placeholder stands in for the scene, under the clips around it.
-                .scene => |scene| for (scene.placeholder()) |placeholder| try self.draw(clips.items, placeholder),
-                else => try self.draw(clips.items, command),
+                .scene => |scene| for (scene.placeholder()) |placeholder| self.drawShape(clips.items, placeholder),
+                .blurRect => |blur| try self.blurRect(clips.items, blur.rect, blur.radius, blur.sigma, blur.tint),
+                else => self.drawShape(clips.items, command),
             }
         }
     }
 
-    /// Draws one command that is neither a clip nor a scene under a clip stack.
+    /// Draws the items of a plan's blur-free run (a `RasterPlan.runEnd` run)
+    /// that `indices` names, in the order given, within `rows`: a band's
+    /// bucket of the run, so a band visits only what may reach it. Allocates
+    /// nothing, so it may run on any thread.
+    ///
+    /// - `self`: the rasterizer.
+    /// - `items`: the run's items, none reading its neighbours.
+    /// - `indices`: the items to draw, ascending.
+    pub fn drawSelected(self: *const Self, items: []const mod.RasterItem, indices: []const usize) void {
+        for (indices) |index| {
+            const item = &items[index];
+            std.debug.assert(!item.readsNeighbours());
+            if (item.mayTouch(self.rows)) self.drawShape(item.clips, item.command);
+        }
+    }
+
+    /// Draws one item of a plan, a blur included.
+    ///
+    /// - `self`: the rasterizer.
+    /// - `item`: the item.
+    /// - Returns: nothing; propagates the blur's allocation failure.
+    pub fn drawItem(self: *const Self, item: *const mod.RasterItem) !void {
+        switch (item.command) {
+            .blurRect => |blur| try self.blurRect(item.clips, blur.rect, blur.radius, blur.sigma, blur.tint),
+            else => self.drawShape(item.clips, item.command),
+        }
+    }
+
+    /// Draws one command that reads no neighbouring pixel under a clip stack.
     ///
     /// - `self`: the rasterizer.
     /// - `clips`: the clip stack.
     /// - `command`: the command.
-    /// - Returns: nothing; propagates allocation failure.
-    fn draw(self: *const Self, clips: []const Clip, command: mod.DrawCommand) !void {
+    fn drawShape(self: *const Self, clips: []const mod.RasterClip, command: mod.DrawCommand) void {
         switch (command) {
-            .pushClip, .popClip, .scene => unreachable,
+            .pushClip, .popClip, .scene, .blurRect => unreachable,
             .fillRoundedRect => |fill| self.fillShape(clips, fill.rect, fill.radius, .{ .solid = fill.color }),
             .strokeRoundedRect => |stroke| self.strokeShape(clips, stroke.rect, stroke.radius, stroke.width, stroke.color),
             .linearGradient => |gradient| self.fillShape(clips, gradient.rect, gradient.radius, .{ .gradient = .{
@@ -162,7 +199,6 @@ pub const Rasterizer = struct {
             .glyph => |glyph| self.drawGlyph(clips, glyph.rect, glyph.color, glyph.coverage, glyph.gamma),
             .image => |image| self.drawImage(clips, image.rect, image.image),
             .videoFrame => |frame| self.drawImage(clips, frame.rect, frame.image),
-            .blurRect => |blur| try self.blurRect(clips, blur.rect, blur.radius, blur.sigma, blur.tint),
             .eraseRect => |erase| self.eraseShape(clips, erase.rect, erase.radius),
         }
     }
@@ -182,7 +218,7 @@ pub const Rasterizer = struct {
     /// - Returns: nothing; propagates allocation failure.
     fn blurRect(
         self: *const Self,
-        clips: []const Clip,
+        clips: []const mod.RasterClip,
         rect: mod.Rect,
         radius: f32,
         sigma: f32,
@@ -381,7 +417,7 @@ pub const Rasterizer = struct {
     /// - `pixel_x`: the pixel center's x.
     /// - `pixel_y`: the pixel center's y.
     /// - Returns: the product of every clip's coverage.
-    fn clipCoverage(clips: []const Clip, pixel_x: f32, pixel_y: f32) f32 {
+    fn clipCoverage(clips: []const mod.RasterClip, pixel_x: f32, pixel_y: f32) f32 {
         var coverage: f32 = 1;
         for (clips) |clip| {
             coverage *= Self.fillCoverage(pixel_x, pixel_y, clip.rect, clip.radius);
@@ -391,7 +427,7 @@ pub const Rasterizer = struct {
     }
 
     /// Integer pixel range covering `rect` (expanded by `padding` for AA),
-    /// clamped to the framebuffer.
+    /// clamped to the framebuffer and to `rows`.
     ///
     /// - `self`: the rasterizer.
     /// - `rect`: the rect.
@@ -399,9 +435,11 @@ pub const Rasterizer = struct {
     /// - Returns: the pixel range.
     fn boundsOf(self: *const Self, rect: mod.Rect, padding: f32) PixelBounds {
         const left = std.math.clamp(@floor(rect.minX() - padding), 0, @as(f32, @floatFromInt(self.framebuffer.width)));
-        const top = std.math.clamp(@floor(rect.minY() - padding), 0, @as(f32, @floatFromInt(self.framebuffer.height)));
+        const first_row: f32 = @floatFromInt(self.rows.top);
+        const end_row: f32 = @floatFromInt(@max(self.rows.top, self.rows.bottom));
+        const top = std.math.clamp(@floor(rect.minY() - padding), first_row, end_row);
         const right = std.math.clamp(@ceil(rect.maxX() + padding), 0, @as(f32, @floatFromInt(self.framebuffer.width)));
-        const bottom = std.math.clamp(@ceil(rect.maxY() + padding), 0, @as(f32, @floatFromInt(self.framebuffer.height)));
+        const bottom = std.math.clamp(@ceil(rect.maxY() + padding), first_row, end_row);
         return .{
             .left = @intFromFloat(left),
             .top = @intFromFloat(top),
@@ -418,7 +456,7 @@ pub const Rasterizer = struct {
     /// - `rect`: the shape's rect.
     /// - `padding`: the shape's anti-aliasing reach past `rect`.
     /// - Returns: the bounds and the clip check.
-    fn clippedBoundsOf(self: *const Self, clips: []const Clip, rect: mod.Rect, padding: f32) ClippedBounds {
+    fn clippedBoundsOf(self: *const Self, clips: []const mod.RasterClip, rect: mod.Rect, padding: f32) ClippedBounds {
         var bounds = self.boundsOf(rect, padding);
         var check = false;
         for (clips) |clip| {
@@ -464,7 +502,7 @@ pub const Rasterizer = struct {
     /// - `rect`: the shape.
     /// - `radius`: the corner radius.
     /// - `paint`: the color or gradient.
-    fn fillShape(self: *const Self, clips: []const Clip, rect: mod.Rect, radius: f32, paint: Paint) void {
+    fn fillShape(self: *const Self, clips: []const mod.RasterClip, rect: mod.Rect, radius: f32, paint: Paint) void {
         const framebuffer = self.framebuffer;
         const clipped = self.clippedBoundsOf(clips, rect, 1);
         const bounds = clipped.bounds;
@@ -533,7 +571,7 @@ pub const Rasterizer = struct {
     /// - `clips`: the clip stack.
     /// - `rect`: the shape.
     /// - `radius`: the corner radius.
-    fn eraseShape(self: *const Self, clips: []const Clip, rect: mod.Rect, radius: f32) void {
+    fn eraseShape(self: *const Self, clips: []const mod.RasterClip, rect: mod.Rect, radius: f32) void {
         const framebuffer = self.framebuffer;
         const clipped = self.clippedBoundsOf(clips, rect, 1);
         const bounds = clipped.bounds;
@@ -563,7 +601,7 @@ pub const Rasterizer = struct {
     /// - `radius`: the corner radius.
     /// - `width`: the stroke's width.
     /// - `color`: the stroke color.
-    fn strokeShape(self: *const Self, clips: []const Clip, rect: mod.Rect, radius: f32, width: f32, color: mod.Color) void {
+    fn strokeShape(self: *const Self, clips: []const mod.RasterClip, rect: mod.Rect, radius: f32, width: f32, color: mod.Color) void {
         const framebuffer = self.framebuffer;
         const half = width / 2;
         const clipped = self.clippedBoundsOf(clips, rect, half + 1);
@@ -623,7 +661,7 @@ pub const Rasterizer = struct {
     /// - `end`: the other end.
     /// - `width`: the line's width.
     /// - `color`: the line's color.
-    fn drawLine(self: *const Self, clips: []const Clip, start: mod.Point, end: mod.Point, width: f32, color: mod.Color) void {
+    fn drawLine(self: *const Self, clips: []const mod.RasterClip, start: mod.Point, end: mod.Point, width: f32, color: mod.Color) void {
         const framebuffer = self.framebuffer;
         const half = width / 2;
         const min_x = @min(start.x, end.x);
@@ -654,7 +692,7 @@ pub const Rasterizer = struct {
     /// - `color`: the tint.
     /// - `coverage`: the mask.
     /// - `gamma`: the coverage exponent.
-    fn drawGlyph(self: *const Self, clips: []const Clip, rect: mod.Rect, color: mod.Color, coverage: mod.Coverage, gamma: f32) void {
+    fn drawGlyph(self: *const Self, clips: []const mod.RasterClip, rect: mod.Rect, color: mod.Color, coverage: mod.Coverage, gamma: f32) void {
         const framebuffer = self.framebuffer;
         if (coverage.width == 0 or coverage.height == 0) return;
         const clipped = self.clippedBoundsOf(clips, rect, 0);
@@ -698,7 +736,7 @@ pub const Rasterizer = struct {
     /// - `clips`: the clip stack.
     /// - `rect`: where the image is drawn.
     /// - `image`: the pixels.
-    fn drawImage(self: *const Self, clips: []const Clip, rect: mod.Rect, image: mod.Image) void {
+    fn drawImage(self: *const Self, clips: []const mod.RasterClip, rect: mod.Rect, image: mod.Image) void {
         const framebuffer = self.framebuffer;
         if (image.width == 0 or image.height == 0) return;
         if (!image.isWhole()) return;

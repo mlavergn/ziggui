@@ -151,7 +151,8 @@ struct TracedLighting {
             float2 offset = disc_sample(sample, soft_samples, turn) * radius;
             float3 to_target = center + across * offset.x + up * offset.y - origin;
             float distance = length(to_target);
-            lit += blocked(shapes, origin, to_target / distance, distance) ? 0.0 : 1.0;
+            // A sample on the point itself lights it, as a light at the point does (no ray: its direction would be NaN).
+            lit += (distance <= 0.0 || !blocked(shapes, origin, to_target / distance, distance)) ? 1.0 : 0.0;
         }
         return lit / float(soft_samples);
     }

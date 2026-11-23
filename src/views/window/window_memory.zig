@@ -26,7 +26,10 @@ pub const WindowMemory = struct {
     /// for a change noted with no clock.
     moved_ms: ?u64 = null,
 
-    /// Notes where the window is.
+    /// Notes where the window is. With nothing saved yet (a first launch),
+    /// the first place noted is adopted without counting as a move: the
+    /// window is where the app opens it anyway, so nothing is written until
+    /// the user moves or resizes it.
     ///
     /// - `self`: the memory.
     /// - `saved`: the app's saved place; set to `place` when it differs.
@@ -34,7 +37,11 @@ pub const WindowMemory = struct {
     /// - `now`: `FrameClock.shared().time()`; null when there is no clock (a quit).
     pub fn noteWindow(self: *Self, saved: *?mod.WindowPlace, place: ?mod.WindowPlace, now: ?u64) void {
         const current = place orelse return;
-        if (saved.*) |old| if (std.meta.eql(old, current)) return;
+        const old = saved.* orelse {
+            saved.* = current;
+            return;
+        };
+        if (std.meta.eql(old, current)) return;
         saved.* = current;
         self.moved_ms = now orelse 0;
     }
@@ -113,6 +120,12 @@ test "window memory: a moved window and a dragged divider are due once they rest
     var sidebar: mod.SplitState = .{};
     var detail: mod.SplitState = .{};
     const place: mod.WindowPlace = .{ .x = 40, .y = 60, .width = 1500, .height = 900 };
+
+    // A first launch: where the window opens is adopted, not a move.
+    memory.noteWindow(&saved, .{ .x = 0, .y = 0, .width = 1200, .height = 800 }, 500);
+    try std.testing.expect(saved != null);
+    try std.testing.expect(!memory.settling());
+    try std.testing.expect(!memory.due(null));
 
     memory.noteWindow(&saved, place, 1000);
     memory.notePanes(&panes, .{ .sidebar = &sidebar, .detail = &detail }, 1000);

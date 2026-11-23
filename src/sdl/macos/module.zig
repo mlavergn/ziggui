@@ -37,9 +37,7 @@ pub const WkWebViewBackend = @import("wk_web_view_backend.zig").WkWebViewBackend
 /// SDL_GPU's Metal objects (device, textures, command buffers), for Metal work SDL_GPU has no API for.
 pub const MetalInterop = @import("metal_interop.zig").MetalInterop;
 /// The Metal ray tracing behind a scene's ray-traced shadows and reflections: its shapes' acceleration structures.
-pub const SceneRayTracer = @import("scene_ray_tracer.zig").SceneRayTracer;
-/// An opaque shape rays meet, as `SceneRayTracer.prepare` takes it.
-pub const SceneRayShape = @import("scene_ray_tracer.zig").SceneRayShape;
+pub const MetalSceneRayTracer = @import("metal_scene_ray_tracer.zig").MetalSceneRayTracer;
 
 // -----------------------------------------------------------------------------
 // From the sdl module
@@ -54,6 +52,8 @@ pub const WindowIcon = @import("../module.zig").WindowIcon;
 pub const ResizeSettle = @import("../module.zig").ResizeSettle;
 /// The origin rule the web view's bridges apply, from the sdl module.
 pub const WebOrigin = @import("../module.zig").WebOrigin;
+/// An opaque shape rays meet (the Metal ray tracer takes them), from the sdl module.
+pub const SceneRayShape = @import("../module.zig").SceneRayShape;
 /// The target OS, from the sdl module.
 pub const os_tag = @import("../module.zig").os_tag;
 /// The target CPU, from the sdl module.

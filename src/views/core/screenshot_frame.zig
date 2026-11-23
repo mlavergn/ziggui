@@ -140,6 +140,21 @@ pub const ScreenshotFrame = struct {
         try renderer.Rasterizer.init(self.allocator, &framebuffer).render(self.commands);
         return framebuffer.toRgba8Alloc(self.allocator);
     }
+
+    /// Draws the last built frame's commands as `rasterize` does, into
+    /// buffers the caller keeps across draws, as a window keeps its own, and
+    /// with `pool`'s workers, as a window's software path draws; the bytes
+    /// are the same as `rasterize`'s.
+    ///
+    /// - `self`: the frame.
+    /// - `framebuffer`: the pixels drawn into, sized here when they differ.
+    /// - `bytes`: receives the image as RGBA8, rows top-down; `width * height * 4` long.
+    /// - `pool`: the workers, or null for the calling thread alone.
+    /// - Returns: nothing; propagates allocation and rasterizing failures.
+    pub fn rasterizeInto(self: *const Self, framebuffer: *renderer.Framebuffer, bytes: []u8, pool: ?*renderer.WorkerPool) !void {
+        try framebuffer.ensureSize(self.allocator, self.options.width, self.options.height);
+        try renderer.ParallelRasterizer.init(self.allocator, framebuffer, pool).drawFrame(self.options.theme.colors.window_background, self.commands, bytes);
+    }
 };
 
 // -----------------------------------------------------------------------------
@@ -174,4 +189,25 @@ test "a frame builds every settling frame and keeps the last one's commands" {
     const rgba = try frame.rasterize();
     defer std.testing.allocator.free(rgba);
     try std.testing.expectEqual(@as(usize, 8 * 4 * 4), rgba.len);
+}
+
+test "rasterizeInto gives rasterize's bytes, with workers or without" {
+    const allocator = std.testing.allocator;
+    var probe: Probe = .{};
+    const frame = try ScreenshotFrame.create(allocator, .{ .width = 40, .height = 90, .theme = renderer.MacosTheme.light });
+    defer frame.destroy();
+    _ = try frame.build(&probe, Probe.body);
+    const expected = try frame.rasterize();
+    defer allocator.free(expected);
+    var framebuffer: renderer.Framebuffer = .empty;
+    defer framebuffer.deinit();
+    const bytes = try allocator.alloc(u8, expected.len);
+    defer allocator.free(bytes);
+    const pool = try renderer.WorkerPool.create(allocator, std.testing.io, 3);
+    defer pool.destroy();
+    for ([_]?*renderer.WorkerPool{ null, pool }) |maybe_pool| {
+        @memset(bytes, 0);
+        try frame.rasterizeInto(&framebuffer, bytes, maybe_pool);
+        try std.testing.expectEqualSlices(u8, expected, bytes);
+    }
 }

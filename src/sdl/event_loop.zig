@@ -36,7 +36,7 @@ const FrameStatistics = struct {
             const last_ms = @as(f64, @floatFromInt(elapsed_ns)) / 1.0e6;
             const average_ms = @as(f64, @floatFromInt(self.sum_ns)) / @as(f64, @floatFromInt(self.count)) / 1.0e6;
             const max_ms = @as(f64, @floatFromInt(self.max_ns)) / 1.0e6;
-            std.debug.print("[ziggui] render: last {d:.2}ms  avg {d:.2}ms  max {d:.2}ms  ({d} frames, {d:.0} fps-equiv)\n", .{
+            Self.print("[ziggui] render: last {d:.2}ms  avg {d:.2}ms  max {d:.2}ms  ({d} frames, {d:.0} fps-equiv)\n", .{
                 last_ms, average_ms, max_ms, self.count, if (average_ms > 0) 1000.0 / average_ms else 0,
             });
             self.count = 0;
@@ -44,6 +44,18 @@ const FrameStatistics = struct {
             self.max_ns = 0;
             self.last_report_ms = now_ms;
         }
+    }
+
+    /// Writes a line of the frame log (`ZIGGUI_FRAME_LOG`) to standard error,
+    /// whatever the build's log level, since the log is asked for.
+    ///
+    /// - `format`: the line's format string.
+    /// - `args`: the values it formats.
+    fn print(comptime format: []const u8, args: anytype) void {
+        var buffer: [256]u8 = undefined;
+        var stderr = std.Io.File.stderr().writerStreaming(std.Io.Threaded.global_single_threaded.io(), &buffer);
+        stderr.interface.print(format, args) catch |err| return log.warn("frame log not written: {s}", .{@errorName(err)});
+        stderr.interface.flush() catch |err| log.warn("frame log not written: {s}", .{@errorName(err)});
     }
 };
 
@@ -111,6 +123,8 @@ fn WindowFrame(comptime AppState: type) type {
         // so steady-state frames allocate no per-frame framebuffer/RGBA scratch.
         framebuffer: *renderer.Framebuffer,
         rgba: *[]u8,
+        /// The workers the software path rasterizes with, or null for the UI thread alone.
+        raster_pool: ?*renderer.WorkerPool,
         perf_frequency: u64,
         statistics: *FrameStatistics,
         resize_arena: *std.heap.ArenaAllocator,
@@ -309,14 +323,16 @@ fn WindowFrame(comptime AppState: type) type {
                 // steady-state frame does zero pixel-buffer allocation.
                 const sdl_renderer = self.sdl_renderer.?;
                 self.framebuffer.ensureSize(self.allocator, scaled_width, scaled_height) catch return false;
-                self.framebuffer.clear(if (self.transparent) renderer.Color.transparent else theme.colors.window_background);
-                renderer.Rasterizer.init(arena, self.framebuffer).render(display_list.commands.items) catch return false;
                 const byte_count: usize = @as(usize, scaled_width) * @as(usize, scaled_height) * 4;
                 if (self.rgba.*.len != byte_count) {
                     if (self.rgba.*.len > 0) self.allocator.free(self.rgba.*);
+                    self.rgba.* = &.{};
                     self.rgba.* = self.allocator.alloc(u8, byte_count) catch return false;
                 }
-                self.framebuffer.toRgba8(self.rgba.*);
+                // Bands of rows on the pool's workers, each cleared, drawn and
+                // converted while in its core's cache: the same image as one thread draws.
+                const background = if (self.transparent) renderer.Color.transparent else theme.colors.window_background;
+                renderer.ParallelRasterizer.init(arena, self.framebuffer, self.raster_pool).drawFrame(background, display_list.commands.items, self.rgba.*) catch return false;
                 for (underlays) |underlay| underlay.composite(self.rgba.*, scaled_width, scaled_height, scale);
 
                 // Debug: ZIGGUI_POPOVER_WINDOW_DUMP=<absolute path> writes the transparent (popover window)
@@ -602,7 +618,7 @@ const EventRouter = struct {
         const popover_window = mod.PopoverWindow.shared();
         // With frame logging on, also log which events wake the loop (each wake
         // costs a full rebuild+raster) so redraw storms can be attributed.
-        if (app.frame_log) std.debug.print("[ziggui] event 0x{x}\n", .{event.type});
+        if (app.frame_log) FrameStatistics.print("[ziggui] event 0x{x}\n", .{event.type});
         const on_popover_window = Self.isPopoverWindowEvent(event, popover_window.id);
         // A release ends the press and any drag whoever takes it: an app's
         // handler that consumes it must not leave a button drawn pressed.
@@ -844,6 +860,10 @@ pub fn EventLoop(comptime AppState: type) type {
     return struct {
         const Self = @This();
 
+        /// The most workers the default count gives the popover window when
+        /// it is the only window drawing in software.
+        const popover_raster_workers: usize = 4;
+
         /// Owns the loop and its resources.
         allocator: std.mem.Allocator,
         /// The app's state, handed to the bodies.
@@ -921,6 +941,10 @@ pub fn EventLoop(comptime AppState: type) type {
         framebuffer: renderer.Framebuffer = .empty,
         /// The software path's frame as RGBA8 pixels.
         rgba: []u8 = &.{},
+        /// The workers the software-drawn windows rasterize with (the main
+        /// window on the software path, the popover window), or null when
+        /// every window draws on the GPU or one worker was asked for.
+        raster_pool: ?*renderer.WorkerPool = null,
         /// The performance counter's ticks per second, for frame timing.
         perf_frequency: u64 = 0,
         /// Frame timings, logged with `ZIGGUI_FRAME_LOG`.
@@ -997,7 +1021,7 @@ pub fn EventLoop(comptime AppState: type) type {
             // driver, headless CI, ZIGGUI_SOFTWARE set) fall back to the software
             // rasterizer presented through an SDL streaming texture.
             const want_gpu = config.gpu and sdl_c.SDL_getenv("ZIGGUI_SOFTWARE") == null;
-            self.gpu_backend = if (want_gpu) mod.Gpu.init(allocator, self.window) else null;
+            self.gpu_backend = if (want_gpu) (mod.Gpu.init(allocator, self.window) orelse if (config.warp_fallback) mod.Gpu.initOnWarp(allocator, self.window) else null) else null;
             errdefer if (self.gpu_backend) |*gpu| gpu.deinit();
             if (self.gpu_backend) |*gpu| std.log.info("ziggui: rendering via SDL_GPU ({s})", .{gpu.driverName()});
 
@@ -1015,6 +1039,10 @@ pub fn EventLoop(comptime AppState: type) type {
             self.popover_arena = std.heap.ArenaAllocator.init(allocator);
             errdefer self.closePopoverWindow();
             self.openPopoverWindow();
+
+            // The software path's workers, for whichever window draws in software.
+            if (self.sdl_renderer != null or self.popover_renderer != null) self.raster_pool = Self.startRasterPool(allocator, config, self.sdl_renderer == null);
+            errdefer if (self.raster_pool) |pool| pool.destroy();
 
             _ = sdl_c.SDL_StartTextInput(self.window);
 
@@ -1087,6 +1115,7 @@ pub fn EventLoop(comptime AppState: type) type {
                 .texture_height = &self.texture_height,
                 .framebuffer = &self.framebuffer,
                 .rgba = &self.rgba,
+                .raster_pool = self.raster_pool,
                 .perf_frequency = self.perf_frequency,
                 .statistics = &self.statistics,
                 .resize_arena = &self.resize_arena,
@@ -1116,6 +1145,7 @@ pub fn EventLoop(comptime AppState: type) type {
                     .texture_height = &self.popover_texture_height,
                     .framebuffer = &self.popover_framebuffer,
                     .rgba = &self.popover_rgba,
+                    .raster_pool = self.raster_pool,
                     .perf_frequency = self.perf_frequency,
                     .statistics = &self.statistics,
                     .resize_arena = &self.resize_arena,
@@ -1154,6 +1184,7 @@ pub fn EventLoop(comptime AppState: type) type {
             self.icon_cache.deinit();
             self.cache.deinit();
             self.closePopoverWindow();
+            if (self.raster_pool) |pool| pool.destroy();
             if (self.sdl_renderer) |sdl_renderer| sdl_c.SDL_DestroyRenderer(sdl_renderer);
             if (self.gpu_backend) |*gpu| gpu.deinit();
             views.FrameClock.shared().setWakeHandler(null);
@@ -1210,9 +1241,13 @@ pub fn EventLoop(comptime AppState: type) type {
                     // timeout so the frame hook keeps the tray status live. Cap the
                     // idle wait (`idle_wake_ms`): a hidden-to-tray window can't
                     // receive an event to observe a tray callback's `running = false`,
-                    // so a blocking wait here hangs Quit forever.
+                    // so a blocking wait here hangs Quit forever. A frame a view
+                    // asked for still caps it: a frame the GPU skipped (no
+                    // swapchain image free yet, `Gpu.frame`) was built, and its
+                    // views' requests (an animating `SceneView`'s) bring the retry
+                    // at the next frame's time, not the idle wake's.
                     const busy_ms = app.busyIntervalMs();
-                    router.waitThenDrain(if (busy_ms != 0) @intCast(busy_ms) else mod.App.idle_wake_ms);
+                    router.waitThenDrain(@intCast(Self.requestedWait(if (busy_ms != 0) busy_ms else @intCast(mod.App.idle_wake_ms))));
                     continue;
                 }
                 self.waitAfterFrame(&router);
@@ -1235,10 +1270,7 @@ pub fn EventLoop(comptime AppState: type) type {
             const animating = self.animator.active() or views.FrameClock.shared().scrollbarsAnimating(sdl_c.SDL_GetTicks());
             var busy_ms: u32 = if (animating) (if (app_ms == 0) 16 else @min(app_ms, 16)) else app_ms;
             // A frame a view asked for (a hover hint's delay) caps the wait.
-            if (views.FrameClock.shared().frameDueIn(sdl_c.SDL_GetTicks())) |due| {
-                const wait: u32 = @intCast(@max(@min(due, 1000), 1));
-                busy_ms = if (busy_ms == 0) wait else @min(busy_ms, wait);
-            }
+            busy_ms = Self.requestedWait(busy_ms);
             if (busy_ms != 0) {
                 router.waitThenDrain(@intCast(busy_ms));
                 const now = sdl_c.SDL_GetTicks();
@@ -1248,6 +1280,18 @@ pub fn EventLoop(comptime AppState: type) type {
             } else {
                 self.waitIdle(router);
             }
+        }
+
+        /// A wait capped by the frame a view asked for (`FrameClock.requestFrameAt`:
+        /// an animating `SceneView`, a hover hint's delay), at least 1 ms and at
+        /// most a second; a request that is due is cleared.
+        ///
+        /// - `wait_ms`: the wait otherwise, 0 for none (wait for input).
+        /// - Returns: the wait in ms, 0 when there is none and no frame was asked for.
+        fn requestedWait(wait_ms: u32) u32 {
+            const due = views.FrameClock.shared().frameDueIn(sdl_c.SDL_GetTicks()) orelse return wait_ms;
+            const requested: u32 = @intCast(@max(@min(due, 1000), 1));
+            return if (wait_ms == 0) requested else @min(wait_ms, requested);
         }
 
         /// Fully idle: waits for input. A blocking SDL_WaitEvent would only
@@ -1401,6 +1445,39 @@ pub fn EventLoop(comptime AppState: type) type {
             // Debug: ZIGGUI_NO_FROST=1 leaves the glass off (for bisecting compositing artifacts).
             if (mod.os_tag == .macos and sdl_c.SDL_getenv("ZIGGUI_NO_FROST") == null) mod.Cocoa.frostWindow(window, 12);
             _ = sdl_c.SDL_HideWindow(window);
+        }
+
+        /// Starts the software path's workers: `ZIGGUI_RASTER_WORKERS`, else
+        /// `AppConfig.raster_workers`, else `WorkerPool.defaultWorkerCount`,
+        /// which 0 also picks (as the gallery's `--workers 0` does); at most
+        /// `WorkerPool.max_workers`. While only the popover window draws in
+        /// software (the main window on the GPU), the default is at most
+        /// `popover_raster_workers`: a small panel gains nothing from more
+        /// threads, each woken for every frame. One worker (or a pool that
+        /// cannot be made, logged) draws on the UI thread alone.
+        ///
+        /// - `allocator`: allocator for the pool.
+        /// - `config`: the configuration naming the count.
+        /// - `main_on_gpu`: whether the main window draws on the GPU, so only the popover window rasterizes.
+        /// - Returns: the pool, or null for the UI thread alone.
+        fn startRasterPool(allocator: std.mem.Allocator, config: mod.AppConfig, main_on_gpu: bool) ?*renderer.WorkerPool {
+            const default_count = if (main_on_gpu) @min(renderer.WorkerPool.defaultWorkerCount(), Self.popover_raster_workers) else renderer.WorkerPool.defaultWorkerCount();
+            var count: usize = if (config.raster_workers) |workers| workers else default_count;
+            if (sdl_c.SDL_getenv("ZIGGUI_RASTER_WORKERS")) |text| {
+                const value = std.mem.span(@as([*:0]const u8, @ptrCast(text)));
+                if (std.fmt.parseInt(u32, value, 10)) |workers| {
+                    count = workers;
+                } else |err| log.warn("ignoring ZIGGUI_RASTER_WORKERS={s} [{t}]", .{ value, err });
+            }
+            if (count == 0) count = default_count;
+            if (count <= 1) return null;
+            // Only the futex of an `Io` is used, which every `Io.Threaded` shares.
+            const pool = renderer.WorkerPool.create(allocator, std.Io.Threaded.global_single_threaded.io(), count) catch |err| {
+                log.warn("rasterizing on the UI thread alone: no worker pool: {s}", .{@errorName(err)});
+                return null;
+            };
+            std.log.info("ziggui: software rasterizer on {d} workers", .{pool.workerCount()});
+            return pool;
         }
 
         /// The popover window's mouse handler as the router calls it: the

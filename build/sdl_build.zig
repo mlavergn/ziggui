@@ -22,6 +22,15 @@ pub const SdlOptions = struct {
     /// functions of its own that read the backend's private structs; null
     /// compiles the backend alone.
     metal_interop: ?std.Build.LazyPath = null,
+    /// A C file compiled in place of SDL's Vulkan GPU backend
+    /// (`src/gpu/vulkan/SDL_gpu_vulkan.c`), which it `#include`s before adding
+    /// functions of its own that read the backend's private structs; null
+    /// compiles the backend alone.
+    vulkan_interop: ?std.Build.LazyPath = null,
+    /// A C file compiled in place of SDL's Direct3D 12 GPU backend
+    /// (`src/gpu/d3d12/SDL_gpu_d3d12.c`, Windows), which it `#include`s with
+    /// its adapter calls redirected; null compiles the backend alone.
+    d3d12_interop: ?std.Build.LazyPath = null,
 };
 
 /// What SDL_linux_deps (the `sdl_linux_deps` dependency) provides at the commit build.zig.zon pins,
@@ -958,7 +967,6 @@ pub const SdlBuild = struct {
         "src/video/offscreen/SDL_offscreenvideo.c",
         "src/video/offscreen/SDL_offscreenvulkan.c",
         "src/video/offscreen/SDL_offscreenwindow.c",
-        "src/gpu/vulkan/SDL_gpu_vulkan.c",
         "src/main/generic/SDL_sysmain_callbacks.c",
     };
     /// The HIDAPI joystick and haptic drivers every desktop platform builds.
@@ -1064,7 +1072,6 @@ pub const SdlBuild = struct {
         "src/camera/mediafoundation/SDL_camera_mediafoundation.c",
         "src/dialog/windows/SDL_windowsdialog.c",
         "src/process/windows/SDL_windowsprocess.c",
-        "src/gpu/d3d12/SDL_gpu_d3d12.c",
     };
     /// The sources only an MSVC build of Windows adds (GameInput).
     const msvc_sources = [_][]const u8{
@@ -1181,6 +1188,10 @@ pub const SdlBuild = struct {
         "src/tray/cocoa/SDL_tray.m",
         "src/dialog/cocoa/SDL_cocoadialog.m",
     };
+    /// SDL's Direct3D 12 GPU backend, compiled alone unless `SdlOptions.d3d12_interop` wraps it.
+    const d3d12_gpu_source = "src/gpu/d3d12/SDL_gpu_d3d12.c";
+    /// SDL's Vulkan GPU backend, compiled alone unless `SdlOptions.vulkan_interop` wraps it.
+    const vulkan_gpu_source = "src/gpu/vulkan/SDL_gpu_vulkan.c";
     /// SDL's Metal GPU backend, compiled alone unless `SdlOptions.metal_interop` wraps it.
     const metal_gpu_source = "src/gpu/metal/SDL_gpu_metal.m";
     /// Build SDL3 as a static library from the `sdl` dependency, or null on the first configure while a lazy dependency is still being fetched (the build then reruns).
@@ -1250,7 +1261,7 @@ pub const SdlBuild = struct {
         }
         if (explicit_macos) Self.addMacosSdk(b, module, options.macos_sdk.?);
 
-        Self.addSources(module, source, linux_dependencies, options.metal_interop, &platform);
+        Self.addSources(module, source, linux_dependencies, options, &platform);
         Self.linkSystem(module, &platform);
 
         sdl_library.installHeadersDirectory(source.path("include/SDL3"), "SDL3", .{ .exclude_extensions = &excluded_headers });
@@ -1274,22 +1285,34 @@ pub const SdlBuild = struct {
     /// - `module`: SDL's module.
     /// - `source`: the `sdl` dependency.
     /// - `linux_dependencies`: the `sdl_linux_deps` dependency on Linux, null elsewhere.
-    /// - `metal_interop`: the file compiled in place of SDL's Metal GPU backend, or null for the backend alone.
+    /// - `options`: the files compiled in place of SDL's Metal, Vulkan and Direct3D 12 GPU backends, if any.
     /// - `platform`: the platform.
-    fn addSources(module: *std.Build.Module, source: *std.Build.Dependency, linux_dependencies: ?*std.Build.Dependency, metal_interop: ?std.Build.LazyPath, platform: *const Platform) void {
+    fn addSources(module: *std.Build.Module, source: *std.Build.Dependency, linux_dependencies: ?*std.Build.Dependency, options: SdlOptions, platform: *const Platform) void {
         const flags: []const []const u8 = if (platform.macos) &macos_flags else if (platform.linux) &linux_flags else &common_flags;
         const root = source.path(".");
         module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &core_sources });
         module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &libm_sources });
         module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &driver_sources });
         module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &hidapi_sources });
+        if (options.vulkan_interop) |wrapper| {
+            module.addCSourceFile(.{ .file = wrapper, .flags = flags, .language = .c });
+        } else {
+            module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &.{vulkan_gpu_source} });
+        }
         if (platform.linux or platform.macos) module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &unix_sources });
-        if (platform.windows) module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &windows_sources });
+        if (platform.windows) {
+            module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &windows_sources });
+            if (options.d3d12_interop) |wrapper| {
+                module.addCSourceFile(.{ .file = wrapper, .flags = flags, .language = .c });
+            } else {
+                module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &.{d3d12_gpu_source} });
+            }
+        }
         if (platform.msvc) module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &msvc_sources });
         if (platform.linux) module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &linux_sources });
         if (platform.macos) {
             module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &macos_sources });
-            if (metal_interop) |wrapper| {
+            if (options.metal_interop) |wrapper| {
                 module.addCSourceFile(.{ .file = wrapper, .flags = flags, .language = .objective_c });
             } else {
                 module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &.{metal_gpu_source} });

@@ -42,6 +42,14 @@ pub const DisplayList = @import("display_list.zig").DisplayList;
 pub const Framebuffer = @import("framebuffer.zig").Framebuffer;
 /// Paints draw commands into a framebuffer on the CPU.
 pub const Rasterizer = @import("rasterizer.zig").Rasterizer;
+/// The software rasterizer split across a worker pool, band by band of rows.
+pub const ParallelRasterizer = @import("parallel_rasterizer.zig").ParallelRasterizer;
+/// A command list flattened for the rasterizer, each command with its clips.
+pub const RasterPlan = @import("raster_plan.zig").RasterPlan;
+/// A drawing command of a `RasterPlan` and the clips around it.
+pub const RasterItem = @import("raster_plan.zig").RasterItem;
+/// One clip region on a `RasterItem`'s clip stack.
+pub const RasterClip = @import("raster_plan.zig").RasterClip;
 /// One instanced quad of the GPU scene.
 pub const Instance = @import("instance.zig").Instance;
 /// What a GPU instance draws (`Instance.parameters[0]`), as the shaders read it.
@@ -67,6 +75,12 @@ pub const GpuScene = @import("gpu_scene.zig").GpuScene;
 pub const Point = @import("../module.zig").Point;
 /// An axis-aligned rectangle (from the renderer).
 pub const Rect = @import("../module.zig").Rect;
+/// Persistent worker threads (from the renderer).
+pub const WorkerPool = @import("../module.zig").WorkerPool;
+/// A range of whole rows (from the renderer).
+pub const RowBand = @import("../module.zig").RowBand;
+/// An image's rows split into bands (from the renderer).
+pub const RowBands = @import("../module.zig").RowBands;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -83,6 +97,8 @@ test {
     _ = @import("display_list.zig");
     _ = @import("framebuffer.zig");
     _ = @import("rasterizer.zig");
+    _ = @import("raster_plan.zig");
+    _ = @import("parallel_rasterizer.zig");
     _ = @import("instance.zig");
     _ = @import("step.zig");
     _ = @import("atlas_upload.zig");

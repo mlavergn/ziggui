@@ -19,6 +19,15 @@ pub const cpu_arch = builtin.cpu.arch;
 /// GPU backend (macOS, from the release; not a prebuilt `-Dsdl3-prefix` SDL),
 /// so `MetalInterop` reaches SDL_GPU's Metal objects (a compile-time invariant).
 pub const has_metal_interop = @import("sdl_config").metal_interop;
+/// Whether SDL was built with `gpu/vulkan_interop.c` in place of its Vulkan
+/// GPU backend (Windows and Linux, from the release; not a prebuilt
+/// `-Dsdl3-prefix` SDL), so `VulkanInterop` reaches SDL_GPU's Vulkan objects
+/// and a device that can trace rays is made able to (a compile-time invariant).
+pub const has_vulkan_interop = @import("sdl_config").vulkan_interop;
+/// Whether SDL was built with `windows/d3d12_interop.c` in place of its
+/// Direct3D 12 GPU backend (Windows, from the release), so `D3d12Interop`
+/// can put it on WARP (a compile-time invariant).
+pub const has_d3d12_interop = @import("sdl_config").d3d12_interop;
 
 /// SDL3's C API, translated from `c.h` (keycodes, modifier masks, events).
 pub const sdl_c = @import("sdl_c");
@@ -134,12 +143,32 @@ pub const NativeHostStub = @import("native_host_stub.zig").NativeHostStub;
 pub const Win32NativeHost = @import("windows/module.zig").Win32NativeHost;
 /// The bits of COM the Windows web view and player share.
 pub const Com = @import("windows/module.zig").Com;
+/// SDL's Direct3D 12 backend put on WARP, the CPU renderer Windows ships.
+pub const D3d12Interop = @import("windows/module.zig").D3d12Interop;
+/// SDL_GPU's Vulkan device, its functions and command buffers, for Vulkan work SDL_GPU has no API for.
+pub const VulkanInterop = @import("gpu/vulkan_interop.zig").VulkanInterop;
+/// The Vulkan functions `VulkanInterop` loads from SDL's device.
+pub const VulkanFunctions = @import("gpu/vulkan_interop.zig").VulkanFunctions;
+/// A buffer of ziggui's own on SDL's Vulkan device (`VulkanInterop.makeBuffer`).
+pub const VulkanBuffer = @import("gpu/vulkan_interop.zig").VulkanBuffer;
+/// Where a `VulkanBuffer` lives: shared with the CPU, or the GPU's alone.
+pub const VulkanMemory = @import("gpu/vulkan_interop.zig").VulkanMemory;
 /// SDL_GPU's Metal objects (device, textures, command buffers), for Metal work SDL_GPU has no API for.
 pub const MetalInterop = @import("macos/module.zig").MetalInterop;
 /// The Metal ray tracing behind a scene's ray-traced shadows and reflections: its shapes' acceleration structures.
-pub const SceneRayTracer = @import("macos/module.zig").SceneRayTracer;
+pub const MetalSceneRayTracer = @import("macos/module.zig").MetalSceneRayTracer;
+/// The Vulkan ray tracing behind a scene's ray-traced shadows and reflections, on SDL's Vulkan device.
+pub const VulkanSceneRayTracer = @import("gpu/vulkan_scene_ray_tracer.zig").VulkanSceneRayTracer;
+/// The ray tracer where SDL is built with neither interop: never made.
+pub const SceneRayTracerStub = @import("gpu/scene_ray_tracer_stub.zig").SceneRayTracerStub;
+/// This build's ray tracer, which `SceneRenderer` traces a scene's rays with:
+/// Metal's on macOS, Vulkan's where SDL is built with `vulkan_interop.c`
+/// (Windows and Linux, from the release), else the stub. Each says whether a
+/// device traces rays (`supported`); a Vulkan one on a Windows machine whose
+/// SDL chose Direct3D 12 does not.
+pub const SceneRayTracer = if (os_tag == .macos) MetalSceneRayTracer else if (has_vulkan_interop) VulkanSceneRayTracer else SceneRayTracerStub;
 /// An opaque shape rays meet, as `SceneRayTracer.prepare` takes it.
-pub const SceneRayShape = @import("macos/module.zig").SceneRayShape;
+pub const SceneRayShape = @import("gpu/scene_ray_shape.zig").SceneRayShape;
 /// The Objective-C runtime bridge the AVFoundation player uses.
 pub const ObjectiveC = @import("macos/module.zig").ObjectiveC;
 /// An Objective-C object pointer (`id`).
@@ -177,20 +206,24 @@ test {
         /// declarations: every struct's, except `sdl_c` (all of SDL's C API)
         /// and the structs built for one OS (`Cocoa`, `AvFoundationPlayer`,
         /// `AppKitNativeHost`, `WkWebViewBackend`, `CoreAudioOutputs`,
-        /// `ObjectiveC`, `MetalInterop`, `SceneRayTracer` and `SceneRayShape` on macOS,
+        /// `ObjectiveC`, `MetalInterop` and `MetalSceneRayTracer` on macOS,
         /// `Win32`, `Win32NativeHost`, `Com`, `WebView2Backend` and
         /// `MediaFoundationPlayer` and `MmDeviceAudioOutputs` on Windows, `StatusNotifier`, `Gtk`,
         /// `GlibPump`, `GtkNativeHost`, `WebKitGtkBackend`, `Gstreamer`,
         /// `GstreamerPlayer` and `GstreamerAudioOutputs` on Linux) on any
-        /// other, so a cross-compiled
+        /// other, nor the Vulkan interop's (`VulkanInterop`, `VulkanFunctions`,
+        /// `VulkanBuffer`, `VulkanSceneRayTracer`, and `SceneRayTracer`
+        /// off macOS) where SDL is not built with it, so a cross-compiled
         /// `zig build test-sdl` analyzes what that platform builds.
         ///
         /// - `name`: the declaration's name.
         /// - Returns: true when the test references its declarations.
         fn descends(comptime name: []const u8) bool {
             if (std.mem.eql(u8, name, "sdl_c")) return false;
-            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "CoreAudioOutputs") or std.mem.eql(u8, name, "ObjectiveC") or std.mem.eql(u8, name, "MetalInterop") or std.mem.eql(u8, name, "SceneRayTracer") or std.mem.eql(u8, name, "SceneRayShape")) return os_tag == .macos;
+            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "CoreAudioOutputs") or std.mem.eql(u8, name, "ObjectiveC") or std.mem.eql(u8, name, "MetalInterop") or std.mem.eql(u8, name, "MetalSceneRayTracer")) return os_tag == .macos;
             if (std.mem.eql(u8, name, "Win32") or std.mem.eql(u8, name, "Win32NativeHost") or std.mem.eql(u8, name, "Com") or std.mem.eql(u8, name, "WebView2Backend") or std.mem.eql(u8, name, "MediaFoundationPlayer") or std.mem.eql(u8, name, "MmDeviceAudioOutputs")) return os_tag == .windows;
+            if (std.mem.eql(u8, name, "VulkanInterop") or std.mem.eql(u8, name, "VulkanFunctions") or std.mem.eql(u8, name, "VulkanBuffer") or std.mem.eql(u8, name, "VulkanSceneRayTracer")) return has_vulkan_interop;
+            if (std.mem.eql(u8, name, "SceneRayTracer")) return os_tag == .macos or has_vulkan_interop;
             if (std.mem.eql(u8, name, "StatusNotifier") or std.mem.eql(u8, name, "Gtk") or std.mem.eql(u8, name, "GlibPump") or std.mem.eql(u8, name, "GtkNativeHost") or std.mem.eql(u8, name, "WebKitGtkBackend") or std.mem.eql(u8, name, "Gstreamer") or std.mem.eql(u8, name, "GstreamerPlayer") or std.mem.eql(u8, name, "GstreamerAudioOutputs")) return os_tag == .linux;
             return true;
         }

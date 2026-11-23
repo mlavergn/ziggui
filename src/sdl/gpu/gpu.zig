@@ -54,6 +54,8 @@ const scene_vertex_spirv = @embedFile("shaders/scene.vert.spv");
 const scene_fragment_spirv = @embedFile("shaders/scene.frag.spv");
 const scene_shadow_vertex_spirv = @embedFile("shaders/scene_shadow.vert.spv");
 const scene_shadow_fragment_spirv = @embedFile("shaders/scene_shadow.frag.spv");
+/// The traced fragment shader for Vulkan devices that trace rays (SPIR-V 1.5).
+const scene_traced_fragment_spirv = @embedFile("shaders/scene_traced.frag.spv");
 const scene_msl = @embedFile("shaders/scene.metal");
 /// The lit fragment with ray-traced shadows and reflections: Metal's alone, compiled with
 /// `scene.metal` before it (its `shade`), as SDL_GPU takes one source.
@@ -632,7 +634,13 @@ pub const Gpu = struct {
     scene_renderer_failed: bool = false,
 
     /// Creates the device and pipelines, claiming `window`'s swapchain when
-    /// given.
+    /// given. On Windows, `ZIGGUI_D3D12_WARP` set puts Direct3D 12 on WARP, the
+    /// renderer Windows runs on the CPU (`D3d12Interop`), first: a GPU device
+    /// on a machine SDL_GPU cannot use the GPU of (a driver with no DXIL and
+    /// no Vulkan), which draws what the software rasterizer cannot (3D
+    /// scenes), and a way to try Direct3D 12 anywhere. It is never chosen on
+    /// its own: on a 2015 dual-core laptop it drew the gallery's frame in
+    /// 77 ms, the software rasterizer in 4.
     ///
     /// - `allocator`: owns the atlas and read-back buffers.
     /// - `window`: the window to present to, or null for offscreen rendering.
@@ -640,6 +648,8 @@ pub const Gpu = struct {
     ///   the caller falls back to the software rasterizer.
     pub fn init(allocator: std.mem.Allocator, window: ?*sdl_c.SDL_Window) ?Self {
         log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
+        const warp_first = mod.D3d12Interop.available and sdl_c.SDL_getenv("ZIGGUI_D3D12_WARP") != null;
+        if (warp_first) if (Self.initOnWarp(allocator, window)) |gpu| return gpu;
         if (Self.initWith(allocator, window, shader_formats)) |gpu| return gpu;
         // If D3D12 was chosen but couldn't build its pipelines (say, HLSL
         // failed to compile on this machine), try again without DXBC so a
@@ -649,6 +659,24 @@ pub const Gpu = struct {
             return Self.initWith(allocator, window, shader_formats & ~@as(sdl_c.SDL_GPUShaderFormat, sdl_c.SDL_GPU_SHADERFORMAT_DXBC));
         }
         return null;
+    }
+
+    /// Creates the device on WARP, Direct3D 12 on the CPU, where the build
+    /// can put it there (`D3d12Interop`): `ZIGGUI_D3D12_WARP`, and an app's
+    /// `AppConfig.warp_fallback` once `init` found no GPU device.
+    ///
+    /// - `allocator`: owns the atlas and read-back buffers.
+    /// - `window`: the window to present to, or null for offscreen rendering.
+    /// - Returns: the backend, or null where WARP is not to be had (never
+    ///   another device: only Direct3D 12 is asked for).
+    pub fn initOnWarp(allocator: std.mem.Allocator, window: ?*sdl_c.SDL_Window) ?Self {
+        if (!mod.D3d12Interop.available) return null;
+        std.log.info("ziggui: trying Direct3D 12 on WARP (the CPU)", .{});
+        mod.D3d12Interop.useWarp(true);
+        defer mod.D3d12Interop.useWarp(false);
+        // Direct3D's shaders only: offered SPIR-V too, SDL would fall through
+        // to Vulkan on the real GPU when Direct3D 12 fails on WARP.
+        return Self.initWith(allocator, window, sdl_c.SDL_GPU_SHADERFORMAT_DXBC);
     }
 
     /// Releases every GPU resource and the device.
@@ -931,9 +959,20 @@ pub const Gpu = struct {
         defer sdl_c.SDL_ReleaseGPUShader(self.device, shadow_vertex);
         const shadow_fragment = self.createShader(.{ .spirv = scene_shadow_fragment_spirv, .msl = scene_msl, .hlsl = scene_shadow_hlsl, .entry = "scene_shadow_fragment", .stage = sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT }, hlsl) orelse return Self.noSceneShader("shadow fragment");
         defer sdl_c.SDL_ReleaseGPUShader(self.device, shadow_fragment);
-        // Only where rays can be traced (Metal), so `createShader` takes the MSL.
+        // Only where rays can be traced: Metal binds what it traces with on
+        // its encoder; Vulkan hands it over in a third uniform block, with the
+        // textures reflections sample in eight more sampler slots.
         const ray_tracing = mod.SceneRayTracer.supported(self.device);
-        const traced_fragment = if (ray_tracing) self.createShader(.{ .spirv = &.{}, .msl = scene_traced_msl, .hlsl = &.{}, .entry = "scene_traced_fragment", .stage = sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT, .num_samplers = 1, .num_uniform_buffers = 2 }, hlsl) else null;
+        const spirv = formats & sdl_c.SDL_GPU_SHADERFORMAT_SPIRV != 0;
+        const traced_fragment = if (ray_tracing) self.createShader(.{
+            .spirv = scene_traced_fragment_spirv,
+            .msl = scene_traced_msl,
+            .hlsl = &.{},
+            .entry = "scene_traced_fragment",
+            .stage = sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT,
+            .num_samplers = if (spirv) 9 else 1,
+            .num_uniform_buffers = if (spirv) 3 else 2,
+        }, hlsl) else null;
         if (ray_tracing and traced_fragment == null) log.warn("scenes draw rasterized: no traced fragment shader [{s}]", .{sdl_c.SDL_GetError()});
         defer if (traced_fragment) |shader| sdl_c.SDL_ReleaseGPUShader(self.device, shader);
         self.scene_renderer = mod.SceneRenderer.init(self.allocator, self.device, self.target_format, .{

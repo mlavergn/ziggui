@@ -11,3 +11,9 @@ for f in prim.vert quad.vert prim.frag blur_h.frag blur_v.frag scene.vert scene.
     glslc --target-env=vulkan1.0 -O "$f" -o "$f.spv"
     echo "compiled $f -> $f.spv"
 done
+# Ray queries need SPIR-V 1.4 or later, so Vulkan 1.2 (only a device that
+# traces rays, which is Vulkan 1.2, ever loads it).
+for f in scene_traced.frag; do
+    glslc --target-env=vulkan1.2 -O "$f" -o "$f.spv"
+    echo "compiled $f -> $f.spv"
+done

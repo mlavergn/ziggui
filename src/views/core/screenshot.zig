@@ -41,11 +41,20 @@ pub const Screenshot = struct {
     /// - `width`: the image's width.
     /// - `height`: the image's height.
     /// - Returns: the file's bytes, owned by the caller; `error.SizeMismatch`
-    ///   when `rgba` is not `width` × `height` pixels; propagates allocation failure.
+    ///   when `rgba` is not `width` × `height` pixels; `error.ImageTooLarge`
+    ///   when the file would not fit the format's 32-bit sizes (or its signed
+    ///   dimensions); propagates allocation failure.
     pub fn bmp(allocator: std.mem.Allocator, rgba: []const u8, width: u32, height: u32) ![]u8 {
-        if (rgba.len != @as(usize, width) * height * 4) return error.SizeMismatch;
-        const stride = width * 3 + (4 - (width * 3) % 4) % 4;
-        const size = 54 + stride * height;
+        // Sized in `usize` and checked against the header's fields, so a huge
+        // image is refused rather than wrapping into a short buffer.
+        const pixel_bytes = std.math.mul(usize, @as(usize, width) * height, 4) catch return error.ImageTooLarge;
+        if (rgba.len != pixel_bytes) return error.SizeMismatch;
+        if (width > std.math.maxInt(i32) or height > std.math.maxInt(i32)) return error.ImageTooLarge;
+        const stride_wide = std.mem.alignForward(usize, @as(usize, width) * 3, 4);
+        const size_wide = std.math.add(usize, 54, std.math.mul(usize, stride_wide, height) catch return error.ImageTooLarge) catch return error.ImageTooLarge;
+        if (size_wide > std.math.maxInt(u32)) return error.ImageTooLarge;
+        const stride: u32 = @intCast(stride_wide);
+        const size: u32 = @intCast(size_wide);
         const out = try allocator.alloc(u8, size);
         @memset(out, 0);
         out[0] = 'B';
@@ -60,7 +69,7 @@ pub const Screenshot = struct {
         std.mem.writeInt(u32, out[34..38], stride * height, .little);
         for (0..height) |row| {
             // BMP rows go bottom-up.
-            const line = out[54 + (height - 1 - row) * stride ..];
+            const line = out[54 + (height - 1 - row) * stride_wide ..];
             for (0..width) |column| {
                 const pixel = rgba[(row * width + column) * 4 ..];
                 line[column * 3 + 0] = pixel[2];
@@ -150,4 +159,6 @@ test "a BMP holds the pixels bottom-up, BGR, rows padded to four bytes" {
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 255, 0, 255, 0, 255, 0, 0, 0, 0, 0 }, image[66..78]);
     // Pixels that are not the size given are refused, not read past.
     try std.testing.expectError(error.SizeMismatch, Screenshot.bmp(allocator, rgba[0..4], 3, 2));
+    // A size the header cannot hold is refused, not wrapped into a short file.
+    try std.testing.expectError(error.ImageTooLarge, Screenshot.bmp(allocator, &.{}, std.math.maxInt(u32), 0));
 }

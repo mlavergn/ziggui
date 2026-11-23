@@ -291,14 +291,18 @@ pub const App = struct {
     }
 
     /// The main window's frame to remember, in points: where it is and how
-    /// big, or, while it is maximized, where it was and how big before (the
-    /// frame `AppConfig.x`/`y`/`width`/`height` take with `maximized`).
+    /// big, or, while it is maximized, minimized or full screen, where it was
+    /// and how big before (the frame `AppConfig.x`/`y`/`width`/`height` take
+    /// with `maximized`), so a quit from full screen never saves the screen.
     ///
     /// - `self`: the app.
     /// - Returns: the frame; null with no window.
     pub fn windowFrame(self: *const Self) ?mod.WindowFrame {
         const window = self.window orelse return null;
-        if (self.isMaximized()) if (self.restored_frame) |restored| return restored;
+        const flags = sdl_c.SDL_GetWindowFlags(window);
+        if ((flags & (sdl_c.SDL_WINDOW_MAXIMIZED | sdl_c.SDL_WINDOW_MINIMIZED | sdl_c.SDL_WINDOW_FULLSCREEN)) != 0) {
+            if (self.restored_frame) |restored| return restored;
+        }
         return Self.currentFrame(window);
     }
 

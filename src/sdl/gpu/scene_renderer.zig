@@ -9,7 +9,7 @@
 //! pixels kept, a fresh depth buffer) viewported to the view and cut to its
 //! clip: the opaque shapes, then the translucent ones from back to front.
 //! A scene that asks for `SceneLightingTechnique.rayTraced` on a device that
-//! traces rays (`SceneRayTracer`) draws no shadow maps: its opaque shapes'
+//! traces rays (`SceneRayTracer`: Metal's, or Vulkan's ray queries) draws no shadow maps: its opaque shapes'
 //! acceleration structures are built instead, and the pass draws with the
 //! traced fragment shader, which meets rays toward each light (soft ones
 //! from a light with a source size, point lights' too) and along a
@@ -451,7 +451,7 @@ pub const SceneRenderer = struct {
         sdl_c.SDL_SetGPUScissor(pass, &scissor);
         // Bound on SDL's encoder once the pass is open; should that fail, the
         // lit shaders draw, unshadowed (the blank map answers every test).
-        const traced = prepared and self.ray_tracer.?.bind(command_buffer, Self.skyOf(scene, frame), self.white_texture.?);
+        const traced = prepared and self.ray_tracer.?.bind(command_buffer, pass, Self.skyOf(scene, frame), self.white_texture.?, self.base_sampler);
         if (prepared and !traced) lights = self.lightUniforms(frame);
         sdl_c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &lights, @sizeOf(LightUniforms));
         if (!traced) {
@@ -1387,7 +1387,7 @@ test "two ray-traced scenes a frame keep one triangle buffer from frame to frame
         .{ .scene = .{ .rect = .{ .x = 0, .y = 0, .width = 32, .height = 64 }, .scene = &first, .ground = renderer.Color.black, .ink = renderer.Color.black } },
         .{ .scene = .{ .rect = .{ .x = 32, .y = 0, .width = 32, .height = 64 }, .scene = &second, .ground = renderer.Color.black, .ink = renderer.Color.black } },
     };
-    var buffers: [3]mod.Id = undefined;
+    var buffers: [3]@FieldType(mod.SceneRayTracer, "triangles") = undefined;
     for (&buffers) |*buffer| {
         const pixels = tracing.gpu.renderToRgba(tracing.arena.allocator(), &commands, renderer.Color.black, TestDraw.side, TestDraw.side) orelse return error.SkipZigTest;
         std.testing.allocator.free(pixels);
@@ -1430,7 +1430,7 @@ test "a ray-traced frame's structure and buffers are used again once that frame 
     defer scene.deinit();
     _ = try TestDraw.shadowedBox(&scene);
     scene.lighting_technique = .rayTraced;
-    var structures: [10]mod.Id = undefined;
+    var structures: [10]@FieldType(mod.SceneRayTracer, "instances") = undefined;
     for (&structures) |*structure| {
         const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
         std.testing.allocator.free(drawn.pixels);

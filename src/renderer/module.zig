@@ -65,6 +65,14 @@ pub const DisplayList = @import("render/module.zig").DisplayList;
 pub const Framebuffer = @import("render/module.zig").Framebuffer;
 /// Paints draw commands into a framebuffer on the CPU.
 pub const Rasterizer = @import("render/module.zig").Rasterizer;
+/// The software rasterizer split across a worker pool, band by band of rows.
+pub const ParallelRasterizer = @import("render/module.zig").ParallelRasterizer;
+/// A command list flattened for the rasterizer, each command with its clips.
+pub const RasterPlan = @import("render/module.zig").RasterPlan;
+/// A drawing command of a `RasterPlan` and the clips around it.
+pub const RasterItem = @import("render/module.zig").RasterItem;
+/// One clip region on a `RasterItem`'s clip stack.
+pub const RasterClip = @import("render/module.zig").RasterClip;
 /// One instanced quad of the GPU scene.
 pub const Instance = @import("render/module.zig").Instance;
 /// What a GPU instance draws (`Instance.parameters[0]`), as the shaders read it.
@@ -215,6 +223,16 @@ pub const KdeTheme = @import("theme/module.zig").KdeTheme;
 pub const MuiTheme = @import("theme/module.zig").MuiTheme;
 
 // -----------------------------------------------------------------------------
+// Concurrency
+
+/// Persistent worker threads that split a job's tasks between them and the caller.
+pub const WorkerPool = @import("parallel/module.zig").WorkerPool;
+/// A range of whole rows of an image.
+pub const RowBand = @import("parallel/module.zig").RowBand;
+/// An image's rows split into bands for a number of workers.
+pub const RowBands = @import("parallel/module.zig").RowBands;
+
+// -----------------------------------------------------------------------------
 // Unit Tests
 
 test {
@@ -224,6 +242,7 @@ test {
     _ = @import("geometry/module.zig");
     _ = @import("layout/module.zig");
     _ = @import("render/module.zig");
+    _ = @import("parallel/module.zig");
     _ = @import("state/module.zig");
     _ = @import("text/module.zig");
     _ = @import("theme/module.zig");

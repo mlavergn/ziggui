@@ -92,6 +92,20 @@ pub const DisplayList = renderer.DisplayList;
 pub const Framebuffer = renderer.Framebuffer;
 /// The software rasterizer.
 pub const Rasterizer = renderer.Rasterizer;
+/// The software rasterizer split across a worker pool, band by band of rows.
+pub const ParallelRasterizer = renderer.ParallelRasterizer;
+/// A command list flattened for the rasterizer, each command with its clips.
+pub const RasterPlan = renderer.RasterPlan;
+/// A drawing command of a `RasterPlan` and the clips around it.
+pub const RasterItem = renderer.RasterItem;
+/// One clip region on a `RasterItem`'s clip stack.
+pub const RasterClip = renderer.RasterClip;
+/// Persistent worker threads that split a job's tasks between them and the caller.
+pub const WorkerPool = renderer.WorkerPool;
+/// A range of whole rows of an image.
+pub const RowBand = renderer.RowBand;
+/// An image's rows split into bands for a number of workers.
+pub const RowBands = renderer.RowBands;
 /// One instanced quad of the GPU scene.
 pub const Instance = renderer.Instance;
 /// What a GPU instance draws (`Instance.parameters[0]`), as the shaders read it.

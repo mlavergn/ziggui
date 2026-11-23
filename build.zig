@@ -134,6 +134,14 @@ const Modules = struct {
             .optimize = options.optimize,
             .link_libc = true,
         });
+        // The Vulkan headers SDL bundles, for the ray tracer on SDL's Vulkan
+        // device; translated empty where it is not built (`vulkan_interop`).
+        const vulkan_c = b.addTranslateC(.{
+            .root_source_file = b.path("src/sdl/gpu/vulkan.h"),
+            .target = options.target,
+            .optimize = options.optimize,
+            .link_libc = true,
+        });
         const sdl = b.createModule(.{
             .root_source_file = b.path("src/sdl/module.zig"),
             .target = options.target,
@@ -144,9 +152,10 @@ const Modules = struct {
                 .{ .name = "scenes", .module = scenes },
                 .{ .name = "views", .module = views },
                 .{ .name = "sdl_c", .module = sdl_c.createModule() },
+                .{ .name = "vulkan_c", .module = vulkan_c.createModule() },
             },
         });
-        Self.linkSdl(b, sdl, sdl_c, options);
+        Self.linkSdl(b, sdl, sdl_c, vulkan_c, options);
         sdl.addOptions("sdl_config", Self.runtimeOptions(b, options));
         // src/sdl/macos/: cocoa.zig reaches AppKit (the unified title bar, the
         // menu bar, template tray icons) through the Objective-C runtime,
@@ -253,7 +262,11 @@ const Modules = struct {
 
     /// The `sdl_config` options the runtime's barrel reads: whether SDL was
     /// built with `src/sdl/macos/metal_interop.m` (macOS, from the release),
-    /// so `MetalInterop` can reach SDL_GPU's Metal objects. A prebuilt SDL
+    /// so `MetalInterop` can reach SDL_GPU's Metal objects, and with
+    /// `src/sdl/gpu/vulkan_interop.c` (Windows and Linux, from the release),
+    /// so `VulkanInterop` can reach its Vulkan ones, and with
+    /// `src/sdl/windows/d3d12_interop.c` (Windows, from the release), so
+    /// `D3d12Interop` can put Direct3D 12 on WARP. A prebuilt SDL
     /// (`sdl3_prefix`) has no such functions.
     ///
     /// - `b`: ziggui's build graph.
@@ -262,6 +275,8 @@ const Modules = struct {
     fn runtimeOptions(b: *std.Build, options: AppOptions) *std.Build.Step.Options {
         const runtime_options = b.addOptions();
         runtime_options.addOption(bool, "metal_interop", Self.buildsMetalInterop(options));
+        runtime_options.addOption(bool, "vulkan_interop", Self.buildsVulkanInterop(options));
+        runtime_options.addOption(bool, "d3d12_interop", Self.buildsD3d12Interop(options));
         return runtime_options;
     }
 
@@ -274,6 +289,25 @@ const Modules = struct {
         return options.sdl3_prefix == null and options.target.result.os.tag == .macos;
     }
 
+    /// Whether SDL is built from the release for Windows or Linux, with
+    /// `src/sdl/gpu/vulkan_interop.c` in place of its Vulkan GPU backend.
+    ///
+    /// - `options`: the target, optimize mode, SDK and SDL source.
+    /// - Returns: true for a Windows or Linux target with no `sdl3_prefix`.
+    fn buildsVulkanInterop(options: AppOptions) bool {
+        const os = options.target.result.os.tag;
+        return options.sdl3_prefix == null and (os == .windows or os == .linux);
+    }
+
+    /// Whether SDL is built from the release for Windows, with
+    /// `src/sdl/windows/d3d12_interop.c` in place of its Direct3D 12 GPU backend.
+    ///
+    /// - `options`: the target, optimize mode, SDK and SDL source.
+    /// - Returns: true for a Windows target with no `sdl3_prefix`.
+    fn buildsD3d12Interop(options: AppOptions) bool {
+        return options.sdl3_prefix == null and options.target.result.os.tag == .windows;
+    }
+
     /// Link SDL3 into the runtime: built from the release by default, or a
     /// prebuilt one from `sdl3_prefix`. On the first configure the lazy
     /// dependency may not be fetched yet; the module is left unlinked and the
@@ -282,8 +316,10 @@ const Modules = struct {
     /// - `b`: ziggui's build graph.
     /// - `sdl`: the runtime module.
     /// - `sdl_c`: the translate-c step for SDL's headers.
+    /// - `vulkan_c`: the translate-c step for the Vulkan headers SDL bundles,
+    ///   given them (and `ZIGGUI_VULKAN_HEADERS`) only with `vulkan_interop`.
     /// - `options`: the target, optimize mode, SDK and SDL source.
-    fn linkSdl(b: *std.Build, sdl: *std.Build.Module, sdl_c: *std.Build.Step.TranslateC, options: AppOptions) void {
+    fn linkSdl(b: *std.Build, sdl: *std.Build.Module, sdl_c: *std.Build.Step.TranslateC, vulkan_c: *std.Build.Step.TranslateC, options: AppOptions) void {
         if (options.sdl3_prefix) |prefix| {
             sdl.addIncludePath(.{ .cwd_relative = b.fmt("{s}/include", .{prefix}) });
             sdl.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/lib", .{prefix}) });
@@ -298,9 +334,17 @@ const Modules = struct {
             .optimize = options.optimize,
             .macos_sdk = options.macos_sdk,
             .metal_interop = if (Self.buildsMetalInterop(options)) b.path("src/sdl/macos/metal_interop.m") else null,
+            .vulkan_interop = if (Self.buildsVulkanInterop(options)) b.path("src/sdl/gpu/vulkan_interop.c") else null,
+            .d3d12_interop = if (Self.buildsD3d12Interop(options)) b.path("src/sdl/windows/d3d12_interop.c") else null,
         }) orelse return;
         sdl.linkLibrary(library);
         sdl_c.addIncludePath(library.getEmittedIncludeTree());
+        if (Self.buildsVulkanInterop(options)) {
+            // Fetched already: `library` came from it.
+            const source = (b.dependencyLazy("sdl", .{}) catch null) orelse return;
+            vulkan_c.addSystemIncludePath(source.path("src/video/khronos"));
+            vulkan_c.defineCMacro("ZIGGUI_VULKAN_HEADERS", "1");
+        }
     }
 
     /// Point a module at a macOS SDK's headers, frameworks and libraries,
