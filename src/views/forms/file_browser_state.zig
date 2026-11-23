@@ -743,7 +743,7 @@ pub const FileBrowserState = struct {
         self.nodes = listing.nodes;
         self.selection = null;
         self.parent_selected = false;
-        // Only an entry that shows: a folder left with Hidden on, then hidden,
+        // Only an entry that shows: a hidden folder left with Show hidden on, then turned off,
         // must not be a selection nothing draws.
         if (listing.selected_name) |name| {
             for (self.nodes, 0..) |node, index| {
@@ -910,8 +910,8 @@ test "a file browser state takes the arrows, Return, Backspace, Home and End, an
     try std.testing.expect(try state.keyDown(mod.SdlKey.down_arrow, mod.SdlKey.left_gui_mask, true));
     try std.testing.expectEqualStrings(root, state.path.items);
 
-    // A refresh keeps ".." selected; going up out of a folder Hidden now
-    // hides selects nothing rather than a row nothing draws.
+    // A refresh keeps ".." selected; going up out of a hidden folder, with
+    // Show hidden now off, selects nothing rather than a row nothing draws.
     try std.testing.expect(try state.keyDown(mod.SdlKey.home, 0, false));
     try std.testing.expect(state.parent_selected);
     try state.refresh();

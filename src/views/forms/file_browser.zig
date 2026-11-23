@@ -185,7 +185,7 @@ const FilePathBar = struct {
     }
 };
 
-/// A file browser: a path bar (the folder's path, a "Hidden" toggle), then
+/// A file browser: a path bar (the folder's path, a "Show hidden" toggle), then
 /// the folder's entries as selectable rows, folders first, each with its
 /// glyph and a file's size, under a ".." row for the enclosing folder (none
 /// at the root), with a scroll bar kept up while they overflow. Only the rows
@@ -221,10 +221,11 @@ pub fn FileBrowser(state: *mod.FileBrowserState, focused: bool) mod.View {
         if (state.shows(node)) shown.appendAssumeCapacity(index);
     }
 
-    // While a path is typed, the field takes the bar up to the toggle.
-    const hidden = mod.Toggle("Hidden", state.show_hidden.binding());
+    // The toggle keeps its own size, its label beside its switch at the bar's
+    // trailing edge; while a path is typed, the field takes the bar up to it.
+    const hidden = mod.Toggle("Show hidden", state.show_hidden.binding()).fixedSize();
     const bar = (if (state.editing_path)
-        mod.StackBuilder.make(.horizontal, 12, .center, .{ FilePathBar.view(state, tokens), hidden.fixedSize() })
+        mod.StackBuilder.make(.horizontal, 12, .center, .{ FilePathBar.view(state, tokens), hidden })
     else
         mod.StackBuilder.make(.horizontal, 6, .center, .{ FilePathBar.view(state, tokens), mod.Spacer(), hidden })).paddingInsets(.{ .top = 4, .leading = 8, .bottom = 4, .trailing = 8 });
 
