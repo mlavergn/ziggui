@@ -11,7 +11,7 @@ pub const std_options: std.Options = .{
 /// The command line: `ziggui-gallery [--section <n>] [--theme <n>] [--accent <n>]
 /// [--dark] [--menu <n>] [--sheet] [--alert] [--popover] [--passthrough]
 /// [--options-menu] [--picker-menu] [--find] [--dialog] [--select] [--rename] [--path-entry]
-/// [--search <text>] [--components] [--video <url or path>]
+/// [--search <text>] [--components] [--video <url or path>] [--ray-traced]
 /// [--screenshot <out.bmp> [--gpu] [--bench <n>]]`.
 ///
 /// `--video` is what the Media Video section's "Load sample stream" plays instead
@@ -36,7 +36,9 @@ pub const std_options: std.Options = .{
 /// path bar as the field a path is typed into (`--section 14`). `--search` types
 /// its text into the sidebar's search, which shows its first match.
 /// `--components` has the sidebar list every component the cards name, as
-/// the top bar's switch does.
+/// the top bar's switch does. `--ray-traced` turns on the Scenes section's
+/// ray tracing (`--section 21`), drawn traced only through `--gpu` on a GPU
+/// that traces rays.
 ///
 /// `--gpu` draws the `--screenshot` frame through the SDL_GPU pipeline,
 /// offscreen (no window), instead of the software rasterizer: the same build,
@@ -102,6 +104,8 @@ const Arguments = struct {
     rename: bool = false,
     /// Show the Files section's path bar as the field a path is typed into.
     path_entry: bool = false,
+    /// Turn on the Scenes section's ray tracing.
+    ray_traced: bool = false,
 
     /// Draw one frame to this BMP instead of opening a window.
     screenshot: ?[]const u8 = null,
@@ -153,6 +157,8 @@ const Arguments = struct {
                 arguments.rename = true;
             } else if (std.mem.eql(u8, argument, "--path-entry")) {
                 arguments.path_entry = true;
+            } else if (std.mem.eql(u8, argument, "--ray-traced")) {
+                arguments.ray_traced = true;
             } else if (std.mem.eql(u8, argument, "--gpu")) {
                 arguments.gpu = true;
             } else if (std.mem.eql(u8, argument, "--bench") and index + 1 < argument_vector.len) {
@@ -221,6 +227,7 @@ const Arguments = struct {
         if (self.path_entry) shown.kit.path_entry_on_show = true;
         if (self.search) |text| shown.search.field.setText(text) catch |err| log.err("search not typed: {s}", .{@errorName(err)});
         if (self.video) |video| shown.media.sample = video;
+        if (self.ray_traced) shown.scene_demo.ray_traced.set(true);
     }
 };
 
@@ -266,8 +273,10 @@ pub fn main(init: std.process.Init) !void {
 
         const frame = try Frame.create(allocator, options);
         defer frame.destroy();
-        try frame.build(shown);
+        // The GPU first, so the frame is built knowing what it can draw (the
+        // Scenes section's ray tracing).
         if (arguments.gpu) try frame.useGpu();
+        try frame.build(shown);
         const rgba = try frame.draw();
         defer allocator.free(rgba);
         try Frame.write(allocator, init.io, out, rgba, options);
@@ -353,7 +362,9 @@ const Frame = struct {
     }
 
     /// Draws with the SDL_GPU pipeline, offscreen, from now on (`--gpu`). No
-    /// window opens; there is no fallback to the software rasterizer.
+    /// window opens; there is no fallback to the software rasterizer. Notes
+    /// whether the device traces rays (`SystemInfo.ray_tracing`), as a window
+    /// would, so a frame built after it draws the Scenes toggle as a window does.
     ///
     /// - `self`: the frame.
     /// - Returns: nothing; `error.NoGpuBackend` (logged) when SDL's video or a GPU device cannot start.
@@ -369,6 +380,7 @@ const Frame = struct {
             ziggui.sdl.sdl_c.SDL_Quit();
             return error.NoGpuBackend;
         };
+        self.gpu.?.noteRayTracing();
     }
 
     /// What `draw` draws with, for the log lines.

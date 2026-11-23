@@ -593,6 +593,8 @@ pub const ScenePointLight = scenes.ScenePointLight;
 pub const SceneCamera = scenes.SceneCamera;
 /// Where a view last drew a scene.
 pub const SceneViewport = scenes.SceneViewport;
+/// How a scene's shadows and reflections are drawn: rasterized, or by tracing rays.
+pub const SceneLightingTechnique = scenes.SceneLightingTechnique;
 /// One frame of a scene as the GPU draws it.
 pub const SceneFrame = scenes.SceneFrame;
 /// A shape a frame draws.

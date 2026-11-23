@@ -34,6 +34,12 @@ pub const CoreAudioOutputs = @import("core_audio_outputs.zig").CoreAudioOutputs;
 pub const AppKitNativeHost = @import("app_kit_native_host.zig").AppKitNativeHost;
 /// The macOS web view: a `WKWebView` per `WebPage`, placed by the native-view host.
 pub const WkWebViewBackend = @import("wk_web_view_backend.zig").WkWebViewBackend;
+/// SDL_GPU's Metal objects (device, textures, command buffers), for Metal work SDL_GPU has no API for.
+pub const MetalInterop = @import("metal_interop.zig").MetalInterop;
+/// The Metal ray tracing behind a scene's ray-traced shadows and reflections: its shapes' acceleration structures.
+pub const SceneRayTracer = @import("scene_ray_tracer.zig").SceneRayTracer;
+/// An opaque shape rays meet, as `SceneRayTracer.prepare` takes it.
+pub const SceneRayShape = @import("scene_ray_tracer.zig").SceneRayShape;
 
 // -----------------------------------------------------------------------------
 // From the sdl module
@@ -50,6 +56,10 @@ pub const ResizeSettle = @import("../module.zig").ResizeSettle;
 pub const WebOrigin = @import("../module.zig").WebOrigin;
 /// The target OS, from the sdl module.
 pub const os_tag = @import("../module.zig").os_tag;
+/// The target CPU, from the sdl module.
+pub const cpu_arch = @import("../module.zig").cpu_arch;
+/// Whether SDL was built with `metal_interop.m` (`MetalInterop`), from the sdl module.
+pub const has_metal_interop = @import("../module.zig").has_metal_interop;
 
 // -----------------------------------------------------------------------------
 // Unit Tests

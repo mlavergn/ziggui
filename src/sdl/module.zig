@@ -15,6 +15,10 @@ const views = @import("views");
 pub const os_tag = builtin.os.tag;
 /// The CPU this runtime is built for (a compile-time invariant).
 pub const cpu_arch = builtin.cpu.arch;
+/// Whether SDL was built with `macos/metal_interop.m` in place of its Metal
+/// GPU backend (macOS, from the release; not a prebuilt `-Dsdl3-prefix` SDL),
+/// so `MetalInterop` reaches SDL_GPU's Metal objects (a compile-time invariant).
+pub const has_metal_interop = @import("sdl_config").metal_interop;
 
 /// SDL3's C API, translated from `c.h` (keycodes, modifier masks, events).
 pub const sdl_c = @import("sdl_c");
@@ -130,6 +134,12 @@ pub const NativeHostStub = @import("native_host_stub.zig").NativeHostStub;
 pub const Win32NativeHost = @import("windows/module.zig").Win32NativeHost;
 /// The bits of COM the Windows web view and player share.
 pub const Com = @import("windows/module.zig").Com;
+/// SDL_GPU's Metal objects (device, textures, command buffers), for Metal work SDL_GPU has no API for.
+pub const MetalInterop = @import("macos/module.zig").MetalInterop;
+/// The Metal ray tracing behind a scene's ray-traced shadows and reflections: its shapes' acceleration structures.
+pub const SceneRayTracer = @import("macos/module.zig").SceneRayTracer;
+/// An opaque shape rays meet, as `SceneRayTracer.prepare` takes it.
+pub const SceneRayShape = @import("macos/module.zig").SceneRayShape;
 /// The Objective-C runtime bridge the AVFoundation player uses.
 pub const ObjectiveC = @import("macos/module.zig").ObjectiveC;
 /// An Objective-C object pointer (`id`).
@@ -166,8 +176,8 @@ test {
         /// Reports whether the test references a barrel declaration's own
         /// declarations: every struct's, except `sdl_c` (all of SDL's C API)
         /// and the structs built for one OS (`Cocoa`, `AvFoundationPlayer`,
-        /// `AppKitNativeHost`, `WkWebViewBackend`, `CoreAudioOutputs` and
-        /// `ObjectiveC` on macOS,
+        /// `AppKitNativeHost`, `WkWebViewBackend`, `CoreAudioOutputs`,
+        /// `ObjectiveC`, `MetalInterop`, `SceneRayTracer` and `SceneRayShape` on macOS,
         /// `Win32`, `Win32NativeHost`, `Com`, `WebView2Backend` and
         /// `MediaFoundationPlayer` and `MmDeviceAudioOutputs` on Windows, `StatusNotifier`, `Gtk`,
         /// `GlibPump`, `GtkNativeHost`, `WebKitGtkBackend`, `Gstreamer`,
@@ -179,7 +189,7 @@ test {
         /// - Returns: true when the test references its declarations.
         fn descends(comptime name: []const u8) bool {
             if (std.mem.eql(u8, name, "sdl_c")) return false;
-            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "CoreAudioOutputs") or std.mem.eql(u8, name, "ObjectiveC")) return os_tag == .macos;
+            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "CoreAudioOutputs") or std.mem.eql(u8, name, "ObjectiveC") or std.mem.eql(u8, name, "MetalInterop") or std.mem.eql(u8, name, "SceneRayTracer") or std.mem.eql(u8, name, "SceneRayShape")) return os_tag == .macos;
             if (std.mem.eql(u8, name, "Win32") or std.mem.eql(u8, name, "Win32NativeHost") or std.mem.eql(u8, name, "Com") or std.mem.eql(u8, name, "WebView2Backend") or std.mem.eql(u8, name, "MediaFoundationPlayer") or std.mem.eql(u8, name, "MmDeviceAudioOutputs")) return os_tag == .windows;
             if (std.mem.eql(u8, name, "StatusNotifier") or std.mem.eql(u8, name, "Gtk") or std.mem.eql(u8, name, "GlibPump") or std.mem.eql(u8, name, "GtkNativeHost") or std.mem.eql(u8, name, "WebKitGtkBackend") or std.mem.eql(u8, name, "Gstreamer") or std.mem.eql(u8, name, "GstreamerPlayer") or std.mem.eql(u8, name, "GstreamerAudioOutputs")) return os_tag == .linux;
             return true;

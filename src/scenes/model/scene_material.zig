@@ -42,6 +42,10 @@ pub const SceneMaterial = struct {
     specular: f32 = 0.5,
     /// How tight the highlight is: the Blinn-Phong exponent.
     shininess: f32 = 32,
+    /// How much of the scene the surface mirrors, 0 to 1, more at grazing
+    /// angles: only when ray traced (`SceneLightingTechnique.rayTraced`), the
+    /// opaque shapes reflected lit but unshadowed; ignored otherwise.
+    reflectivity: f32 = 0,
 
     /// Whether the surface blends with what is behind it: drawn after the
     /// opaque ones, back to front, casting no shadow.

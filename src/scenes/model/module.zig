@@ -57,6 +57,8 @@ pub const ScenePointLight = @import("scene_light.zig").ScenePointLight;
 pub const SceneCamera = @import("scene_camera.zig").SceneCamera;
 /// Where a view last drew a scene.
 pub const SceneViewport = @import("scene_viewport.zig").SceneViewport;
+/// How a scene's shadows and reflections are drawn: rasterized, or by tracing rays.
+pub const SceneLightingTechnique = @import("scene_lighting_technique.zig").SceneLightingTechnique;
 /// One frame of a scene as the GPU draws it.
 pub const SceneFrame = @import("scene_frame.zig").SceneFrame;
 /// A shape a frame draws.

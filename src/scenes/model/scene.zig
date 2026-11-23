@@ -73,6 +73,9 @@ pub const Scene = struct {
     camera_target: mod.Vec3 = mod.Vec3.zero,
     /// Where a `SceneView` last drew the scene (the view writes it).
     viewport: ?mod.SceneViewport = null,
+    /// How shadows and reflections are drawn: `rayTraced` where the GPU can
+    /// trace rays, else `rasterized` whatever this asks.
+    lighting_technique: mod.SceneLightingTechnique = .rasterized,
 
     /// What the nodes are kept with.
     allocator: std.mem.Allocator,

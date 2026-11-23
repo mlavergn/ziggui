@@ -11,15 +11,27 @@ pub const SceneDirectionalLight = struct {
 
     /// Whether it casts shadows onto the nodes that receive them.
     casts_shadows: bool = true,
+    /// How wide the light's source looks, in degrees (the sun's is about
+    /// 0.53): ray-traced shadows (`SceneLightingTechnique.rayTraced`) are sharp
+    /// where a shadow meets its caster and soften away from it; 0 for hard
+    /// shadows. Shadow maps ignore it.
+    angular_diameter: f32 = 0,
 };
 
 /// Light from the node's position in every direction, fading to nothing at
-/// `range`. Casts no shadows.
+/// `range`.
 pub const ScenePointLight = struct {
     const Self = @This();
 
     /// How far it reaches, in scene units.
     range: f32 = 10,
+    /// Whether it casts shadows onto the nodes that receive them: only when
+    /// they are ray traced (`SceneLightingTechnique.rayTraced`); shadow maps
+    /// cast none from a point light.
+    casts_shadows: bool = false,
+    /// The radius of the light's source, a sphere, in scene units: its
+    /// ray-traced shadows soften away from their caster; 0 for hard shadows.
+    radius: f32 = 0,
 };
 
 /// What kind of light it is.

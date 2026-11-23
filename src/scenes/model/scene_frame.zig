@@ -39,6 +39,9 @@ pub const SceneFrameDirectionalLight = struct {
     /// when it casts no shadow this frame (it casts none, or nothing would
     /// show one).
     shadow: ?mod.Mat4,
+    /// Half the angle its source spans, in radians (`angular_diameter`), for
+    /// soft ray-traced shadows; 0 for hard ones.
+    angular_radius: f32 = 0,
 };
 
 /// A point light as the shaders read it.
@@ -51,6 +54,10 @@ pub const SceneFramePointLight = struct {
     color: mod.Vec3,
     /// How far it reaches.
     range: f32,
+    /// Whether it casts ray-traced shadows.
+    casts_shadows: bool = false,
+    /// Its source's radius, for soft ray-traced shadows; 0 for hard ones.
+    radius: f32 = 0,
 };
 
 /// One frame of a scene, gathered from its graph: the opaque shapes first,
@@ -130,12 +137,16 @@ pub const SceneFrame = struct {
                         .color = Self.linear(light.color).scale(light.intensity),
                         // Marks a light that wants a shadow; fitted once every shape is known.
                         .shadow = if (directional.casts_shadows) mod.Mat4.identity else null,
+                        // NaN or negative is 0 (`clamp` would make NaN 90).
+                        .angular_radius = if (directional.angular_diameter > 0) std.math.degreesToRadians(@min(directional.angular_diameter, 90)) / 2 else 0,
                     });
                 },
                 .point => |point| if (point_lights.items.len < max_point_lights) try point_lights.append(allocator, .{
                     .position = visit.world.transformPoint(mod.Vec3.zero),
                     .color = Self.linear(light.color).scale(light.intensity),
                     .range = @max(point.range, 0),
+                    .casts_shadows = point.casts_shadows,
+                    .radius = if (point.radius > 0) point.radius else 0,
                 }),
             };
             if (scene.point_of_view) |point_of_view| if (std.meta.eql(point_of_view, visit.id)) if (node.camera) |node_camera| {
@@ -299,6 +310,25 @@ test "a frame keeps the first lights in the graph up to its limits, each moving 
     try std.testing.expect(frame.directional_lights[0].direction.approxEql(mod.Vec3.init(0, -1, 0), 1e-5));
     // Nothing to shade: no shadow.
     try std.testing.expectEqual(null, frame.directional_lights[0].shadow);
+}
+
+test "a light's source size gives its soft shadow's width, and one not a number or negative gives none" {
+    const allocator = std.testing.allocator;
+    var scene = try mod.Scene.init(allocator);
+    defer scene.deinit();
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .directional = .{ .angular_diameter = 4 } } } });
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .directional = .{ .angular_diameter = std.math.nan(f32) } } } });
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .point = .{ .casts_shadows = true, .radius = 0.25 } } } });
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .point = .{ .radius = std.math.nan(f32) } } } });
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .point = .{ .radius = -1 } } } });
+    var frame = try SceneFrame.gather(allocator, &scene, 1);
+    defer frame.deinit(allocator);
+    try std.testing.expectApproxEqAbs(std.math.degreesToRadians(@as(f32, 2)), frame.directional_lights[0].angular_radius, 1e-6);
+    try std.testing.expectEqual(@as(f32, 0), frame.directional_lights[1].angular_radius);
+    try std.testing.expect(frame.point_lights[0].casts_shadows);
+    try std.testing.expectEqual(@as(f32, 0.25), frame.point_lights[0].radius);
+    try std.testing.expectEqual(@as(f32, 0), frame.point_lights[1].radius);
+    try std.testing.expectEqual(@as(f32, 0), frame.point_lights[2].radius);
 }
 
 test "the camera follows the point-of-view node, its parent included" {

@@ -211,7 +211,7 @@ pub const Section = enum {
             .mediaNative => &.{"ziggui.NativeView"},
             .chat => &.{ "ziggui.StatusMark", "ziggui.Chip", "ziggui.Bubble · ziggui.CodeBlock · ziggui.Quote" },
             .diffs => &.{ "ziggui.DiffView · ziggui.DiffLine", "ziggui.SelectableDiffView", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection" },
-            .scenes => &.{"ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput"},
+            .scenes => &.{"ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput · Scene.lighting_technique"},
         };
     }
 

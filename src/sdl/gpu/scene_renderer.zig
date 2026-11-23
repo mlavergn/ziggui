@@ -8,6 +8,12 @@
 //! directional light that casts a shadow, then a pass over the target (its
 //! pixels kept, a fresh depth buffer) viewported to the view and cut to its
 //! clip: the opaque shapes, then the translucent ones from back to front.
+//! A scene that asks for `SceneLightingTechnique.rayTraced` on a device that
+//! traces rays (`SceneRayTracer`) draws no shadow maps: its opaque shapes'
+//! acceleration structures are built instead, and the pass draws with the
+//! traced fragment shader, which meets rays toward each light (soft ones
+//! from a light with a source size, point lights' too) and along a
+//! reflective surface's mirror direction against them.
 //! Like the rest of the `sdl` module this file links C and is never part of
 //! the core library or its tests.
 
@@ -31,6 +37,20 @@ pub const SceneShaders = struct {
     shadow_vertex: *sdl_c.SDL_GPUShader,
     /// The shadow map's fragment shader (`scene_shadow_fragment`).
     shadow_fragment: *sdl_c.SDL_GPUShader,
+    /// The lit fragment shader with ray-traced shadows and reflections
+    /// (`scene_traced_fragment`), only where rays can be traced; null draws
+    /// every scene's shadows from shadow maps.
+    traced_fragment: ?*sdl_c.SDL_GPUShader = null,
+};
+
+/// The lit and blended pipelines over the traced fragment shader.
+const TracedPipelines = struct {
+    const Self = @This();
+
+    /// Opaque shapes, as `SceneRenderer.lit_pipeline`.
+    lit: *sdl_c.SDL_GPUGraphicsPipeline,
+    /// Translucent shapes, as `SceneRenderer.blended_pipeline`.
+    blended: *sdl_c.SDL_GPUGraphicsPipeline,
 };
 
 /// A geometry's vertices and indices on the GPU.
@@ -113,6 +133,17 @@ pub const SceneRenderer = struct {
     const idle_frames = 120;
     /// The depth subtracted before a shadow test, against acne.
     const shadow_bias = 0.002;
+    /// Straight-alpha `over`, as the UI's pipelines blend: the translucent
+    /// shapes' blend, rasterized or traced.
+    const over_blend = sdl_c.SDL_GPUColorTargetBlendState{
+        .src_color_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+        .dst_color_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        .color_blend_op = sdl_c.SDL_GPU_BLENDOP_ADD,
+        .src_alpha_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE,
+        .dst_alpha_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        .alpha_blend_op = sdl_c.SDL_GPU_BLENDOP_ADD,
+        .enable_blend = true,
+    };
 
     /// Owns the caches.
     allocator: std.mem.Allocator,
@@ -152,6 +183,10 @@ pub const SceneRenderer = struct {
     meshes: std.ArrayList(MeshEntry) = .empty,
     /// The textures on the GPU.
     textures: std.ArrayList(TextureEntry) = .empty,
+    /// The pipelines that trace shadow rays, null where rays cannot be traced.
+    traced_pipelines: ?TracedPipelines = null,
+    /// Builds and binds the opaque shapes' acceleration structures, beside `traced_pipelines`.
+    ray_tracer: ?mod.SceneRayTracer = null,
     /// Counts the frames (`nextFrame`).
     frame_counter: u64 = 0,
     /// The frame a scene last drew in.
@@ -226,17 +261,9 @@ pub const SceneRenderer = struct {
             return null;
         };
         errdefer sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, lit_pipeline);
+        const lit_info = create_info;
 
-        // Straight-alpha `over`, as the UI's pipelines blend.
-        color_target.blend_state = .{
-            .src_color_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-            .dst_color_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-            .color_blend_op = sdl_c.SDL_GPU_BLENDOP_ADD,
-            .src_alpha_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE,
-            .dst_alpha_blendfactor = sdl_c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-            .alpha_blend_op = sdl_c.SDL_GPU_BLENDOP_ADD,
-            .enable_blend = true,
-        };
+        color_target.blend_state = over_blend;
         create_info.depth_stencil_state.enable_depth_write = false;
         const blended_pipeline = sdl_c.SDL_CreateGPUGraphicsPipeline(device, &create_info) orelse {
             log.warn("no blended pipeline for 3D scenes [{s}]", .{sdl_c.SDL_GetError()});
@@ -275,6 +302,18 @@ pub const SceneRenderer = struct {
             .address_mode_w = sdl_c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
         }) orelse return null;
 
+        var traced_pipelines: ?TracedPipelines = null;
+        var ray_tracer: ?mod.SceneRayTracer = null;
+        if (shaders.traced_fragment) |traced_fragment| {
+            traced_pipelines = Self.makeTracedPipelines(device, lit_info, target_format, traced_fragment);
+            if (traced_pipelines != null) ray_tracer = mod.SceneRayTracer.init(allocator, device);
+            if (ray_tracer == null) if (traced_pipelines) |pipelines| {
+                log.warn("scenes draw rasterized: no ray tracer", .{});
+                Self.releaseTracedPipelines(device, pipelines);
+                traced_pipelines = null;
+            };
+        }
+
         const self = Self{
             .allocator = allocator,
             .device = device,
@@ -286,6 +325,8 @@ pub const SceneRenderer = struct {
             .depth_format = depth_format,
             .shadow_format = shadow_format,
             .encode_srgb = target_format != sdl_c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB and target_format != sdl_c.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB,
+            .traced_pipelines = traced_pipelines,
+            .ray_tracer = ray_tracer,
         };
         return self;
     }
@@ -295,6 +336,8 @@ pub const SceneRenderer = struct {
     /// - `self`: the renderer.
     pub fn deinit(self: *Self) void {
         const device = self.device;
+        if (self.ray_tracer) |*ray_tracer| ray_tracer.deinit();
+        if (self.traced_pipelines) |pipelines| Self.releaseTracedPipelines(device, pipelines);
         for (self.meshes.items) |entry| Self.releaseMesh(device, entry);
         self.meshes.deinit(self.allocator);
         for (self.textures.items) |entry| sdl_c.SDL_ReleaseGPUTexture(device, entry.texture);
@@ -336,10 +379,21 @@ pub const SceneRenderer = struct {
             _ = self.textures.swapRemove(index);
         }
         if (self.drawn_in + idle_frames < self.frame_counter) self.releaseTargets();
+        if (self.ray_tracer) |*ray_tracer| ray_tracer.nextFrame(self.frame_counter);
     }
 
-    /// Draws a scene step into the target: its shadow maps, then its shapes
-    /// over what the target holds, viewported to its rect and cut to its clip.
+    /// Whether this renderer traces a scene's shadow rays (else every scene's
+    /// shadows come from shadow maps).
+    ///
+    /// - `self`: the renderer.
+    /// - Returns: true where it has the traced pipelines and a ray tracer.
+    pub fn tracesRays(self: *const Self) bool {
+        return self.ray_tracer != null;
+    }
+
+    /// Draws a scene step into the target: its shadow maps (or, ray traced,
+    /// its opaque shapes' acceleration structures), then its shapes over what the
+    /// target holds, viewported to its rect and cut to its clip.
     ///
     /// - `self`: the renderer.
     /// - `arena`: the frame's arena, for the gathered frame and uploads' data.
@@ -371,7 +425,8 @@ pub const SceneRenderer = struct {
         if (!self.ensureDepth(target_width, target_height)) return false;
 
         var lights = self.lightUniforms(frame);
-        self.drawShadows(command_buffer, frame, meshes, &lights);
+        const prepared = self.prepareTraced(arena, command_buffer, scene, frame, meshes, textures, &lights);
+        if (!prepared) self.drawShadows(command_buffer, frame, meshes, &lights);
         const color_target = sdl_c.SDL_GPUColorTargetInfo{
             .texture = target,
             .load_op = sdl_c.SDL_GPU_LOADOP_LOAD,
@@ -394,14 +449,22 @@ pub const SceneRenderer = struct {
         const viewport = [4]f32{ @floatFromInt(scissor.x), @floatFromInt(scissor.y), @floatFromInt(scissor.w), @floatFromInt(scissor.h) };
         sdl_c.SDL_SetGPUViewport(pass, &.{ .x = viewport[0], .y = viewport[1], .w = viewport[2], .h = viewport[3], .min_depth = 0, .max_depth = 1 });
         sdl_c.SDL_SetGPUScissor(pass, &scissor);
+        // Bound on SDL's encoder once the pass is open; should that fail, the
+        // lit shaders draw, unshadowed (the blank map answers every test).
+        const traced = prepared and self.ray_tracer.?.bind(command_buffer, Self.skyOf(scene, frame), self.white_texture.?);
+        if (prepared and !traced) lights = self.lightUniforms(frame);
         sdl_c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &lights, @sizeOf(LightUniforms));
-        var shadow_bindings: [scenes.SceneFrame.max_directional_lights]sdl_c.SDL_GPUTextureSamplerBinding = undefined;
-        for (&shadow_bindings, self.shadow_maps) |*binding, map| binding.* = .{ .texture = map orelse self.blank_shadow, .sampler = self.shadow_sampler };
-        sdl_c.SDL_BindGPUFragmentSamplers(pass, 1, &shadow_bindings, shadow_bindings.len);
+        if (!traced) {
+            var shadow_bindings: [scenes.SceneFrame.max_directional_lights]sdl_c.SDL_GPUTextureSamplerBinding = undefined;
+            for (&shadow_bindings, self.shadow_maps) |*binding, map| binding.* = .{ .texture = map orelse self.blank_shadow, .sampler = self.shadow_sampler };
+            sdl_c.SDL_BindGPUFragmentSamplers(pass, 1, &shadow_bindings, shadow_bindings.len);
+        }
+        const lit_pipeline = if (traced) self.traced_pipelines.?.lit else self.lit_pipeline;
+        const blended_pipeline = if (traced) self.traced_pipelines.?.blended else self.blended_pipeline;
         const view_projection = Self.fittedProjection(frame.projection, step.rect, viewport).multiply(frame.view);
         for (frame.draws, meshes, textures, 0..) |shape, mesh, texture, index| {
             const entry = mesh orelse continue;
-            sdl_c.SDL_BindGPUGraphicsPipeline(pass, if (index < frame.opaque_count) self.lit_pipeline else self.blended_pipeline);
+            sdl_c.SDL_BindGPUGraphicsPipeline(pass, if (index < frame.opaque_count) lit_pipeline else blended_pipeline);
             sdl_c.SDL_BindGPUVertexBuffers(pass, 0, &.{ .buffer = entry.vertex_buffer, .offset = 0 }, 1);
             sdl_c.SDL_BindGPUIndexBuffer(pass, &.{ .buffer = entry.index_buffer, .offset = 0 }, sdl_c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
             sdl_c.SDL_BindGPUFragmentSamplers(pass, 0, &.{ .texture = texture, .sampler = self.base_sampler }, 1);
@@ -410,12 +473,126 @@ pub const SceneRenderer = struct {
             const base = scenes.SceneFrame.linear(shape.material.base_color);
             const surface = SurfaceUniforms{
                 .base_color = .{ base.x, base.y, base.z, std.math.clamp(shape.material.base_color.a, 0, 1) },
-                .surface = .{ @max(shape.material.specular, 0), shape.material.shininess, if (shape.receives_shadows) 1 else 0, 0 },
+                .surface = .{ @max(shape.material.specular, 0), shape.material.shininess, if (shape.receives_shadows) 1 else 0, if (traced) Self.reflectivityOf(shape.material) else 0 },
             };
             sdl_c.SDL_PushGPUFragmentUniformData(command_buffer, 1, &surface, @sizeOf(SurfaceUniforms));
             sdl_c.SDL_DrawGPUIndexedPrimitives(pass, entry.index_count, 1, 0, 0, 0);
         }
         return true;
+    }
+
+    /// The lit and blended pipelines over the traced fragment shader, made as
+    /// the lit and blended ones are.
+    ///
+    /// - `device`: the GPU device.
+    /// - `lit_info`: the lit pipeline's create info, its color target replaced here.
+    /// - `target_format`: the format of the texture scenes are drawn into.
+    /// - `traced_fragment`: the traced fragment shader.
+    /// - Returns: the pipelines, or null when the device cannot make them (logged).
+    fn makeTracedPipelines(device: *sdl_c.SDL_GPUDevice, lit_info: sdl_c.SDL_GPUGraphicsPipelineCreateInfo, target_format: sdl_c.SDL_GPUTextureFormat, traced_fragment: *sdl_c.SDL_GPUShader) ?TracedPipelines {
+        var create_info = lit_info;
+        create_info.fragment_shader = traced_fragment;
+        const lit_target = sdl_c.SDL_GPUColorTargetDescription{ .format = target_format, .blend_state = .{} };
+        create_info.target_info.color_target_descriptions = &lit_target;
+        const lit = sdl_c.SDL_CreateGPUGraphicsPipeline(device, &create_info) orelse {
+            log.warn("scenes draw rasterized: no traced lit pipeline [{s}]", .{sdl_c.SDL_GetError()});
+            return null;
+        };
+        // Depth tested but not written, as `blended_pipeline`.
+        const blended_target = sdl_c.SDL_GPUColorTargetDescription{ .format = target_format, .blend_state = over_blend };
+        create_info.target_info.color_target_descriptions = &blended_target;
+        create_info.depth_stencil_state.enable_depth_write = false;
+        const blended = sdl_c.SDL_CreateGPUGraphicsPipeline(device, &create_info) orelse {
+            log.warn("scenes draw rasterized: no traced blended pipeline [{s}]", .{sdl_c.SDL_GetError()});
+            sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, lit);
+            return null;
+        };
+        const pipelines = TracedPipelines{ .lit = lit, .blended = blended };
+        return pipelines;
+    }
+
+    /// Frees the traced pipelines.
+    ///
+    /// - `device`: the GPU device.
+    /// - `pipelines`: the pipelines.
+    fn releaseTracedPipelines(device: *sdl_c.SDL_GPUDevice, pipelines: TracedPipelines) void {
+        sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, pipelines.lit);
+        sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, pipelines.blended);
+    }
+
+    /// Builds a frame's acceleration structures when its scene asks for
+    /// ray tracing, this renderer traces rays, and something needs a ray: a
+    /// directional light casting a shadow, a point light casting one, or a
+    /// reflective shape. The lights' uniforms then carry what the traced
+    /// shader reads: a shadowing directional light names its own index (one
+    /// with none stays -1) and its cone's width, a point light its source's
+    /// radius (-1 for one casting none).
+    ///
+    /// - `self`: the renderer.
+    /// - `arena`: the frame's arena, for the shapes' list.
+    /// - `command_buffer`: the command buffer, outside any pass, the meshes uploaded on it.
+    /// - `scene`: the scene.
+    /// - `frame`: the frame.
+    /// - `meshes`: each shape's mesh, null for one that could not be had.
+    /// - `textures`: each shape's texture (the white texel for none).
+    /// - `lights`: the lights' uniforms.
+    /// - Returns: true when the frame's shadows are traced; false draws them from shadow maps.
+    fn prepareTraced(self: *Self, arena: std.mem.Allocator, command_buffer: *sdl_c.SDL_GPUCommandBuffer, scene: *const scenes.Scene, frame: scenes.SceneFrame, meshes: []const ?MeshEntry, textures: []const *sdl_c.SDL_GPUTexture, lights: *LightUniforms) bool {
+        if (scene.lighting_technique != .rayTraced) return false;
+        const ray_tracer = if (self.ray_tracer) |*tracer| tracer else return false;
+        var needs_rays = false;
+        for (frame.directional_lights) |light| needs_rays = needs_rays or light.shadow != null;
+        for (frame.point_lights) |light| needs_rays = needs_rays or light.casts_shadows;
+        for (frame.draws) |shape| needs_rays = needs_rays or Self.reflectivityOf(shape.material) > 0;
+        if (!needs_rays) return false;
+        var shapes: std.ArrayList(mod.SceneRayShape) = .empty;
+        for (frame.draws[0..frame.opaque_count], meshes[0..frame.opaque_count], textures[0..frame.opaque_count]) |shape, mesh, texture| {
+            const entry = mesh orelse continue;
+            shapes.append(arena, .{
+                .key = entry.key,
+                .geometry = shape.geometry,
+                .vertex_buffer = entry.vertex_buffer,
+                .index_buffer = entry.index_buffer,
+                .index_count = entry.index_count,
+                .world = shape.world,
+                .normal = shape.normal,
+                .material = shape.material,
+                .texture = if (shape.material.texture != null) texture else null,
+                .casts_shadows = shape.casts_shadows,
+            }) catch |err| {
+                log.warn("scene not ray traced: {s}", .{@errorName(err)});
+                return false;
+            };
+        }
+        if (!ray_tracer.prepare(arena, command_buffer, shapes.items)) return false;
+        for (frame.directional_lights, 0..) |light, index| {
+            if (light.shadow != null) lights.directional_direction[index][3] = @floatFromInt(index);
+            lights.directional_color[index][3] = @tan(light.angular_radius);
+        }
+        for (frame.point_lights, 0..) |light, index| {
+            lights.point_color[index][3] = if (light.casts_shadows) light.radius else -1;
+        }
+        return true;
+    }
+
+    /// How much a surface reflects, 0 to 1; 0 for a reflectivity that is not
+    /// a number (`clamp` would make NaN 1, a mirror).
+    ///
+    /// - `material`: the surface.
+    /// - Returns: the reflectivity.
+    fn reflectivityOf(material: scenes.SceneMaterial) f32 {
+        return if (material.reflectivity > 0) @min(material.reflectivity, 1) else 0;
+    }
+
+    /// What a reflection that meets nothing shows: the scene's background,
+    /// else its ambient light.
+    ///
+    /// - `scene`: the scene.
+    /// - `frame`: the frame.
+    /// - Returns: the color, linear.
+    fn skyOf(scene: *const scenes.Scene, frame: scenes.SceneFrame) scenes.Vec3 {
+        if (scene.background) |background| return scenes.SceneFrame.linear(background);
+        return frame.ambient;
     }
 
     /// The first of `formats` the device takes for a 2D texture of `usage`.
@@ -908,6 +1085,22 @@ const TestDraw = struct {
         return self;
     }
 
+    /// Fills a scene with a box over a floor, lit from straight above by a
+    /// directional light that casts its shadow, seen from above and in front.
+    ///
+    /// - `scene`: an empty scene.
+    /// - Returns: the light's node; propagates allocation failure.
+    fn shadowedBox(scene: *scenes.Scene) !scenes.SceneNodeId {
+        scene.ambient_intensity = 0.1;
+        var camera = scenes.SceneNode{ .camera = .{}, .transform = .{ .position = scenes.Vec3.init(0, 3, 5) } };
+        camera.lookAt(scenes.Vec3.zero, scenes.Vec3.up);
+        scene.point_of_view = try scene.addChild(scene.root(), camera);
+        const down = scenes.Quaternion.fromAxisAngle(scenes.Vec3.init(1, 0, 0), -std.math.pi / 2.0);
+        _ = try scene.addChild(scene.root(), .{ .geometry = .{ .plane = .{ .width = 6, .height = 6 } }, .transform = .{ .position = scenes.Vec3.init(0, -1, 0), .rotation = down }, .material = .{ .specular = 0 } });
+        _ = try scene.addChild(scene.root(), .{ .geometry = .{ .box = .{} }, .material = .{ .specular = 0 } });
+        return scene.addChild(scene.root(), .{ .light = .{}, .transform = .{ .rotation = down } });
+    }
+
     /// The pixel a point of the scene lands on, through its camera.
     ///
     /// - `self`: the drawing.
@@ -1007,14 +1200,7 @@ test "a directional light's shadow darkens the floor under a box, the floor besi
     defer arena.deinit();
     var scene = try scenes.Scene.init(std.testing.allocator);
     defer scene.deinit();
-    scene.ambient_intensity = 0.1;
-    var camera = scenes.SceneNode{ .camera = .{}, .transform = .{ .position = scenes.Vec3.init(0, 3, 5) } };
-    camera.lookAt(scenes.Vec3.zero, scenes.Vec3.up);
-    scene.point_of_view = try scene.addChild(scene.root(), camera);
-    const down = scenes.Quaternion.fromAxisAngle(scenes.Vec3.init(1, 0, 0), -std.math.pi / 2.0);
-    _ = try scene.addChild(scene.root(), .{ .geometry = .{ .plane = .{ .width = 6, .height = 6 } }, .transform = .{ .position = scenes.Vec3.init(0, -1, 0), .rotation = down }, .material = .{ .specular = 0 } });
-    _ = try scene.addChild(scene.root(), .{ .geometry = .{ .box = .{} }, .material = .{ .specular = 0 } });
-    _ = try scene.addChild(scene.root(), .{ .light = .{}, .transform = .{ .rotation = down } });
+    _ = try TestDraw.shadowedBox(&scene);
     const drawn = TestDraw.render(&gpu, arena.allocator(), &scene) orelse return error.SkipZigTest;
     defer std.testing.allocator.free(drawn.pixels);
     // Under the box's front edge (seen past its bottom) is in shadow; well to the side is lit.
@@ -1022,6 +1208,242 @@ test "a directional light's shadow darkens the floor under a box, the floor besi
     const lit = try drawn.at(arena.allocator(), &scene, scenes.Vec3.init(1.8, -1, 0.3));
     try std.testing.expect(lit[0] > 200);
     try std.testing.expect(shaded[0] < 100);
+}
+
+test "a ray-traced shadow darkens the floor under a box, the floor beside it lit, and draws no shadow map" {
+    if (!sdl_c.SDL_Init(sdl_c.SDL_INIT_VIDEO)) return error.SkipZigTest;
+    defer sdl_c.SDL_Quit();
+    var gpu = mod.Gpu.init(std.testing.allocator, null) orelse return error.SkipZigTest;
+    defer gpu.deinit();
+    if (!mod.SceneRayTracer.supported(gpu.device)) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    _ = try TestDraw.shadowedBox(&scene);
+    scene.lighting_technique = .rayTraced;
+    const drawn = TestDraw.render(&gpu, arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(drawn.pixels);
+    // Traced: the floor's and the box's structures built, no shadow map made.
+    const scene_renderer = &gpu.scene_renderer.?;
+    try std.testing.expect(scene_renderer.tracesRays());
+    try std.testing.expectEqual(@as(usize, 2), scene_renderer.ray_tracer.?.primitives.items.len);
+    try std.testing.expectEqual(null, scene_renderer.shadow_maps[0]);
+    const shaded = try drawn.at(arena.allocator(), &scene, scenes.Vec3.init(0, -1, 0.3));
+    const lit = try drawn.at(arena.allocator(), &scene, scenes.Vec3.init(1.8, -1, 0.3));
+    try std.testing.expect(lit[0] > 200);
+    try std.testing.expect(shaded[0] < 100);
+}
+
+/// An offscreen GPU that traces rays, for the ray tracing tests below.
+const TracingGpu = struct {
+    const Self = @This();
+
+    /// The backend.
+    gpu: mod.Gpu,
+    /// The frame's arena.
+    arena: std.heap.ArenaAllocator,
+
+    /// Starts SDL's video and a GPU that traces rays.
+    ///
+    /// - Returns: the GPU, or `error.SkipZigTest` where there is none or it traces no rays.
+    fn start() !Self {
+        if (!sdl_c.SDL_Init(sdl_c.SDL_INIT_VIDEO)) return error.SkipZigTest;
+        errdefer sdl_c.SDL_Quit();
+        var gpu = mod.Gpu.init(std.testing.allocator, null) orelse return error.SkipZigTest;
+        errdefer gpu.deinit();
+        if (!mod.SceneRayTracer.supported(gpu.device)) return error.SkipZigTest;
+        const self = Self{ .gpu = gpu, .arena = std.heap.ArenaAllocator.init(std.testing.allocator) };
+        return self;
+    }
+
+    /// Frees the GPU and stops SDL's video.
+    ///
+    /// - `self`: the GPU.
+    fn stop(self: *Self) void {
+        self.arena.deinit();
+        self.gpu.deinit();
+        sdl_c.SDL_Quit();
+    }
+
+    /// Fills a scene with a mirror facing the default camera and, behind
+    /// the camera, a box it reflects, lit evenly by ambient light alone so
+    /// the box shows its own colors.
+    ///
+    /// - `scene`: an empty scene.
+    /// - `box_material`: the box's surface.
+    /// - Returns: nothing; propagates allocation failure.
+    fn mirrorAndBox(scene: *scenes.Scene, box_material: scenes.SceneMaterial) !void {
+        scene.ambient_intensity = 1;
+        _ = try scene.addChild(scene.root(), .{ .geometry = .{ .plane = .{ .width = 6, .height = 6 } }, .material = .{ .base_color = renderer.Color.black, .specular = 0, .reflectivity = 1 } });
+        _ = try scene.addChild(scene.root(), .{ .geometry = .{ .box = .{ .width = 3, .height = 3, .length = 1 } }, .material = box_material, .transform = .{ .position = scenes.Vec3.init(0, 0, 8) } });
+    }
+
+    /// The red channel where a point of the scene lands, drawn ray traced.
+    ///
+    /// - `self`: the GPU.
+    /// - `scene`: the scene, asked to be ray traced.
+    /// - `point`: the point, in the scene's space.
+    /// - Returns: its pixel's red; `error.SkipZigTest` when the GPU drew nothing.
+    fn redAt(self: *Self, scene: *scenes.Scene, point: scenes.Vec3) !u8 {
+        scene.lighting_technique = .rayTraced;
+        const drawn = TestDraw.render(&self.gpu, self.arena.allocator(), scene) orelse return error.SkipZigTest;
+        defer std.testing.allocator.free(drawn.pixels);
+        return (try drawn.at(self.arena.allocator(), scene, point))[0];
+    }
+};
+
+test "a ray-traced point light casts a shadow under a box, which shadow maps never cast" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    const sun = try TestDraw.shadowedBox(&scene);
+    // The sun turned off; a bright lamp straight over the box casts instead.
+    scene.node(sun).?.hidden = true;
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .point = .{ .range = 20, .casts_shadows = true } }, .intensity = 3 }, .transform = .{ .position = scenes.Vec3.init(0, 3, 0) } });
+    const shaded = try tracing.redAt(&scene, scenes.Vec3.init(0, -1, 0.3));
+    const lit = try tracing.redAt(&scene, scenes.Vec3.init(1.8, -1, 0.3));
+    try std.testing.expect(lit > 150);
+    // The ambient light alone (0.1, linear) is 89 in sRGB.
+    try std.testing.expect(shaded < 100);
+    scene.lighting_technique = .rasterized;
+    const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(drawn.pixels);
+    try std.testing.expect((try drawn.at(tracing.arena.allocator(), &scene, scenes.Vec3.init(0, -1, 0.3)))[0] > 150);
+}
+
+test "a ray-traced shadow from a wide source darkens the floor just past its hard edge" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    const sun = try TestDraw.shadowedBox(&scene);
+    // Just past the box's side, which a hard shadow from straight above leaves lit.
+    const past_edge = scenes.Vec3.init(0.6, -1, 0);
+    const hard = try tracing.redAt(&scene, past_edge);
+    scene.node(sun).?.light.?.kind.directional.angular_diameter = 30;
+    const soft = try tracing.redAt(&scene, past_edge);
+    try std.testing.expect(hard > 200);
+    try std.testing.expect(soft < hard - 20);
+}
+
+test "a ray-traced mirror shows the box behind the camera, and the sky where nothing is" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    scene.background = renderer.Color.blue;
+    try TracingGpu.mirrorAndBox(&scene, .{ .base_color = renderer.Color.red, .specular = 0 });
+    const mirrored = try tracing.redAt(&scene, scenes.Vec3.zero);
+    try std.testing.expect(mirrored > 200);
+    // The mirror's edge, seen at an angle, reflects past the box: the blue sky.
+    scene.lighting_technique = .rayTraced;
+    const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(drawn.pixels);
+    const edge = try drawn.at(tracing.arena.allocator(), &scene, scenes.Vec3.init(2.8, 2.8, 0));
+    try std.testing.expect(edge[2] > 200 and edge[0] < 60);
+}
+
+test "a ray-traced mirror samples the reflected shape's texture, not its average" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    // Red, green, red: the middle (where the mirror's center looks) is green,
+    // the average mostly red.
+    const strip = [_]u8{ 255, 0, 0, 255, 0, 255, 0, 255, 255, 0, 0, 255 };
+    try TracingGpu.mirrorAndBox(&scene, .{ .texture = .{ .image = .{ .width = 3, .height = 1, .pixels = &strip } }, .specular = 0 });
+    scene.lighting_technique = .rayTraced;
+    const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(drawn.pixels);
+    // Sampled: green, a little red filtered in from the neighbours; the
+    // average would be about 214 red, 156 green.
+    const mirrored = try drawn.at(tracing.arena.allocator(), &scene, scenes.Vec3.zero);
+    try std.testing.expect(mirrored[1] > 200 and mirrored[0] < 150);
+}
+
+test "a reflectivity is kept between 0 and 1, and one that is not a number reflects nothing" {
+    try std.testing.expectEqual(@as(f32, 0.5), SceneRenderer.reflectivityOf(.{ .reflectivity = 0.5 }));
+    try std.testing.expectEqual(@as(f32, 1), SceneRenderer.reflectivityOf(.{ .reflectivity = 3 }));
+    try std.testing.expectEqual(@as(f32, 0), SceneRenderer.reflectivityOf(.{ .reflectivity = -1 }));
+    try std.testing.expectEqual(@as(f32, 0), SceneRenderer.reflectivityOf(.{ .reflectivity = std.math.nan(f32) }));
+}
+
+test "two ray-traced scenes a frame keep one triangle buffer from frame to frame" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    // The second scene places the first's meshes and a sphere.
+    var first = try scenes.Scene.init(std.testing.allocator);
+    defer first.deinit();
+    _ = try TestDraw.shadowedBox(&first);
+    first.lighting_technique = .rayTraced;
+    var second = try scenes.Scene.init(std.testing.allocator);
+    defer second.deinit();
+    _ = try TestDraw.shadowedBox(&second);
+    _ = try second.addChild(second.root(), .{ .geometry = .{ .sphere = .{ .radius = 0.3 } }, .transform = .{ .position = scenes.Vec3.init(1.5, -0.7, 0) } });
+    second.lighting_technique = .rayTraced;
+    const commands = [_]renderer.DrawCommand{
+        .{ .scene = .{ .rect = .{ .x = 0, .y = 0, .width = 32, .height = 64 }, .scene = &first, .ground = renderer.Color.black, .ink = renderer.Color.black } },
+        .{ .scene = .{ .rect = .{ .x = 32, .y = 0, .width = 32, .height = 64 }, .scene = &second, .ground = renderer.Color.black, .ink = renderer.Color.black } },
+    };
+    var buffers: [3]mod.Id = undefined;
+    for (&buffers) |*buffer| {
+        const pixels = tracing.gpu.renderToRgba(tracing.arena.allocator(), &commands, renderer.Color.black, TestDraw.side, TestDraw.side) orelse return error.SkipZigTest;
+        std.testing.allocator.free(pixels);
+        buffer.* = tracing.gpu.scene_renderer.?.ray_tracer.?.triangles;
+    }
+    try std.testing.expect(buffers[0] != null);
+    try std.testing.expectEqual(buffers[0], buffers[1]);
+    try std.testing.expectEqual(buffers[1], buffers[2]);
+}
+
+test "a scene drawn twice on its meshes' first frame is shadowed in both views" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    _ = try TestDraw.shadowedBox(&scene);
+    scene.lighting_technique = .rayTraced;
+    // The first view builds the meshes' structures; the second places them
+    // the same frame, before they were built if its instances went ahead.
+    const half = TestDraw.side / 2;
+    const commands = [_]renderer.DrawCommand{
+        .{ .scene = .{ .rect = .{ .x = 0, .y = 0, .width = half, .height = TestDraw.side }, .scene = &scene, .ground = renderer.Color.black, .ink = renderer.Color.black } },
+        .{ .scene = .{ .rect = .{ .x = half, .y = 0, .width = half, .height = TestDraw.side }, .scene = &scene, .ground = renderer.Color.black, .ink = renderer.Color.black } },
+    };
+    const pixels = tracing.gpu.renderToRgba(tracing.arena.allocator(), &commands, renderer.Color.black, TestDraw.side, TestDraw.side) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(pixels);
+    const frame = try scenes.SceneFrame.gather(tracing.arena.allocator(), &scene, 0.5);
+    for ([_]usize{ 0, half }) |left| {
+        const shaded = frame.projection.multiply(frame.view).transformPoint(scenes.Vec3.init(0, -1, 0.3));
+        const x = left + @as(usize, @intFromFloat(std.math.clamp((shaded.x * 0.5 + 0.5) * half, 0, half - 1)));
+        const y: usize = @intFromFloat(std.math.clamp((0.5 - shaded.y * 0.5) * TestDraw.side, 0, TestDraw.side - 1));
+        try std.testing.expect(pixels[(y * TestDraw.side + x) * 4] < 100);
+    }
+}
+
+test "a ray-traced frame's structure and buffers are used again once that frame is done" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    _ = try TestDraw.shadowedBox(&scene);
+    scene.lighting_technique = .rayTraced;
+    var structures: [10]mod.Id = undefined;
+    for (&structures) |*structure| {
+        const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+        std.testing.allocator.free(drawn.pixels);
+        structure.* = tracing.gpu.scene_renderer.?.ray_tracer.?.instances;
+    }
+    const ray_tracer = &tracing.gpu.scene_renderer.?.ray_tracer.?;
+    // One set a frame in flight, each frame's structure the one a set held
+    // `retire_frames` frames before, and nothing made anew to release.
+    try std.testing.expectEqual(@as(usize, mod.SceneRayTracer.retire_frames), ray_tracer.sets.items.len);
+    for (structures[mod.SceneRayTracer.retire_frames..], structures[0 .. structures.len - mod.SceneRayTracer.retire_frames]) |later, earlier| {
+        try std.testing.expectEqual(earlier, later);
+    }
+    try std.testing.expectEqual(@as(usize, 0), ray_tracer.retired.items.len);
 }
 
 test "a projection fitted to part of the rect puts each point on the pixel the whole rect would" {

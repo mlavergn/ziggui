@@ -1,9 +1,10 @@
 // 3D scene shaders for Metal (compiled at runtime by SDL_GPU): the lit
 // vertex and fragment functions and the shadow map's depth-only pair. Keep
 // in sync with scene.vert, scene.frag, scene_shadow.vert, scene_shadow.frag
-// and scene.hlsl. SDL_GPU binding model: vertex attributes via [[stage_in]],
-// uniforms at [[buffer(n)]], textures and samplers at [[texture(n)]] and
-// [[sampler(n)]].
+// and scene.hlsl. scene_traced.metal, Metal's alone, is compiled appended to
+// this file (it uses `shade`). SDL_GPU binding model: vertex attributes via
+// [[stage_in]], uniforms at [[buffer(n)]], textures and samplers at
+// [[texture(n)]] and [[sampler(n)]].
 
 #include <metal_stdlib>
 using namespace metal;
@@ -84,6 +85,103 @@ static float3 encode_srgb(float3 linear) {
     return select(high, low, linear <= float3(0.0031308));
 }
 
+// How lit a point is by each directional light's shadow map (its
+// `directional_direction.w` names its map, -1 for a light with none); point
+// lights cast no shadow from a map, and nothing reflects.
+struct MappedLighting {
+    depth2d<float> map0;
+    sampler sampler0;
+    depth2d<float> map1;
+    sampler sampler1;
+    depth2d<float> map2;
+    sampler sampler2;
+    depth2d<float> map3;
+    sampler sampler3;
+
+    float directional(constant SceneLights &lights, int index, float3 to_light, float3 world, float3 normal, float2 pixel) const {
+        int map = int(lights.directional_direction[index].w);
+        if (map == 0) return soft_shadow(map0, sampler0, lights.shadow[0], world, lights.shadow_parameters);
+        if (map == 1) return soft_shadow(map1, sampler1, lights.shadow[1], world, lights.shadow_parameters);
+        if (map == 2) return soft_shadow(map2, sampler2, lights.shadow[2], world, lights.shadow_parameters);
+        if (map == 3) return soft_shadow(map3, sampler3, lights.shadow[3], world, lights.shadow_parameters);
+        return 1.0;
+    }
+
+    float point(constant SceneLights &lights, int index, float3 world, float3 normal, float2 pixel) const {
+        return 1.0;
+    }
+
+    float3 reflected(constant SceneLights &lights, constant SceneSurface &surface, float3 color, float3 world, float3 normal, float3 to_eye, float2 pixel) const {
+        return color;
+    }
+};
+
+// The light a point of a surface sends toward the eye from the scene's
+// lights, unclamped: ambient, then each directional and point light's
+// diffuse and highlight, each dimmed by its shadow (`lighting.directional`,
+// `lighting.point`) where the surface `receives` shadows. `normal` faces
+// the eye; `pixel` turns the samples of a soft ray-traced shadow.
+template <typename Lighting>
+static float3 light_point(constant SceneLights &lights, thread const Lighting &lighting, float3 albedo,
+                          float3 world, float3 normal, float3 to_eye, float specular, float shininess,
+                          bool receives, float2 pixel) {
+    float3 color = lights.ambient.rgb * albedo;
+    int directional_count = int(lights.eye.w);
+    for (int index = 0; index < 4; index++) {
+        if (index >= directional_count) break;
+        float3 to_light = -normalize(lights.directional_direction[index].xyz);
+        float diffuse = max(dot(normal, to_light), 0.0);
+        if (diffuse <= 0.0) continue;
+        float highlight = pow(max(dot(normal, normalize(to_light + to_eye)), 0.0), shininess) * specular;
+        float lit = 1.0;
+        if (receives) lit = lighting.directional(lights, index, to_light, world, normal, pixel);
+        color += (albedo * diffuse + highlight) * lights.directional_color[index].rgb * lit;
+    }
+    int point_count = int(lights.ambient.w);
+    for (int index = 0; index < 8; index++) {
+        if (index >= point_count) break;
+        float3 offset = lights.point_position[index].xyz - world;
+        float separation = length(offset);
+        float range = lights.point_position[index].w;
+        if (separation >= range || separation <= 0.0) continue;
+        float3 to_light = offset / separation;
+        float diffuse = max(dot(normal, to_light), 0.0);
+        if (diffuse <= 0.0) continue;
+        float fade = 1.0 - separation / range;
+        float highlight = pow(max(dot(normal, normalize(to_light + to_eye)), 0.0), shininess) * specular;
+        float lit = 1.0;
+        if (receives) lit = lighting.point(lights, index, world, normal, pixel);
+        color += (albedo * diffuse + highlight) * lights.point_color[index].rgb * fade * fade * lit;
+    }
+    return color;
+}
+
+// The lit color of a point: its light (`light_point`), then what the
+// surface reflects. `Lighting` says how a shadow is found and what is
+// reflected (`MappedLighting`; Metal's ray-traced variant,
+// scene_traced.metal, traces rays).
+template <typename Lighting>
+static float4 shade(SceneVaryings in, constant SceneLights &lights, constant SceneSurface &surface,
+                    texture2d<float> base_texture, sampler base_sampler, thread const Lighting &lighting) {
+    float3 normal = normalize(in.normal);
+    float3 to_eye = normalize(lights.eye.xyz - in.world);
+    // Lit from the side the camera sees, so a plane seen from behind is lit too.
+    if (dot(normal, to_eye) < 0.0) normal = -normal;
+    float4 texel = base_texture.sample(base_sampler, in.uv);
+    float3 albedo = surface.base_color.rgb * texel.rgb;
+    float alpha = surface.base_color.a * texel.a;
+    float specular = surface.surface.x;
+    float shininess = max(surface.surface.y, 1.0);
+    bool receives = surface.surface.z > 0.5;
+
+    float3 color = light_point(lights, lighting, albedo, in.world, normal, to_eye, specular, shininess, receives, in.position.xy);
+    color = lighting.reflected(lights, surface, color, in.world, normal, to_eye, in.position.xy);
+
+    color = clamp(color, 0.0, 1.0);
+    if (lights.shadow_parameters.z > 0.5) color = encode_srgb(color);
+    return float4(color, alpha);
+}
+
 fragment float4 scene_fragment(SceneVaryings in [[stage_in]],
                                constant SceneLights &lights [[buffer(0)]],
                                constant SceneSurface &surface [[buffer(1)]],
@@ -97,51 +195,9 @@ fragment float4 scene_fragment(SceneVaryings in [[stage_in]],
                                sampler shadow_sampler2 [[sampler(3)]],
                                depth2d<float> shadow_map3 [[texture(4)]],
                                sampler shadow_sampler3 [[sampler(4)]]) {
-    float3 normal = normalize(in.normal);
-    float3 to_eye = normalize(lights.eye.xyz - in.world);
-    // Lit from the side the camera sees, so a plane seen from behind is lit too.
-    if (dot(normal, to_eye) < 0.0) normal = -normal;
-    float4 texel = base_texture.sample(base_sampler, in.uv);
-    float3 albedo = surface.base_color.rgb * texel.rgb;
-    float alpha = surface.base_color.a * texel.a;
-    float specular = surface.surface.x;
-    float shininess = max(surface.surface.y, 1.0);
-    bool receives = surface.surface.z > 0.5;
-
-    float3 color = lights.ambient.rgb * albedo;
-    int directional_count = int(lights.eye.w);
-    for (int index = 0; index < 4; index++) {
-        if (index >= directional_count) break;
-        float3 to_light = -normalize(lights.directional_direction[index].xyz);
-        float diffuse = max(dot(normal, to_light), 0.0);
-        if (diffuse <= 0.0) continue;
-        float highlight = pow(max(dot(normal, normalize(to_light + to_eye)), 0.0), shininess) * specular;
-        int map = int(lights.directional_direction[index].w);
-        float lit = 1.0;
-        if (receives && map == 0) lit = soft_shadow(shadow_map0, shadow_sampler0, lights.shadow[0], in.world, lights.shadow_parameters);
-        if (receives && map == 1) lit = soft_shadow(shadow_map1, shadow_sampler1, lights.shadow[1], in.world, lights.shadow_parameters);
-        if (receives && map == 2) lit = soft_shadow(shadow_map2, shadow_sampler2, lights.shadow[2], in.world, lights.shadow_parameters);
-        if (receives && map == 3) lit = soft_shadow(shadow_map3, shadow_sampler3, lights.shadow[3], in.world, lights.shadow_parameters);
-        color += (albedo * diffuse + highlight) * lights.directional_color[index].rgb * lit;
-    }
-    int point_count = int(lights.ambient.w);
-    for (int index = 0; index < 8; index++) {
-        if (index >= point_count) break;
-        float3 offset = lights.point_position[index].xyz - in.world;
-        float separation = length(offset);
-        float range = lights.point_position[index].w;
-        if (separation >= range || separation <= 0.0) continue;
-        float3 to_light = offset / separation;
-        float diffuse = max(dot(normal, to_light), 0.0);
-        if (diffuse <= 0.0) continue;
-        float fade = 1.0 - separation / range;
-        float highlight = pow(max(dot(normal, normalize(to_light + to_eye)), 0.0), shininess) * specular;
-        color += (albedo * diffuse + highlight) * lights.point_color[index].rgb * fade * fade;
-    }
-
-    color = clamp(color, 0.0, 1.0);
-    if (lights.shadow_parameters.z > 0.5) color = encode_srgb(color);
-    return float4(color, alpha);
+    MappedLighting lighting = { shadow_map0, shadow_sampler0, shadow_map1, shadow_sampler1,
+                                shadow_map2, shadow_sampler2, shadow_map3, shadow_sampler3 };
+    return shade(in, lights, surface, base_texture, base_sampler, lighting);
 }
 
 struct SceneShadowVaryings {

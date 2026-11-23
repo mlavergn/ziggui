@@ -17,6 +17,11 @@ pub const SdlOptions = struct {
     optimize: std.lang.Optimize,
     /// The macOS SDK root (`xcrun --show-sdk-path`); required for an explicit (non-native) macOS target, null lets Zig probe the host's.
     macos_sdk: ?[]const u8 = null,
+    /// An Objective-C file compiled in place of SDL's Metal GPU backend
+    /// (`src/gpu/metal/SDL_gpu_metal.m`), which it `#include`s before adding
+    /// functions of its own that read the backend's private structs; null
+    /// compiles the backend alone.
+    metal_interop: ?std.Build.LazyPath = null,
 };
 
 /// What SDL_linux_deps (the `sdl_linux_deps` dependency) provides at the commit build.zig.zon pins,
@@ -1173,10 +1178,11 @@ pub const SdlBuild = struct {
         "src/video/cocoa/SDL_cocoavulkan.m",
         "src/video/cocoa/SDL_cocoawindow.m",
         "src/render/metal/SDL_render_metal.m",
-        "src/gpu/metal/SDL_gpu_metal.m",
         "src/tray/cocoa/SDL_tray.m",
         "src/dialog/cocoa/SDL_cocoadialog.m",
     };
+    /// SDL's Metal GPU backend, compiled alone unless `SdlOptions.metal_interop` wraps it.
+    const metal_gpu_source = "src/gpu/metal/SDL_gpu_metal.m";
     /// Build SDL3 as a static library from the `sdl` dependency, or null on the first configure while a lazy dependency is still being fetched (the build then reruns).
     ///
     /// - `b`: the build graph of the package whose build.zig.zon declares `sdl` and `sdl_linux_deps` (ziggui's).
@@ -1244,7 +1250,7 @@ pub const SdlBuild = struct {
         }
         if (explicit_macos) Self.addMacosSdk(b, module, options.macos_sdk.?);
 
-        Self.addSources(module, source, linux_dependencies, &platform);
+        Self.addSources(module, source, linux_dependencies, options.metal_interop, &platform);
         Self.linkSystem(module, &platform);
 
         sdl_library.installHeadersDirectory(source.path("include/SDL3"), "SDL3", .{ .exclude_extensions = &excluded_headers });
@@ -1268,8 +1274,9 @@ pub const SdlBuild = struct {
     /// - `module`: SDL's module.
     /// - `source`: the `sdl` dependency.
     /// - `linux_dependencies`: the `sdl_linux_deps` dependency on Linux, null elsewhere.
+    /// - `metal_interop`: the file compiled in place of SDL's Metal GPU backend, or null for the backend alone.
     /// - `platform`: the platform.
-    fn addSources(module: *std.Build.Module, source: *std.Build.Dependency, linux_dependencies: ?*std.Build.Dependency, platform: *const Platform) void {
+    fn addSources(module: *std.Build.Module, source: *std.Build.Dependency, linux_dependencies: ?*std.Build.Dependency, metal_interop: ?std.Build.LazyPath, platform: *const Platform) void {
         const flags: []const []const u8 = if (platform.macos) &macos_flags else if (platform.linux) &linux_flags else &common_flags;
         const root = source.path(".");
         module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &core_sources });
@@ -1280,7 +1287,14 @@ pub const SdlBuild = struct {
         if (platform.windows) module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &windows_sources });
         if (platform.msvc) module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &msvc_sources });
         if (platform.linux) module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &linux_sources });
-        if (platform.macos) module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &macos_sources });
+        if (platform.macos) {
+            module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &macos_sources });
+            if (metal_interop) |wrapper| {
+                module.addCSourceFile(.{ .file = wrapper, .flags = flags, .language = .objective_c });
+            } else {
+                module.addCSourceFiles(.{ .root = root, .flags = flags, .files = &.{metal_gpu_source} });
+            }
+        }
         if (linux_dependencies) |dependencies| module.addCSourceFiles(.{ .root = dependencies.path("."), .flags = flags, .files = &LinuxDependencies.wayland_sources });
     }
 

@@ -147,6 +147,7 @@ const Modules = struct {
             },
         });
         Self.linkSdl(b, sdl, sdl_c, options);
+        sdl.addOptions("sdl_config", Self.runtimeOptions(b, options));
         // src/sdl/macos/: cocoa.zig reaches AppKit (the unified title bar, the
         // menu bar, template tray icons) through the Objective-C runtime,
         // av_foundation_player.zig AVFoundation, Core Media and Core Animation
@@ -250,6 +251,29 @@ const Modules = struct {
         return options;
     }
 
+    /// The `sdl_config` options the runtime's barrel reads: whether SDL was
+    /// built with `src/sdl/macos/metal_interop.m` (macOS, from the release),
+    /// so `MetalInterop` can reach SDL_GPU's Metal objects. A prebuilt SDL
+    /// (`sdl3_prefix`) has no such functions.
+    ///
+    /// - `b`: ziggui's build graph.
+    /// - `options`: the target, optimize mode, SDK and SDL source.
+    /// - Returns: the options step.
+    fn runtimeOptions(b: *std.Build, options: AppOptions) *std.Build.Step.Options {
+        const runtime_options = b.addOptions();
+        runtime_options.addOption(bool, "metal_interop", Self.buildsMetalInterop(options));
+        return runtime_options;
+    }
+
+    /// Whether SDL is built from the release for macOS, with
+    /// `src/sdl/macos/metal_interop.m` in place of its Metal GPU backend.
+    ///
+    /// - `options`: the target, optimize mode, SDK and SDL source.
+    /// - Returns: true for a macOS target with no `sdl3_prefix`.
+    fn buildsMetalInterop(options: AppOptions) bool {
+        return options.sdl3_prefix == null and options.target.result.os.tag == .macos;
+    }
+
     /// Link SDL3 into the runtime: built from the release by default, or a
     /// prebuilt one from `sdl3_prefix`. On the first configure the lazy
     /// dependency may not be fetched yet; the module is left unlinked and the
@@ -273,6 +297,7 @@ const Modules = struct {
             .target = options.target,
             .optimize = options.optimize,
             .macos_sdk = options.macos_sdk,
+            .metal_interop = if (Self.buildsMetalInterop(options)) b.path("src/sdl/macos/metal_interop.m") else null,
         }) orelse return;
         sdl.linkLibrary(library);
         sdl_c.addIncludePath(library.getEmittedIncludeTree());

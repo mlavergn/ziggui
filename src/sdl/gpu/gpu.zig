@@ -55,6 +55,9 @@ const scene_fragment_spirv = @embedFile("shaders/scene.frag.spv");
 const scene_shadow_vertex_spirv = @embedFile("shaders/scene_shadow.vert.spv");
 const scene_shadow_fragment_spirv = @embedFile("shaders/scene_shadow.frag.spv");
 const scene_msl = @embedFile("shaders/scene.metal");
+/// The lit fragment with ray-traced shadows and reflections: Metal's alone, compiled with
+/// `scene.metal` before it (its `shade`), as SDL_GPU takes one source.
+const scene_traced_msl = scene_msl ++ @embedFile("shaders/scene_traced.metal");
 const scene_hlsl = @embedFile("shaders/scene.hlsl");
 const scene_shadow_hlsl = @embedFile("shaders/scene_shadow.hlsl");
 
@@ -684,6 +687,15 @@ pub const Gpu = struct {
         const name = std.mem.span(sdl_c.SDL_GetStringProperty(properties, sdl_c.SDL_PROP_GPU_DEVICE_NAME_STRING, ""));
         const driver_version = std.mem.span(sdl_c.SDL_GetStringProperty(properties, sdl_c.SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING, ""));
         views.SystemInfo.shared().noteGraphics(.gpu, self.driverName(), name, driver_version);
+        self.noteRayTracing();
+    }
+
+    /// Notes for system reports (`views.SystemInfo.ray_tracing`) whether
+    /// this device ray traces a scene's shadows and reflections.
+    ///
+    /// - `self`: the backend.
+    pub fn noteRayTracing(self: *const Self) void {
+        views.SystemInfo.shared().noteRayTracing(mod.SceneRayTracer.supported(self.device));
     }
 
     /// The name of the driver SDL chose ("metal", "vulkan", "direct3d12").
@@ -919,12 +931,21 @@ pub const Gpu = struct {
         defer sdl_c.SDL_ReleaseGPUShader(self.device, shadow_vertex);
         const shadow_fragment = self.createShader(.{ .spirv = scene_shadow_fragment_spirv, .msl = scene_msl, .hlsl = scene_shadow_hlsl, .entry = "scene_shadow_fragment", .stage = sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT }, hlsl) orelse return Self.noSceneShader("shadow fragment");
         defer sdl_c.SDL_ReleaseGPUShader(self.device, shadow_fragment);
+        // Only where rays can be traced (Metal), so `createShader` takes the MSL.
+        const ray_tracing = mod.SceneRayTracer.supported(self.device);
+        const traced_fragment = if (ray_tracing) self.createShader(.{ .spirv = &.{}, .msl = scene_traced_msl, .hlsl = &.{}, .entry = "scene_traced_fragment", .stage = sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT, .num_samplers = 1, .num_uniform_buffers = 2 }, hlsl) else null;
+        if (ray_tracing and traced_fragment == null) log.warn("scenes draw rasterized: no traced fragment shader [{s}]", .{sdl_c.SDL_GetError()});
+        defer if (traced_fragment) |shader| sdl_c.SDL_ReleaseGPUShader(self.device, shader);
         self.scene_renderer = mod.SceneRenderer.init(self.allocator, self.device, self.target_format, .{
             .lit_vertex = lit_vertex,
             .lit_fragment = lit_fragment,
             .shadow_vertex = shadow_vertex,
             .shadow_fragment = shadow_fragment,
+            .traced_fragment = traced_fragment,
         }) orelse return null;
+        // The device traces rays, but this renderer cannot: say so, so a
+        // toggle offering it greys out.
+        if (ray_tracing and !self.scene_renderer.?.tracesRays()) views.SystemInfo.shared().noteRayTracing(false);
         self.scene_renderer_failed = false;
         return &self.scene_renderer.?;
     }

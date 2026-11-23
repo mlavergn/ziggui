@@ -1,6 +1,8 @@
 //! The Scenes section's 3D card: a `SceneView` of a spinning,
 //! textured cube on a floor, lit by a directional light that casts its
-//! shadow and a warm point light, beside a sphere and a translucent pane.
+//! shadow and a warm point light, beside a sphere and a translucent pane,
+//! with a toggle that ray traces it where the GPU can: soft shadows from the
+//! sun and the lamp, and the floor and sphere reflecting the scene.
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_gallery_scene_demo);
@@ -37,6 +39,8 @@ pub const SceneDemo = struct {
     scene: ziggui.Scene,
     /// The spinning cube.
     cube: ziggui.SceneNodeId,
+    /// Whether the scene asks to be ray traced (`Scene.lighting_technique`).
+    ray_traced: ziggui.State(bool),
 
     /// Builds the scene: the camera, floor, cube, sphere, pane and lights.
     ///
@@ -58,7 +62,7 @@ pub const SceneDemo = struct {
         _ = try scene.addChild(root, .{
             .name = "floor",
             .geometry = .{ .plane = .{ .width = 8, .height = 8 } },
-            .material = .{ .base_color = ziggui.Color.hex(0xc9ccd3), .specular = 0.1 },
+            .material = .{ .base_color = ziggui.Color.hex(0xc9ccd3), .specular = 0.1, .reflectivity = 0.15 },
             .transform = .{ .rotation = floor_turn },
             .casts_shadows = false,
         });
@@ -71,7 +75,7 @@ pub const SceneDemo = struct {
         _ = try scene.addChild(root, .{
             .name = "sphere",
             .geometry = .{ .sphere = .{ .radius = 0.45 } },
-            .material = .{ .base_color = ziggui.Color.hex(0xe0533d), .specular = 0.8, .shininess = 64 },
+            .material = .{ .base_color = ziggui.Color.hex(0xe0533d), .specular = 0.8, .shininess = 64, .reflectivity = 0.35 },
             .transform = .{ .position = ziggui.Vec3.init(1.7, 0.45, 0.6) },
         });
         _ = try scene.addChild(root, .{
@@ -81,16 +85,16 @@ pub const SceneDemo = struct {
             .transform = .{ .position = ziggui.Vec3.init(-1.6, 0.6, 0.9), .rotation = ziggui.Quaternion.fromAxisAngle(ziggui.Vec3.up, 0.5) },
         });
 
-        var sun = ziggui.SceneNode{ .name = "sun", .light = .{ .intensity = 0.9 }, .transform = .{ .position = ziggui.Vec3.init(3, 6, 4) } };
+        var sun = ziggui.SceneNode{ .name = "sun", .light = .{ .kind = .{ .directional = .{ .angular_diameter = 4 } }, .intensity = 0.9 }, .transform = .{ .position = ziggui.Vec3.init(3, 6, 4) } };
         sun.lookAt(ziggui.Vec3.zero, ziggui.Vec3.up);
         _ = try scene.addChild(root, sun);
         _ = try scene.addChild(root, .{
             .name = "lamp",
-            .light = .{ .kind = .{ .point = .{ .range = 8 } }, .color = ziggui.Color.hex(0xffc37a), .intensity = 0.8 },
+            .light = .{ .kind = .{ .point = .{ .range = 8, .casts_shadows = true, .radius = 0.25 } }, .color = ziggui.Color.hex(0xffc37a), .intensity = 0.8 },
             .transform = .{ .position = ziggui.Vec3.init(-2, 2, 2) },
         });
 
-        const self = Self{ .scene = scene, .cube = cube };
+        const self = Self{ .scene = scene, .cube = cube, .ray_traced = ziggui.State(bool).init(allocator, false) };
         return self;
     }
 
@@ -98,11 +102,14 @@ pub const SceneDemo = struct {
     ///
     /// - `self`: the demo.
     pub fn deinit(self: *Self) void {
+        self.ray_traced.deinit();
         self.scene.deinit();
     }
 
     /// The 3D card: the cube turned for the frame clock's time, drawn with
-    /// camera control on (drag to orbit; pinch or ⌘-scroll to zoom).
+    /// camera control on (drag to orbit; pinch or ⌘-scroll to zoom), over a
+    /// toggle between rasterized and ray-traced lighting, greyed out with a
+    /// hint where the GPU cannot trace rays (`SystemInfo.ray_tracing`).
     ///
     /// - `self`: the demo.
     /// - `theme`: the theme this frame draws with.
@@ -114,11 +121,20 @@ pub const SceneDemo = struct {
             const turn: f32 = @floatCast(@mod(angle, 2 * std.math.pi));
             cube.transform.rotation = ziggui.Quaternion.fromAxisAngle(ziggui.Vec3.init(0.3, 1, 0.1), turn);
         }
+        self.scene.lighting_technique = if (self.ray_traced.get()) .rayTraced else .rasterized;
+        const traces = ziggui.SystemInfo.shared().ray_tracing;
+        const hint = if (traces)
+            "Trace rays for soft shadows from the sun and the lamp, and reflections in the floor and the sphere."
+        else
+            "Needs Metal ray tracing on Apple silicon: this GPU draws shadow maps and no reflections.";
         return gallery.Card.view(
             theme,
             "SceneView: a lit, textured cube casting a shadow, a translucent pane (drag to orbit; pinch or ⌘-scroll to zoom)",
-            "ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput",
-            ziggui.SceneView(&self.scene, .{ .allows_camera_control = true, .animating = true }).frameMaxWidth().frameHeight(440),
+            "ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput · Scene.lighting_technique",
+            ziggui.VStack(.{
+                ziggui.SceneView(&self.scene, .{ .allows_camera_control = true, .animating = true }).frameMaxWidth().frameHeight(440),
+                ziggui.Toggle("Ray tracing", self.ray_traced.binding()).toggleStyle(.checkbox).disabled(!traces).help(hint),
+            }).spacing(10).alignment(.leading),
         );
     }
 };

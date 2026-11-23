@@ -30,6 +30,9 @@ pub const SystemInfo = struct {
     driver_version: [capacity]u8 = undefined,
     /// How many bytes of `driver_version` are used.
     driver_version_length: usize = 0,
+    /// Whether the GPU draws a scene's `SceneLightingTechnique.rayTraced`
+    /// shadows by tracing rays (else from shadow maps), once noted.
+    ray_tracing: bool = false,
 
     /// The one instance.
     var shared_info: Self = .{};
@@ -55,6 +58,15 @@ pub const SystemInfo = struct {
         self.driver_length = Self.keep(&self.driver, driver);
         self.gpu_length = Self.keep(&self.gpu, gpu);
         self.driver_version_length = Self.keep(&self.driver_version, driver_version);
+    }
+
+    /// Notes whether the GPU traces a scene's shadow rays; the SDL runtime
+    /// calls it once its GPU device is up.
+    ///
+    /// - `self`: the facts.
+    /// - `supported`: whether `SceneLightingTechnique.rayTraced` traces rays here.
+    pub fn noteRayTracing(self: *Self, supported: bool) void {
+        self.ray_tracing = supported;
     }
 
     /// Reads the system now: what was noted, the installed player and its
