@@ -30,6 +30,9 @@ pub const SdlKey = struct {
     /// Forward delete, `⌦` (`SDLK_DELETE`).
     pub const delete: u32 = 0x7f;
 
+    /// The slash key (`SDLK_SLASH`).
+    pub const slash: u32 = '/';
+
     // Keys with none: their keycode is their scancode with `scancode_mask`.
 
     /// The bit a key with no character has over its scancode (`SDLK_SCANCODE_MASK`).

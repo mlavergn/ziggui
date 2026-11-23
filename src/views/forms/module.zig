@@ -88,6 +88,8 @@ pub const SdlKey = @import("../module.zig").SdlKey;
 pub const VirtualList = @import("../module.zig").VirtualList;
 /// The build-time theme colors (from the views module).
 pub const BuildTokens = @import("../module.zig").BuildTokens;
+/// Shared control measures (from the views module).
+pub const ControlMetrics = @import("../module.zig").ControlMetrics;
 /// A list row that shows its selection (from the views module).
 pub const SelectableRow = @import("../module.zig").SelectableRow;
 /// The colors a `SelectableRow`'s content is drawn in (from the views module).

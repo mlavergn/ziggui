@@ -9,15 +9,6 @@ const log = std.log.scoped(.ziggui_editable_text);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 
-/// The space inside the editing field around its text, in points.
-const field_inset: f32 = 2;
-
-/// The editing field's corner radius, in points.
-const field_radius: f32 = 4;
-
-/// The editing field's focus ring width, in points.
-const field_ring: f32 = 1.5;
-
 /// A label that edits in place (`EditableTextState` has the rules): its text,
 /// or, while editing, a chromeless field in its place with all its text
 /// selected, on the raised ground with a focus ring, so it reads on a
@@ -38,11 +29,11 @@ pub fn EditableText(state: *mod.EditableTextState, selected: bool, on_tap: ?mod.
     if (state.editing) {
         const tokens = mod.BuildScope.shared().tokens();
         return mod.TextField("", &state.field)
-            .chromeless(field_inset)
+            .chromeless(mod.ControlMetrics.inline_field_inset)
             .foreground(tokens.label)
             .background(tokens.raised)
-            .cornerRadius(field_radius)
-            .border(tokens.focus_ring, field_ring)
+            .cornerRadius(mod.ControlMetrics.inline_field_radius)
+            .border(tokens.focus_ring, mod.ControlMetrics.inline_field_ring)
             .onSubmit(mod.Callback.init(mod.EditableTextState, state, mod.EditableTextState.commit));
     }
     return mod.Text(state.text())

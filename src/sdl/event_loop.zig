@@ -803,8 +803,11 @@ const EventRouter = struct {
                         sdl_c.SDLK_END => field.end(shift),
                         // Multi-line editors insert a newline; single-line fields submit.
                         sdl_c.SDLK_RETURN, sdl_c.SDLK_KP_ENTER => if (field.multiline) field.insert("\n") catch |err| log.debug("newline not inserted [{t}]", .{err}) else views.Focus.shared().submit(),
-                        // Tab indents a multi-line editor (no focus traversal here).
-                        sdl_c.SDLK_TAB => if (field.multiline) field.insert("    ") catch |err| log.debug("indent not inserted [{t}]", .{err}),
+                        // Tab indents a multi-line editor; in a one-line field it
+                        // moves to the next field (⇧Tab the previous).
+                        sdl_c.SDLK_TAB => if (field.multiline) field.insert("    ") catch |err| log.debug("indent not inserted [{t}]", .{err}) else {
+                            _ = views.Focus.shared().advance(self.hits, shift);
+                        },
                         sdl_c.SDLK_ESCAPE => views.Focus.shared().clear(),
                         else => {},
                     }

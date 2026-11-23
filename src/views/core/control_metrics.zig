@@ -46,6 +46,13 @@ pub const ControlMetrics = struct {
     pub const picker_segment_padding: f32 = 20;
     /// An icon segmented control's segment width.
     pub const icon_segment_width: f32 = 32;
+    /// The space inside an in-place field (`EditableText`'s, the file
+    /// browser's path field) around its text.
+    pub const inline_field_inset: f32 = 2;
+    /// An in-place field's corner radius.
+    pub const inline_field_radius: f32 = 4;
+    /// An in-place field's focus ring width.
+    pub const inline_field_ring: f32 = 1.5;
     /// A slider's height.
     pub const slider_height: f32 = 20;
     /// A slider knob's radius.

@@ -171,6 +171,11 @@ pub const Kit = struct {
     /// (`--rename`): after the frame's section change, which drops the keyboard.
     rename_on_show: ?usize = null,
 
+    /// Whether the Files section's path bar turns into its field as the panel
+    /// next builds (`--path-entry`): after the first frame's section change,
+    /// which drops the keyboard.
+    path_entry_on_show: bool = false,
+
     /// Whether the Lists section's first disclosure group shows its content.
     disclosure_open: bool = true,
 
@@ -536,6 +541,10 @@ pub const Kit = struct {
         const secondary = ziggui.BuildScope.shared().tokens().secondary_label;
         self.takeDialog() catch @panic("oom");
         self.files.shows_file = if (self.text_only.get()) Self.isText else null;
+        if (self.path_entry_on_show) {
+            self.path_entry_on_show = false;
+            self.files.beginPathEntry() catch @panic("oom");
+        }
         const said = if (self.files.pickAlloc(allocator) catch @panic("oom")) |pick|
             allocator.print("Picks the {s} {s}", .{ if (pick.kind == .directory) "folder" else "file", pick.path }) catch @panic("oom")
         else

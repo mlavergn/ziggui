@@ -112,14 +112,19 @@ const FileRows = struct {
 const FileBrowserActions = struct {
     const Self = @This();
 
-    /// Selects entry `index`; a double click on a folder opens it.
+    /// Selects entry `index`; a double click opens a folder, or picks a
+    /// file (`FileBrowserState.on_pick`).
     ///
     /// - `state`: the browser.
     /// - `index`: the entry tapped, an index into its nodes.
     fn tap(state: *mod.FileBrowserState, index: usize) void {
         state.select(index);
         if (!mod.PointerInput.shared().isDoubleClick()) return;
-        _ = state.enter() catch |err| log.err("folder not opened [{any}]", .{err});
+        const entered = state.enter() catch |err| {
+            log.err("folder not opened [{any}]", .{err});
+            return;
+        };
+        if (!entered) _ = state.pick();
     }
 
     /// Selects the ".." row; a double click opens the enclosing folder.
@@ -147,6 +152,39 @@ const FileBrowserActions = struct {
     }
 };
 
+/// The path bar's path: a label that a click (or ⌘⇧G, or "/" in the list)
+/// turns into a field a path is typed into, gone to on Enter, drawn as
+/// `EditableText`'s field (`ControlMetrics.inline_field_*`).
+const FilePathBar = struct {
+    const Self = @This();
+
+    /// The folder's path as a label, or the field while one is typed.
+    ///
+    /// - `state`: the browser's state.
+    /// - `tokens`: the frame's colors.
+    /// - Returns: the label or the field.
+    fn view(state: *mod.FileBrowserState, tokens: mod.BuildTokens) mod.View {
+        if (state.editing_path) {
+            return mod.TextField("Type a folder's path", &state.path_field)
+                .chromeless(mod.ControlMetrics.inline_field_inset)
+                .size(12)
+                .foreground(tokens.label)
+                .background(tokens.raised)
+                .cornerRadius(mod.ControlMetrics.inline_field_radius)
+                .border(tokens.focus_ring, mod.ControlMetrics.inline_field_ring)
+                .onSubmit(mod.Callback.attempt(mod.FileBrowserState, state, mod.FileBrowserState.goToTypedPath, "typed path not opened"))
+                .frameMaxWidth();
+        }
+        return mod.Text(state.path.items)
+            .size(12)
+            .foreground(tokens.secondary_label)
+            .truncated()
+            .onTap(mod.Callback.attempt(mod.FileBrowserState, state, mod.FileBrowserState.beginPathEntry, "path bar not edited"))
+            .pointerStyle(.horizontalText)
+            .help("Click to type a folder's path");
+    }
+};
+
 /// A file browser: a path bar (the folder's path, a "Hidden" toggle), then
 /// the folder's entries as selectable rows, folders first, each with its
 /// glyph and a file's size, under a ".." row for the enclosing folder (none
@@ -158,15 +196,21 @@ const FileBrowserActions = struct {
 /// forwards key-downs to the state while the browser has the keyboard
 /// (`FileBrowserState.keyDown`: arrows, pages, Home/End, Return, Backspace, a
 /// letter to jump) and reads the pick with `pickAlloc`, a file or a folder
-/// alike. A folder that cannot be read is said under the path bar. One picker
+/// alike. A click on the path (or ⌘⇧G, or "/" in the list) turns it into a
+/// field: a path typed there (absolute, relative to the folder, or under
+/// `FileBrowserState.home` with `~`) opens on Enter, a file's folder with
+/// the file selected; Esc or a press elsewhere drops it. A folder that
+/// cannot be read is said under the path bar. One picker
 /// for both kinds, which the native dialogs on Windows and Linux cannot offer.
 ///
 /// - `state`: the folder and selection; app-owned, at a stable address.
 /// - `focused`: whether the list has the keyboard focus (the selection's fill).
 /// - Returns: the browser, filling what it is given.
 pub fn FileBrowser(state: *mod.FileBrowserState, focused: bool) mod.View {
-    // A listing that landed since the last frame shows in this one.
+    // A listing that landed since the last frame shows in this one; a path
+    // field that lost the keyboard (Esc, a press elsewhere) is a label again.
     _ = state.poll();
+    state.syncPathEntry();
     const tokens = mod.BuildScope.shared().tokens();
     const allocator = mod.BuildScope.shared().allocator();
 
@@ -177,11 +221,12 @@ pub fn FileBrowser(state: *mod.FileBrowserState, focused: bool) mod.View {
         if (state.shows(node)) shown.appendAssumeCapacity(index);
     }
 
-    const bar = mod.StackBuilder.make(.horizontal, 6, .center, .{
-        mod.Text(state.path.items).size(12).foreground(tokens.secondary_label).truncated(),
-        mod.Spacer(),
-        mod.Toggle("Hidden", state.show_hidden.binding()),
-    }).paddingInsets(.{ .top = 4, .leading = 8, .bottom = 4, .trailing = 8 });
+    // While a path is typed, the field takes the bar up to the toggle.
+    const hidden = mod.Toggle("Hidden", state.show_hidden.binding());
+    const bar = (if (state.editing_path)
+        mod.StackBuilder.make(.horizontal, 12, .center, .{ FilePathBar.view(state, tokens), hidden.fixedSize() })
+    else
+        mod.StackBuilder.make(.horizontal, 6, .center, .{ FilePathBar.view(state, tokens), mod.Spacer(), hidden })).paddingInsets(.{ .top = 4, .leading = 8, .bottom = 4, .trailing = 8 });
 
     const failure: mod.View = if (state.failure) |err|
         mod.Text(allocator.print("That folder cannot be read ({t}).", .{err}) catch @panic("oom")).size(11).foreground(tokens.removed).paddingInsets(.{ .leading = 8, .bottom = 4 })

@@ -10,7 +10,7 @@ pub const std_options: std.Options = .{
 
 /// The command line: `ziggui-gallery [--section <n>] [--theme <n>] [--accent <n>]
 /// [--dark] [--menu <n>] [--sheet] [--alert] [--popover] [--passthrough]
-/// [--options-menu] [--picker-menu] [--find] [--dialog] [--select] [--rename]
+/// [--options-menu] [--picker-menu] [--find] [--dialog] [--select] [--rename] [--path-entry]
 /// [--search <text>] [--components] [--video <url or path>]
 /// [--screenshot <out.bmp> [--gpu] [--bench <n>]]`.
 ///
@@ -32,7 +32,8 @@ pub const std_options: std.Options = .{
 /// `--dialog` and `--select` show the Text Editor section's find bar (after
 /// `greeting`), its Open dialog, and a selection across three lines
 /// (`--section 1`). `--rename` shows the Lists section's renamed row, its
-/// name selected (`--section 6`). `--search` types
+/// name selected (`--section 6`). `--path-entry` shows the Files section's
+/// path bar as the field a path is typed into (`--section 14`). `--search` types
 /// its text into the sidebar's search, which shows its first match.
 /// `--components` has the sidebar list every component the cards name, as
 /// the top bar's switch does.
@@ -99,6 +100,8 @@ const Arguments = struct {
 
     /// Rename the Lists section's rename card's second row, its name selected in the field.
     rename: bool = false,
+    /// Show the Files section's path bar as the field a path is typed into.
+    path_entry: bool = false,
 
     /// Draw one frame to this BMP instead of opening a window.
     screenshot: ?[]const u8 = null,
@@ -148,6 +151,8 @@ const Arguments = struct {
                 arguments.select = true;
             } else if (std.mem.eql(u8, argument, "--rename")) {
                 arguments.rename = true;
+            } else if (std.mem.eql(u8, argument, "--path-entry")) {
+                arguments.path_entry = true;
             } else if (std.mem.eql(u8, argument, "--gpu")) {
                 arguments.gpu = true;
             } else if (std.mem.eql(u8, argument, "--bench") and index + 1 < argument_vector.len) {
@@ -213,6 +218,7 @@ const Arguments = struct {
         if (self.dialog) shown.editor.openDialog();
         if (self.select) shown.editor.selectBetween("const greeting", "// Click");
         if (self.rename) shown.kit.rename_on_show = 1;
+        if (self.path_entry) shown.kit.path_entry_on_show = true;
         if (self.search) |text| shown.search.field.setText(text) catch |err| log.err("search not typed: {s}", .{@errorName(err)});
         if (self.video) |video| shown.media.sample = video;
     }
@@ -235,6 +241,8 @@ pub fn main(init: std.process.Init) !void {
     defer allocator.destroy(shown);
     shown.* = try gallery.Gallery.init(allocator);
     defer shown.deinit();
+    // The Files section's path bar takes `~` for the user's home (the map lives as long as the process).
+    shown.kit.files.home = init.environ_map.get("HOME") orelse init.environ_map.get("USERPROFILE");
 
     shown.section.set(arguments.section);
     shown.theme_family.set(arguments.theme);

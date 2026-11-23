@@ -49,6 +49,10 @@ const FolderListing = struct {
     /// Whether to select the ".." row once listed instead (a refresh while it
     /// was selected).
     select_parent: bool = false,
+    /// Whether a `path` naming something other than a folder (a file) lists
+    /// the folder holding it instead, that entry selected: a path typed into
+    /// the path bar, decided here, off the UI thread, rather than by a stat on it.
+    file_opens_folder: bool = false,
     /// The folder, absolute, once read.
     absolute: []const u8 = "",
     /// The folder's entries, once read.
@@ -107,13 +111,22 @@ const FolderListing = struct {
         mod.FrameClock.shared().wake();
     }
 
-    /// Resolves the folder and reads its entries into the arena.
+    /// Resolves the folder and reads its entries into the arena; with
+    /// `file_opens_folder`, a path that is not a folder reads the one holding it.
     ///
     /// - `self`: the listing.
     /// - Returns: nothing; propagates an error resolving or reading the folder.
     fn read(self: *Self) !void {
         self.absolute = try std.Io.Dir.cwd().realPathFileAlloc(self.io, self.path, self.arena.allocator());
-        self.nodes = try self.list();
+        self.nodes = self.list() catch |err| {
+            if (err != error.NotDir or !self.file_opens_folder) return err;
+            // Not a folder: the one holding it, it selected (both slices of the arena's `absolute`).
+            const folder = std.Io.Dir.path.dirname(self.absolute) orelse return err;
+            self.selected_name = std.Io.Dir.path.basename(self.absolute);
+            self.absolute = folder;
+            self.nodes = try self.list();
+            return;
+        };
     }
 
     /// Reads a folder's entries, folders first, each group by name; anything
@@ -230,6 +243,10 @@ pub const FileBrowserState = struct {
     /// - `name`: the file's name.
     /// - Returns: true when it shows.
     shows_file: ?*const fn (name: []const u8) bool = null,
+    /// What a double click or Return on a shown file calls (a document
+    /// picker's open); the app reads the file with `pickAlloc`. Null leaves
+    /// Return on a file to the app's own key handler, as `keyDown` says.
+    on_pick: ?mod.Callback = null,
     /// The list's scroll offset.
     scroll: mod.ScrollState = .{},
     /// The listing under way, if any; adopted by `poll` when it lands.
@@ -239,6 +256,13 @@ pub const FileBrowserState = struct {
     /// A folder asked for while a listing ran: started, in its place, once
     /// that one lands.
     queued: ?*FolderListing = null,
+    /// The path bar's field, while a path is typed into it.
+    path_field: mod.TextFieldState,
+    /// Whether the path bar is a field a path is typed into (`beginPathEntry`).
+    editing_path: bool = false,
+    /// The folder a typed path's leading `~` stands for (the user's home,
+    /// which the app reads from its environment), or null to take `~` as a name.
+    home: ?[]const u8 = null,
 
     /// No folder yet: `open` lists one.
     ///
@@ -247,7 +271,13 @@ pub const FileBrowserState = struct {
     /// - Returns: the state.
     pub fn init(allocator: std.mem.Allocator, io: std.Io) Self {
         log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
-        const self = Self{ .allocator = allocator, .io = io, .arena = std.heap.ArenaAllocator.init(allocator), .show_hidden = renderer.State(bool).init(allocator, false) };
+        const self = Self{
+            .allocator = allocator,
+            .io = io,
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .show_hidden = renderer.State(bool).init(allocator, false),
+            .path_field = mod.TextFieldState.init(allocator),
+        };
         return self;
     }
 
@@ -258,6 +288,7 @@ pub const FileBrowserState = struct {
         if (self.future) |*future| future.cancel(self.io);
         if (self.listing) |listing| listing.destroy();
         if (self.queued) |queued| queued.destroy();
+        self.path_field.deinit();
         self.show_hidden.deinit();
         self.arena.deinit();
         self.path.deinit(self.allocator);
@@ -273,6 +304,55 @@ pub const FileBrowserState = struct {
     /// stays and `failure` says why; propagates allocation failure.
     pub fn open(self: *Self, path: []const u8) std.mem.Allocator.Error!void {
         try self.request(path, null, false);
+    }
+
+    /// Turns the path bar into a field holding the folder's path, all of it
+    /// selected, with the keyboard: what is typed replaces it.
+    ///
+    /// - `self`: the state.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn beginPathEntry(self: *Self) std.mem.Allocator.Error!void {
+        try self.path_field.setText(self.path.items);
+        self.path_field.selectAll();
+        self.editing_path = true;
+        mod.Focus.shared().set(&self.path_field);
+    }
+
+    /// Goes to the path typed into the path bar (Enter): absolute, relative
+    /// to the folder on show, or under the home with a leading `~`. A folder
+    /// opens; a file opens the folder holding it with the file selected;
+    /// what cannot be read keeps the folder on show and says why (`failure`).
+    /// An empty path goes nowhere. Either way the bar is a label again.
+    ///
+    /// - `self`: the state.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn goToTypedPath(self: *Self) std.mem.Allocator.Error!void {
+        defer self.endPathEntry();
+        const typed = std.mem.trim(u8, self.path_field.text(), " \t\r\n");
+        if (typed.len == 0) return;
+        const resolved = try self.resolveTyped(typed);
+        defer self.allocator.free(resolved);
+        // A file goes to its folder, selected there: the listing finds out, off the UI thread.
+        const listing = try FolderListing.create(self.allocator, self.io, resolved, null);
+        listing.file_opens_folder = true;
+        self.queue(listing);
+    }
+
+    /// Turns the path bar back into a label, leaving the folder as it is.
+    ///
+    /// - `self`: the state.
+    pub fn endPathEntry(self: *Self) void {
+        self.editing_path = false;
+        if (mod.Focus.shared().focused() == &self.path_field) mod.Focus.shared().clear();
+    }
+
+    /// Notes, as the browser builds, that the path bar's field lost the
+    /// keyboard (Esc, or a press elsewhere): the typed path is dropped and
+    /// the bar is a label again.
+    ///
+    /// - `self`: the state.
+    pub fn syncPathEntry(self: *Self) void {
+        if (self.editing_path and mod.Focus.shared().focused() != &self.path_field) self.editing_path = false;
     }
 
     /// Lists the folder on show again, keeping the selection on the same name
@@ -410,7 +490,9 @@ pub const FileBrowserState = struct {
     /// Page Up/Page Down move a page, Home/End go to the first and last rows,
     /// Return, → and ⌘↓ (Ctrl+↓ off macOS) open the selected folder (".."
     /// goes up), Backspace, ← and ⌘↑ (Ctrl+↑) open the enclosing folder, and
-    /// a letter or digit selects the next entry starting with it. A key with
+    /// a letter or digit selects the next entry starting with it; ⌘⇧G
+    /// (Ctrl+Shift+G) or "/" types a path into the path bar, as Finder's Go to
+    /// Folder does ("/" starting it). A key with
     /// any other modifier (Alt; Ctrl on macOS, where ⌃↑ is Mission Control;
     /// the Windows key elsewhere) is left to the app. The app forwards
     /// key-downs while the browser is focused and no text field is.
@@ -419,13 +501,25 @@ pub const FileBrowserState = struct {
     /// - `keycode`: the key's `SDL_Keycode` (`SdlKey`).
     /// - `modifiers`: its `SDL_Keymod` mask.
     /// - `mac`: whether the command key is ⌘ (macOS) rather than Ctrl.
-    /// - Returns: whether the browser used the key (Return on a file is left
-    ///   to the app, which may take it as the pick); propagates allocation failure.
+    /// - Returns: whether the browser used the key (Return on a file calls
+    ///   `on_pick`, or without one is left to the app, which may take it as
+    ///   the pick); propagates allocation failure.
     pub fn keyDown(self: *Self, keycode: u32, modifiers: u16, mac: bool) std.mem.Allocator.Error!bool {
         const command_mask = if (mac) mod.SdlKey.gui_mask else mod.SdlKey.ctrl_mask;
         const other_mask = mod.SdlKey.alt_mask | (if (mac) mod.SdlKey.ctrl_mask else mod.SdlKey.gui_mask);
         if (modifiers & other_mask != 0) return false;
         const command = modifiers & command_mask != 0;
+        const shift = modifiers & mod.SdlKey.shift_mask != 0;
+        if (command and shift and keycode < 0x80 and std.ascii.toLower(@intCast(keycode)) == 'g') {
+            try self.beginPathEntry();
+            return true;
+        }
+        // The field starts empty: the slash's own typed text then lands in it.
+        if (!command and keycode == mod.SdlKey.slash) {
+            try self.beginPathEntry();
+            try self.path_field.setText("");
+            return true;
+        }
         // More rows than there are, so Home and End reach the ends.
         const every_row: isize = @intCast(self.nodes.len + 1);
         switch (keycode) {
@@ -435,7 +529,8 @@ pub const FileBrowserState = struct {
             mod.SdlKey.page_down => self.move(self.pageRows()),
             mod.SdlKey.home => self.move(-every_row),
             mod.SdlKey.end => self.move(every_row),
-            mod.SdlKey.enter, mod.SdlKey.keypad_enter, mod.SdlKey.right_arrow => return self.enter(),
+            mod.SdlKey.enter, mod.SdlKey.keypad_enter => return try self.enter() or self.pick(),
+            mod.SdlKey.right_arrow => return self.enter(),
             mod.SdlKey.backspace, mod.SdlKey.left_arrow => return self.leave(),
             else => {
                 if (command or keycode > 0x7e or !std.ascii.isAlphanumeric(@intCast(keycode))) return false;
@@ -514,6 +609,19 @@ pub const FileBrowserState = struct {
         return .{ .path = try std.Io.Dir.path.join(allocator, &.{ self.path.items, node.name }), .kind = node.kind };
     }
 
+    /// Picks the selected file: calls `on_pick` when the selection is a
+    /// shown file (a double click or Return on it).
+    ///
+    /// - `self`: the state.
+    /// - Returns: whether `on_pick` was called.
+    pub fn pick(self: *const Self) bool {
+        const node = self.selected() orelse return false;
+        if (node.kind == .directory) return false;
+        const callback = self.on_pick orelse return false;
+        callback.call();
+        return true;
+    }
+
     /// Whether an entry shows under the hidden-names setting and, for a
     /// file, `shows_file`.
     ///
@@ -563,12 +671,38 @@ pub const FileBrowserState = struct {
     fn request(self: *Self, path: []const u8, selected_name: ?[]const u8, select_parent: bool) std.mem.Allocator.Error!void {
         const listing = try FolderListing.create(self.allocator, self.io, path, selected_name);
         listing.select_parent = select_parent;
+        self.queue(listing);
+    }
+
+    /// Runs a listing now, or, while another runs, next (in place of any
+    /// waiting already).
+    ///
+    /// - `self`: the state.
+    /// - `listing`: the listing; the state owns it from here.
+    fn queue(self: *Self, listing: *FolderListing) void {
         if (self.listing != null) {
             if (self.queued) |stale| stale.destroy();
             self.queued = listing;
             return;
         }
         self.start(listing);
+    }
+
+    /// A typed path made absolute: a leading `~` stands for `home` (when the
+    /// app gave one), a relative path is taken from the folder on show, and
+    /// `.` and `..` are resolved.
+    ///
+    /// - `self`: the state.
+    /// - `typed`: the path, trimmed, not empty.
+    /// - Returns: the absolute path, owned by the caller (`allocator`);
+    ///   propagates allocation failure.
+    fn resolveTyped(self: *const Self, typed: []const u8) std.mem.Allocator.Error![]u8 {
+        if (self.home) |home| {
+            const tilde = std.mem.eql(u8, typed, "~") or std.mem.startsWith(u8, typed, "~/") or std.mem.startsWith(u8, typed, "~\\");
+            if (tilde) return std.Io.Dir.path.resolveAlloc(self.allocator, &.{ home, typed[@min(typed.len, 2)..] });
+        }
+        if (std.Io.Dir.path.isAbsolute(typed)) return std.Io.Dir.path.resolveAlloc(self.allocator, &.{typed});
+        return std.Io.Dir.path.resolveAlloc(self.allocator, &.{ self.path.items, typed });
     }
 
     /// Runs `listing`: concurrently when the `Io` can, else in place and
@@ -900,4 +1034,134 @@ test "a file browser state shows only the files its filter takes, and every fold
     // A filtered-out file selected directly is no pick.
     state.select(1);
     try std.testing.expect(state.selected() == null);
+}
+
+test "a file browser state picks a file on Return through on_pick, and leaves it to the app without one" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "docs/inner");
+    try temporary.dir.writeFile(io, .{ .sub_path = "docs/report.db", .data = "r" });
+    const root = try temporary.dir.realPathFileAlloc(io, "docs", allocator);
+    defer allocator.free(root);
+
+    const Probe = struct {
+        const Self = @This();
+
+        /// How many picks came.
+        picks: usize = 0,
+
+        /// Counts a pick.
+        ///
+        /// - `self`: the probe.
+        fn picked(self: *Self) void {
+            self.picks += 1;
+        }
+    };
+    var probe: Probe = .{};
+    var state = FileBrowserState.init(allocator, io);
+    defer state.deinit();
+    try state.open(root);
+    state.wait();
+    // Without `on_pick`, Return on a file is the app's.
+    state.select(1);
+    try std.testing.expectEqualStrings("report.db", state.selected().?.name);
+    try std.testing.expect(!try state.keyDown(mod.SdlKey.enter, 0, true));
+    state.on_pick = mod.Callback.init(Probe, &probe, Probe.picked);
+    try std.testing.expect(try state.keyDown(mod.SdlKey.enter, 0, true));
+    try std.testing.expectEqual(@as(usize, 1), probe.picks);
+    // The right arrow enters folders only.
+    try std.testing.expect(!try state.keyDown(mod.SdlKey.right_arrow, 0, true));
+    try std.testing.expectEqual(@as(usize, 1), probe.picks);
+    // A folder is entered, never picked.
+    state.select(0);
+    try std.testing.expect(!state.pick());
+}
+
+test "a typed path opens a folder, relative to the one on show or under ~; a file opens its folder with it selected" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "home/docs/old");
+    try temporary.dir.writeFile(io, .{ .sub_path = "home/docs/notes.txt", .data = "n" });
+    const home = try temporary.dir.realPathFileAlloc(io, "home", allocator);
+    defer allocator.free(home);
+    const docs = try std.Io.Dir.path.join(allocator, &.{ home, "docs" });
+    defer allocator.free(docs);
+    const old = try std.Io.Dir.path.join(allocator, &.{ docs, "old" });
+    defer allocator.free(old);
+
+    var state = FileBrowserState.init(allocator, io);
+    defer state.deinit();
+    defer mod.Focus.shared().clear();
+    state.home = home;
+    try state.open(home);
+    state.wait();
+
+    // The bar becomes a field holding the path, with the keyboard.
+    try state.beginPathEntry();
+    try std.testing.expect(state.editing_path);
+    try std.testing.expectEqualStrings(home, state.path_field.text());
+    try std.testing.expectEqual(@as(?*mod.TextFieldState, &state.path_field), mod.Focus.shared().focused());
+
+    // Relative to the folder on show, `..` resolved.
+    try state.path_field.setText("docs/old/..");
+    try state.goToTypedPath();
+    state.wait();
+    try std.testing.expectEqualStrings(docs, state.path.items);
+    try std.testing.expect(!state.editing_path);
+    try std.testing.expectEqual(null, mod.Focus.shared().focused());
+
+    // Under ~.
+    try state.beginPathEntry();
+    try state.path_field.setText(" ~/docs/old ");
+    try state.goToTypedPath();
+    state.wait();
+    try std.testing.expectEqualStrings(old, state.path.items);
+
+    // A file: its folder opens, the file selected.
+    try state.beginPathEntry();
+    try state.path_field.setText("~/docs/notes.txt");
+    try state.goToTypedPath();
+    state.wait();
+    try std.testing.expectEqualStrings(docs, state.path.items);
+    try std.testing.expectEqualStrings("notes.txt", state.selected().?.name);
+
+    // Nothing there: the folder stays and says why.
+    try state.beginPathEntry();
+    try state.path_field.setText("/no/such/folder/here");
+    try state.goToTypedPath();
+    state.wait();
+    try std.testing.expectEqualStrings(docs, state.path.items);
+    try std.testing.expect(state.failure != null);
+}
+
+test "⌘⇧G or a slash starts typing a path; losing the keyboard drops it" {
+    const allocator = std.testing.allocator;
+    var state = FileBrowserState.init(allocator, std.Io.Threaded.global_single_threaded.io());
+    defer state.deinit();
+    defer mod.Focus.shared().clear();
+    try state.path.appendSlice(allocator, "/somewhere");
+
+    try std.testing.expect(try state.keyDown('g', mod.SdlKey.left_gui_mask | mod.SdlKey.left_shift_mask, true));
+    try std.testing.expect(state.editing_path);
+    try std.testing.expectEqualStrings("/somewhere", state.path_field.text());
+    // Esc, or a press elsewhere, takes the keyboard: the path is dropped.
+    mod.Focus.shared().clear();
+    state.syncPathEntry();
+    try std.testing.expect(!state.editing_path);
+
+    // A slash starts it empty, so the slash the key types lands as its first
+    // character (from the root, as Finder's Go to Folder does), not after a second one.
+    try std.testing.expect(try state.keyDown(mod.SdlKey.slash, 0, true));
+    try std.testing.expect(state.editing_path);
+    try std.testing.expectEqualStrings("", state.path_field.text());
+    try state.path_field.insert("/");
+    try std.testing.expectEqualStrings("/", state.path_field.text());
+    // Off macOS the command key is Ctrl.
+    state.endPathEntry();
+    try std.testing.expect(try state.keyDown('G', mod.SdlKey.left_ctrl_mask | mod.SdlKey.left_shift_mask, false));
+    try std.testing.expect(state.editing_path);
 }
