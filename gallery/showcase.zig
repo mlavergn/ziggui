@@ -88,6 +88,14 @@ const table_rows = [_][]const []const u8{
 };
 
 /// The Controls panel's radio group's options.
+/// The Toggles card's checkbox rows: each explicit `CheckboxStyle`, its row's
+/// title, and the color its checkboxes are given with `.foreground()`, if any.
+const checkbox_styles = [_]struct { style: ziggui.CheckboxStyle, title: []const u8, tint: ?ziggui.Color }{
+    .{ .style = .rounded, .title = "Rounded", .tint = null },
+    .{ .style = .square, .title = "Square", .tint = ziggui.Color.hex(0xDD4466) },
+    .{ .style = .circular, .title = "Circular", .tint = null },
+};
+
 const radio_options = [_][]const u8{ "Automatic", "On", "Off" };
 
 /// The split view card's sidebar: mail folders, each with an icon.
@@ -191,10 +199,11 @@ const navigation_messages = [_]NavigationEntry{
 pub const Showcase = struct {
     const Self = @This();
 
-    /// The Canvas card's week of readings, each a fraction of the plot's height.
-    const chart_readings = [_]f32{ 0.35, 0.6, 0.45, 0.8, 0.55, 0.9, 0.7 };
-    /// The Canvas card's day under each reading.
-    const chart_days = [_][]const u8{ "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+    /// The time the Canvas card's clock shows, in seconds past twelve: 10:09:30,
+    /// fixed, so every screenshot is the same.
+    const clock_seconds: f32 = (10 * 60 + 9) * 60 + 30;
+    /// The Canvas card's clock numerals and where each sits, in twelfths of a turn.
+    const clock_numerals = [_]struct { []const u8, f32 }{ .{ "12", 0 }, .{ "3", 3 }, .{ "6", 6 }, .{ "9", 9 } };
 
     /// The Picture card's picture width, in pixels.
     const picture_width = 2048;
@@ -252,6 +261,13 @@ pub const Showcase = struct {
 
     /// The Controls panel's Notifications toggle.
     notifications: ziggui.State(bool),
+
+    /// The Toggles card's checkboxes, an off and an on one for each explicit
+    /// `CheckboxStyle` in `checkbox_styles`' order.
+    checkboxes: [2 * checkbox_styles.len]ziggui.State(bool),
+
+    /// The Toggles card's labeled checkbox.
+    remember: ziggui.State(bool),
 
     /// The Controls panel's slider, and the progress bar under it.
     slider: ziggui.State(f32),
@@ -359,6 +375,12 @@ pub const Showcase = struct {
             .people_filters = .{ ziggui.TextFieldState.init(allocator), ziggui.TextFieldState.init(allocator), ziggui.TextFieldState.init(allocator) },
             .wifi = ziggui.State(bool).init(allocator, true),
             .notifications = ziggui.State(bool).init(allocator, false),
+            .checkboxes = .{
+                ziggui.State(bool).init(allocator, false), ziggui.State(bool).init(allocator, true),
+                ziggui.State(bool).init(allocator, false), ziggui.State(bool).init(allocator, true),
+                ziggui.State(bool).init(allocator, false), ziggui.State(bool).init(allocator, true),
+            },
+            .remember = ziggui.State(bool).init(allocator, true),
             .slider = ziggui.State(f32).init(allocator, 0.5),
             .stepper = ziggui.State(i64).init(allocator, 2),
             .radio = ziggui.State(i64).init(allocator, 0),
@@ -411,6 +433,8 @@ pub const Showcase = struct {
         self.radio.deinit();
         self.stepper.deinit();
         self.slider.deinit();
+        self.remember.deinit();
+        for (&self.checkboxes) |*checkbox| checkbox.deinit();
         self.notifications.deinit();
         self.wifi.deinit();
         self.chat_selection.deinit();
@@ -499,17 +523,38 @@ pub const Showcase = struct {
         }).spacing(10));
     }
 
-    /// The Toggles card: two switches in rows.
+    /// The Toggles card: two switches in rows, then a row of checkboxes per
+    /// explicit `CheckboxStyle`, one off and one on, the square ones tinted
+    /// with their own `.foreground()`, and a labeled circular one.
     ///
     /// - `self`: the showcase.
     /// - `theme`: the theme this frame draws with.
     /// - Returns: the card.
     pub fn togglesCard(self: *Self, theme: ziggui.Theme) ziggui.View {
-        return gallery.Card.view(theme, "Toggles", "ziggui.Toggle", ziggui.VStack(.{
+        return gallery.Card.view(theme, "Toggles", "ziggui.Toggle · .toggleStyle(.checkbox) · .checkboxStyle(.rounded) · .square · .circular", ziggui.VStack(.{
             Self.row("Wi‑Fi", ziggui.Toggle("", self.wifi.binding())),
             ziggui.Divider(),
             Self.row("Notifications", ziggui.Toggle("", self.notifications.binding())),
+            ziggui.Divider(),
+            ziggui.VStack(.{ self.checkboxRow(0), self.checkboxRow(1), self.checkboxRow(2) }).spacing(10),
+            ziggui.Toggle("Remember this choice", self.remember.binding()).toggleStyle(.checkbox).checkboxStyle(.circular).frameMaxWidth().frameAlign(.leading),
         }).spacing(8));
+    }
+
+    /// One of the Toggles card's checkbox rows: the style's title, then its
+    /// off and on checkboxes, given the style's tint if it has one.
+    ///
+    /// - `self`: the showcase.
+    /// - `index`: the row, an index into `checkbox_styles`.
+    /// - Returns: the row.
+    fn checkboxRow(self: *Self, index: usize) ziggui.View {
+        const style = checkbox_styles[index];
+        var pair: [2]ziggui.View = undefined;
+        for (&pair, 0..) |*checkbox, column| {
+            checkbox.* = ziggui.Toggle("", self.checkboxes[2 * index + column].binding());
+            if (style.tint) |tint| checkbox.* = checkbox.foreground(tint);
+        }
+        return Self.row(style.title, ziggui.HStack(.{ pair[0], pair[1] }).spacing(14).toggleStyle(.checkbox).checkboxStyle(style.style));
     }
 
     /// The Slider card: a slider and the progress bar it drives.
@@ -1299,7 +1344,7 @@ pub const Showcase = struct {
                 ziggui.Image(image).scaledToFit().frame(48, 96).border(theme.colors.separator, 1),
                 ziggui.Spacer(),
             }).spacing(16)),
-            gallery.Card.view(theme, "Canvas: a view that draws itself", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", ziggui.Canvas(Self, self, Self.drawChart).frameMaxWidth().frameHeight(160).clipped().cornerRadius(8)),
+            gallery.Card.view(theme, "Canvas: a view that draws itself", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", ziggui.Canvas(Self, self, Self.drawClock).frameMaxWidth().frameHeight(160).clipped().cornerRadius(8)),
             gallery.Card.view(theme, "Markers: point at one to light it", "CanvasMarkers.crosshair · .ring · .halo · .reticle · .pill · .chip · .callout · .nearest", ziggui.Canvas(Self, self, Self.drawMarkers).frameMaxWidth().frameHeight(220).clipped().cornerRadius(8)),
             gallery.Card.view(theme, "A large picture marked up (click twice for a segment, drag an end; drag to pan, pinch or ⌘-scroll to zoom)", "ziggui.ZoomableImage · ZoomState · AnnotationState · CanvasMarkers", self.pictureDemo(theme)),
         }).spacing(16);
@@ -1501,44 +1546,53 @@ pub const Showcase = struct {
         }).frameMaxWidth().frameHeight(32);
     }
 
-    /// Paints the Canvas card: a week of readings as bars over a tinted
-    /// ground and a grid, a line through their tops, and the day under each,
-    /// every measure taken from the frame, so it follows the card's width;
-    /// a frame too small for the margins draws only the ground.
+    /// Paints the Canvas card: a clock face on a tinted ground, its minute and
+    /// hour ticks, four numerals, the hour, minute and second hands and a hub,
+    /// every measure taken from the frame's shorter side, so it follows the
+    /// card; a frame too small for a face draws only the ground.
     ///
     /// - `self`: the showcase.
     /// - `graphics`: what it draws with.
     /// - `bounds`: the card's frame.
     /// - Returns: nothing; propagates allocation failure.
-    fn drawChart(self: *const Self, graphics: *ziggui.GraphicsContext, bounds: ziggui.Rect) std.mem.Allocator.Error!void {
+    fn drawClock(self: *const Self, graphics: *ziggui.GraphicsContext, bounds: ziggui.Rect) std.mem.Allocator.Error!void {
         _ = self;
         const colors = graphics.context.theme.colors;
         try graphics.verticalGradient(bounds, colors.accent.withAlpha(0.12), colors.accent.withAlpha(0.02));
-        const label_size: f32 = 11;
-        const label_height = graphics.lineHeight(label_size);
-        const plot = ziggui.Rect{ .x = bounds.x + 16, .y = bounds.y + 14, .width = bounds.width - 32, .height = bounds.height - 26 - label_height };
-        // A frame too small for its margins and labels has no plot to draw.
-        if (plot.width <= 0 or plot.height <= 0) return;
-        for (0..5) |step| {
-            const y = plot.y + plot.height * @as(f32, @floatFromInt(step)) / 4;
-            try graphics.line(.{ .x = plot.x, .y = y }, .{ .x = plot.maxX(), .y = y }, 1, colors.separator);
+        const radius = @min(bounds.width, bounds.height) / 2 - 12;
+        if (!(radius > 0)) return;
+        const center = ziggui.Point{ .x = bounds.midX(), .y = bounds.midY() };
+        try graphics.fill(.{ .x = center.x - radius, .y = center.y - radius, .width = 2 * radius, .height = 2 * radius }, radius, colors.control_background);
+        for (0..60) |minute| {
+            const turn = @as(f32, @floatFromInt(minute)) / 60;
+            const hour_mark = minute % 5 == 0;
+            const length: f32 = if (hour_mark) 0.12 else 0.05;
+            try graphics.line(Self.clockPoint(center, turn, radius * (0.95 - length)), Self.clockPoint(center, turn, radius * 0.95), if (hour_mark) 2 else 1, if (hour_mark) colors.label else colors.secondary_label);
         }
-        const slot = plot.width / @as(f32, @floatFromInt(chart_readings.len));
-        var previous: ?ziggui.Point = null;
-        for (chart_readings, chart_days, 0..) |reading, day, index| {
-            const slot_x = plot.x + slot * @as(f32, @floatFromInt(index));
-            const height = plot.height * reading;
-            try graphics.fill(.{ .x = slot_x + slot * 0.2, .y = plot.maxY() - height, .width = slot * 0.6, .height = height }, 4, colors.accent.withAlpha(0.45));
-            const top = ziggui.Point{ .x = slot_x + slot / 2, .y = plot.maxY() - height };
-            if (previous) |from| try graphics.line(from, top, 2, colors.accent);
-            previous = top;
-            try graphics.text(day, label_size, colors.secondary_label, .{ .x = slot_x + (slot - graphics.textWidth(day, label_size)) / 2, .y = plot.maxY() + 8 });
+        const numeral_size = @max(radius * 0.16, 8);
+        for (clock_numerals) |numeral| {
+            const at = Self.clockPoint(center, numeral[1] / 12, radius * 0.68);
+            const width = graphics.textWidth(numeral[0], numeral_size);
+            try graphics.text(numeral[0], numeral_size, colors.label, .{ .x = at.x - width / 2, .y = at.y - graphics.lineHeight(numeral_size) / 2 });
         }
-        // The dots go on last, over the line's joins.
-        for (chart_readings, 0..) |reading, index| {
-            const center = ziggui.Point{ .x = plot.x + slot * (@as(f32, @floatFromInt(index)) + 0.5), .y = plot.maxY() - plot.height * reading };
-            try graphics.fill(.{ .x = center.x - 3.5, .y = center.y - 3.5, .width = 7, .height = 7 }, 3.5, colors.accent);
-        }
+        const hours = clock_seconds / 3600;
+        const minutes = clock_seconds / 60;
+        try graphics.line(center, Self.clockPoint(center, hours / 12, radius * 0.5), 4, colors.label);
+        try graphics.line(center, Self.clockPoint(center, minutes / 60, radius * 0.78), 3, colors.label);
+        try graphics.line(Self.clockPoint(center, clock_seconds / 60 + 0.5, radius * 0.15), Self.clockPoint(center, clock_seconds / 60, radius * 0.86), 1.5, colors.accent);
+        try graphics.fill(.{ .x = center.x - 4, .y = center.y - 4, .width = 8, .height = 8 }, 4, colors.accent);
+    }
+
+    /// A point on the Canvas card's clock: `distance` from its center at
+    /// `turn` of a revolution clockwise from twelve.
+    ///
+    /// - `center`: the clock's center.
+    /// - `turn`: how far round, in turns (whole turns wrap).
+    /// - `distance`: how far out, in points.
+    /// - Returns: the point.
+    fn clockPoint(center: ziggui.Point, turn: f32, distance: f32) ziggui.Point {
+        const angle = 2 * std.math.pi * turn;
+        return .{ .x = center.x + @sin(angle) * distance, .y = center.y - @cos(angle) * distance };
     }
 
     /// The Layout panel's scroll indicator columns: the same rows in three

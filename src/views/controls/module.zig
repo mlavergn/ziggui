@@ -145,6 +145,8 @@ pub const StackBuilder = @import("../module.zig").StackBuilder;
 pub const BuildTokens = @import("../module.zig").BuildTokens;
 /// The built-in controls' geometry (from the views module).
 pub const ControlMetrics = @import("../module.zig").ControlMetrics;
+/// How a checkbox `Toggle` draws its box (from the views module).
+pub const CheckboxStyle = @import("../module.zig").CheckboxStyle;
 /// The keyboard focus (from the views module).
 pub const Focus = @import("../module.zig").Focus;
 /// The frame time and frame requests (from the views module).

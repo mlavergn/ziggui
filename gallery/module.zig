@@ -33,6 +33,8 @@ pub const Kit = @import("kit.zig").Kit;
 pub const Media = @import("media.zig").Media;
 /// The Scenes section's 3D card: a `SceneView` and its scene.
 pub const SceneDemo = @import("scene_demo.zig").SceneDemo;
+/// The Charts section's cards: `LineChart` and its options.
+pub const ChartsDemo = @import("charts_demo.zig").ChartsDemo;
 /// The Pickers panel: menu-style pickers in a form, and outside one.
 pub const Pickers = @import("pickers.zig").Pickers;
 /// The Settings panel: an app's settings (`ziggui.Settings`), and their state.

@@ -496,8 +496,9 @@ pub const ControlPainter = struct {
     }
 
     /// Paints a checkbox toggle: a box on the leading edge (the accent with a
-    /// check mark while on, the control's ground with its border while off),
-    /// then the label. A tap anywhere on it flips it.
+    /// check mark while on, the control's ground with its border while off,
+    /// or an explicit `CheckboxStyle`'s through `paintStyledBox`), then the
+    /// label. A tap anywhere on it flips it.
     ///
     /// - `context`: the context.
     /// - `toggle`: the toggle.
@@ -514,15 +515,17 @@ pub const ControlPainter = struct {
             .width = mod.ControlMetrics.checkbox_size,
             .height = mod.ControlMetrics.checkbox_size,
         };
-        const radius = context.theme.metrics.radius(mod.ControlMetrics.checkbox_radius);
-        const surface = context.surface(display_list);
-        if (toggle.value.get()) {
-            try surface.fill(box, radius, colors.accent.multiplyAlpha(dim));
-            if (context.icon_cache) |cache| renderer.TextPainter.shared().drawIcon(display_list, cache, renderer.Icon.check.codepoint(), box.insetBy(2, 2), context.scale, colors.on_accent.multiplyAlpha(opacity)) catch |err| log.debug("check not drawn [{t}]", .{err});
-        } else {
-            try surface.fill(box, radius, colors.control_background.multiplyAlpha(dim));
-            try surface.stroke(box, radius, context.theme.metrics.hairline, colors.control_border.multiplyAlpha(dim));
-        }
+        if (context.checkbox_style == .automatic) {
+            const radius = context.theme.metrics.radius(mod.ControlMetrics.checkbox_radius);
+            const surface = context.surface(display_list);
+            if (toggle.value.get()) {
+                try surface.fill(box, radius, colors.accent.multiplyAlpha(dim));
+                Self.paintCheck(context, box, colors.on_accent.multiplyAlpha(opacity), display_list);
+            } else {
+                try surface.fill(box, radius, colors.control_background.multiplyAlpha(dim));
+                try surface.stroke(box, radius, context.theme.metrics.hairline, colors.control_border.multiplyAlpha(dim));
+            }
+        } else try Self.paintStyledBox(context, box, toggle.value.get(), opacity, display_list);
         if (toggle.label.len > 0) {
             const pixel_size = context.theme.typography.body.size;
             const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
@@ -530,6 +533,66 @@ pub const ControlPainter = struct {
             context.drawText(display_list, toggle.label, pixel_size, context.foreground.multiplyAlpha(opacity), origin) catch |err| log.debug("text not drawn [{t}]", .{err});
         }
         try context.hit_regions.append(context.arena, .{ .rect = rect, .action = .{ .toggle = toggle.value }, .disabled = context.disabled });
+    }
+
+    /// Paints a checkbox's box in one of the explicit `CheckboxStyle`s, the
+    /// same under every theme family: outlined, the outline inside the box;
+    /// `.rounded` keeps it empty with the check in the outline's color,
+    /// `.square` and `.circular` fill it while on with the check in the
+    /// accent's text color.
+    ///
+    /// - `context`: the context, with the style and the toggle's own tint.
+    /// - `box`: the box's frame.
+    /// - `on`: whether the toggle is on.
+    /// - `opacity`: the opacity it draws at (dimmed while disabled).
+    /// - `display_list`: where it is painted.
+    /// - Returns: nothing; propagates allocation failure.
+    fn paintStyledBox(context: *const mod.Context, box: renderer.Rect, on: bool, opacity: f32, display_list: *renderer.DisplayList) !void {
+        const colors = &context.theme.colors;
+        const style = context.checkbox_style;
+        const color = (context.tint orelse if (style == .rounded) context.foreground else colors.accent).multiplyAlpha(opacity);
+        const radius: f32 = switch (style) {
+            .automatic, .rounded => mod.ControlMetrics.checkbox_radius,
+            .square => 0,
+            .circular => box.width / 2,
+        };
+        const line_width = mod.ControlMetrics.checkbox_line_width;
+        if (on and style != .rounded) {
+            try display_list.fillRoundedRect(box, radius, color);
+            try Self.paintBoldCheck(box, colors.on_accent.multiplyAlpha(opacity), display_list);
+            return;
+        }
+        const half = line_width / 2;
+        try display_list.strokeRoundedRect(box.insetBy(half, half), @max(radius - half, 0), line_width, color);
+        if (on) try Self.paintBoldCheck(box, color, display_list);
+    }
+
+    /// Paints the explicit `CheckboxStyle`s' check mark: two round-capped
+    /// strokes across most of the box, bolder than the icon's at this size.
+    ///
+    /// - `box`: the box's frame.
+    /// - `color`: the check's color.
+    /// - `display_list`: where it is painted.
+    /// - Returns: nothing; propagates allocation failure.
+    fn paintBoldCheck(box: renderer.Rect, color: renderer.Color, display_list: *renderer.DisplayList) !void {
+        const side = box.width;
+        const start = renderer.Point{ .x = box.x + side * 0.27, .y = box.y + side * 0.52 };
+        const corner = renderer.Point{ .x = box.x + side * 0.43, .y = box.y + side * 0.68 };
+        const end = renderer.Point{ .x = box.x + side * 0.74, .y = box.y + side * 0.34 };
+        const width = side * mod.ControlMetrics.checkbox_check_weight;
+        try display_list.line(start, corner, width, color);
+        try display_list.line(corner, end, width, color);
+    }
+
+    /// Paints a checkbox's check mark, inset in its box.
+    ///
+    /// - `context`: the context, with the icon glyphs.
+    /// - `box`: the box's frame.
+    /// - `color`: the check's color.
+    /// - `display_list`: where it is painted.
+    fn paintCheck(context: *const mod.Context, box: renderer.Rect, color: renderer.Color, display_list: *renderer.DisplayList) void {
+        const cache = context.icon_cache orelse return;
+        renderer.TextPainter.shared().drawIcon(display_list, cache, renderer.Icon.check.codepoint(), box.insetBy(2, 2), context.scale, color) catch |err| log.debug("check not drawn [{t}]", .{err});
     }
 
     /// Paints a slider flat in one color, as media controls draw theirs over

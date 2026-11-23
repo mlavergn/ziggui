@@ -649,6 +649,21 @@ pub const View = struct {
         return view;
     }
 
+    /// Sets how the checkbox `Toggle`s in this subtree draw their box:
+    /// `.rounded` (outlined in the label color), `.square` or `.circular`
+    /// (outlined in the accent, filled while on); `.automatic` (the default)
+    /// is the theme family's own. A toggle's own `.foreground()` colors its box.
+    /// It does not make a toggle a checkbox: pair it with `.toggleStyle(.checkbox)`.
+    ///
+    /// - `self`: the view.
+    /// - `style`: the style.
+    /// - Returns: the view.
+    pub fn checkboxStyle(self: *const Self, style: mod.CheckboxStyle) Self {
+        var view = self.*;
+        view.modifiers.checkbox_style = style;
+        return view;
+    }
+
     /// Presents `content` as a window-modal sheet while `presented` is true.
     ///
     /// - `self`: the presenting view.

@@ -88,6 +88,10 @@ pub const Section = enum {
     /// translucent pane, its camera orbited and zoomed.
     scenes,
 
+    /// Charts (from `src/charts`): line charts (several series, scales, gaps, a chart built
+    /// each frame from sliders, sparklines) and bar charts.
+    charts,
+
     /// Every section, as sidebar rows, in the enum's order: a section's index
     /// (`--section`, the screenshots) is its place here.
     pub const items = blk: {
@@ -147,6 +151,7 @@ pub const Section = enum {
             .chat => "Chat",
             .diffs => "Diffs",
             .scenes => "Scenes",
+            .charts => "Charts",
         };
     }
 
@@ -178,6 +183,7 @@ pub const Section = enum {
             .chat => .messageSquare,
             .diffs => .gitCompare,
             .scenes => .box,
+            .charts => .chartLine,
         };
     }
 
@@ -192,7 +198,7 @@ pub const Section = enum {
         return switch (self.*) {
             .text => &.{ "ziggui.Text", "ziggui.WrappedText", "ziggui.RichText · ziggui.RichTextSpaced · ziggui.RichTextPreformatted", "ziggui.HighlightedText · ziggui.TextRange", "ziggui.Label", "ziggui.TextField", "ziggui.SearchField" },
             .textEditor => &.{ "ziggui.TextEditor", "ziggui.TextEditor · ziggui.FindBar · ziggui.FindCount · ziggui.FindActions" },
-            .controls => &.{ "ziggui.Button · ziggui.ButtonRoled · ziggui.IconButton · ziggui.ButtonIcon · ziggui.ButtonIconRoled", "ziggui.ButtonKeyed", "ziggui.Toggle", "ziggui.Slider · ziggui.ProgressView", "ziggui.Spinner · ziggui.LoadingDots", "ziggui.Stepper", "ziggui.Badge", "ziggui.KeyCap" },
+            .controls => &.{ "ziggui.Button · ziggui.ButtonRoled · ziggui.IconButton · ziggui.ButtonIcon · ziggui.ButtonIconRoled", "ziggui.ButtonKeyed", "ziggui.Toggle · .toggleStyle(.checkbox) · .checkboxStyle(.rounded) · .square · .circular", "ziggui.Slider · ziggui.ProgressView", "ziggui.Spinner · ziggui.LoadingDots", "ziggui.Stepper", "ziggui.Badge", "ziggui.KeyCap" },
             .pickers => &.{ "ziggui.Picker · ziggui.Form · .pickerStyle(.automatic)", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu)", "ziggui.RadioGroup", "ziggui.SegmentedControl", "ziggui.IconSegmentedControl" },
             .images => &.{ "ziggui.Image · .scaledToFit()", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", "CanvasMarkers.crosshair · .ring · .halo · .reticle · .pill · .chip · .callout · .nearest", "ziggui.ZoomableImage · ZoomState · AnnotationState · CanvasMarkers", "ziggui.Rectangle · ziggui.RoundedRectangle · ziggui.Circle · ziggui.Capsule · ziggui.Ellipse", "ziggui.LinearGradient", "ziggui.Icon · ziggui.LazyVGrid" },
             .layout => &.{ "ziggui.HStack · ziggui.VStack · ziggui.ZStack · ziggui.Spacer · ziggui.MinSpacer · ziggui.ForEach · ziggui.Empty", "ziggui.FlowStack", "ziggui.LazyVGrid", "ziggui.LazyHGrid", "ziggui.Divider · ziggui.VDivider", "ziggui.GeometryReader", "ziggui.ScrollView · ziggui.ScrollViewState · ziggui.ScrollViewStateBoth · ziggui.ScrollViewOffset", ".scrollIndicators · ziggui.ScrollIndicatorVisibility" },
@@ -212,6 +218,7 @@ pub const Section = enum {
             .chat => &.{ "ziggui.StatusMark", "ziggui.Chip", "ziggui.Bubble · ziggui.CodeBlock · ziggui.Quote" },
             .diffs => &.{ "ziggui.DiffView · ziggui.DiffLine", "ziggui.SelectableDiffView", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection" },
             .scenes => &.{"ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput · Scene.lighting_technique"},
+            .charts => &.{ "ziggui.LineChart · ziggui.ChartSeries · ziggui.ChartEmphasis", "ziggui.ChartDomain · LineChartOptions.x_domain · .y_domain · .baseline", "ChartSeries.points · LineChartOptions.caption · .x_start_label · .x_end_label", "ChartSeries in the build arena", "ziggui.LineChartOptions", "ziggui.BarChart · ziggui.BarMark · ziggui.BarChartOptions", "BarMark.color · a value below zero" },
         };
     }
 
@@ -439,6 +446,8 @@ pub const Gallery = struct {
     kit: gallery.Kit,
     /// The Scenes section's 3D scene.
     scene_demo: gallery.SceneDemo,
+    /// The Charts section's cards and the state of its sliders' chart.
+    charts_demo: gallery.ChartsDemo,
 
     /// The Media Video panel and its player.
     media: gallery.Media,
@@ -552,6 +561,7 @@ pub const Gallery = struct {
             .editor = editor,
             .kit = kit,
             .scene_demo = scene_demo,
+            .charts_demo = gallery.ChartsDemo.init(allocator),
             .media = gallery.Media.init(allocator),
             .pickers = gallery.Pickers.init(allocator),
             .settings = gallery.SettingsPanel.init(allocator),
@@ -575,6 +585,7 @@ pub const Gallery = struct {
         self.settings.deinit();
         self.pickers.deinit();
         self.media.deinit();
+        self.charts_demo.deinit();
         self.scene_demo.deinit();
         self.kit.deinit();
         self.editor.deinit();
@@ -972,6 +983,7 @@ pub const Gallery = struct {
             .chat => self.chatPanel(active_theme),
             .diffs => Self.cards(.{ self.diffViewCard(active_theme), self.selectableDiffCard(active_theme), self.diffCard(active_theme) }),
             .scenes => self.scene_demo.card(active_theme),
+            .charts => self.charts_demo.panel(active_theme),
         };
     }
 
@@ -1761,10 +1773,10 @@ test "the sidebar lists the sections by label; each keeps its index" {
     var search = gallery.SectionSearch.init(std.testing.allocator);
     defer search.deinit();
     for (Section.sorted, search.shown()) |section, row| try std.testing.expectEqual(section, row.section);
-    // Indices are the enum's, whatever the rows: Text first, Scenes last.
+    // Indices are the enum's, whatever the rows: Text first, Charts last.
     try std.testing.expectEqual(Section.text, Section.at(0));
-    try std.testing.expectEqual(Section.scenes, Section.at(@intCast(Section.items.len - 1)));
-    try std.testing.expectEqualStrings("Chat", Section.sorted[0].label());
+    try std.testing.expectEqual(Section.charts, Section.at(@intCast(Section.items.len - 1)));
+    try std.testing.expectEqualStrings("Charts", Section.sorted[0].label());
 }
 
 test "the gallery draws every section, light and dark" {

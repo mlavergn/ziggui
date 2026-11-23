@@ -172,6 +172,9 @@ pub const ViewPainter = struct {
             .canvas => |drawn| {
                 var graphics = mod.GraphicsContext{ .context = context, .display_list = display_list };
                 try drawn.draw(drawn.context, &graphics, rect);
+                // A canvas is an image to accessibility once it is named, as a
+                // SwiftUI `Canvas` given an `accessibilityLabel` is.
+                if (view.modifiers.a11y_label != null or view.modifiers.a11y_identifier.len > 0) try context.emitAccessibility(view, rect, .image, "", "");
             },
             .button => |button| {
                 try mod.ControlPainter.paintButton(context, button, rect, display_list);

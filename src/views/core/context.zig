@@ -77,6 +77,8 @@ pub const Context = struct {
     disabled: bool = false,
     /// How the subtree's `Toggle`s draw (`.toggleStyle()`).
     toggle_style: mod.ToggleStyle = .automatic,
+    /// How the subtree's checkbox `Toggle`s draw their box (`.checkboxStyle()`).
+    checkbox_style: mod.CheckboxStyle = .automatic,
     /// How the subtree's `Picker`s draw (`.pickerStyle()`).
     picker_style: mod.PickerStyle = .automatic,
     /// Whether the subtree's scroll views draw their scrollbars (`.scrollIndicators()`).
@@ -253,6 +255,7 @@ pub const Context = struct {
     /// - `view`: the view.
     pub fn applyEnvironment(self: *Self, view: mod.View) void {
         if (view.modifiers.toggle_style) |style| self.toggle_style = style;
+        if (view.modifiers.checkbox_style) |style| self.checkbox_style = style;
         if (view.modifiers.picker_style) |style| self.picker_style = style;
         if (view.modifiers.scroll_indicators) |visibility| self.scroll_indicators = visibility;
         if (view.modifiers.form_columns) self.in_form = true;

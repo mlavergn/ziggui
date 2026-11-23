@@ -1,12 +1,12 @@
-//! The ziggui barrel: the renderer, the views and, in an app build, the SDL
-//! runtime, behind one import.
+//! The ziggui barrel: the renderer, the 3D scenes, the views, the charts and,
+//! in an app build, the SDL runtime, behind one import.
 //!
 //! Consumers import `ziggui` and write `ziggui.X`. Two builds share this file:
 //! the core one (`config.with_sdl = false`, for tests and libraries) and the
 //! app one `linkApp` returns, which adds the SDL runtime as `ziggui.sdl` and
 //! its app-facing types (`App`, `AppConfig`, `MenuBarExtra`, ...) at the top
-//! level (`void` in the core build). Both sit on the same `renderer` and
-//! `views` modules, so their types agree.
+//! level (`void` in the core build). Both sit on the same `renderer`,
+//! `scenes`, `views` and `charts` modules, so their types agree.
 //!
 //! Every public name of the two is re-exported here flat, each from the module
 //! that owns it (`Binding` is the renderer's, which the views re-export). The
@@ -20,6 +20,7 @@ const config = @import("config");
 const renderer = @import("renderer");
 const scenes = @import("scenes");
 const views = @import("views");
+const charts = @import("charts");
 
 /// Whether this is a debug build.
 pub const is_debug = builtin.mode == .debug;
@@ -322,6 +323,8 @@ pub const NativeViewData = views.NativeViewData;
 pub const Modifiers = views.Modifiers;
 /// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
 pub const ToggleStyle = views.ToggleStyle;
+/// How a checkbox `Toggle` draws its box: rounded, square or circular (`.checkboxStyle()`).
+pub const CheckboxStyle = views.CheckboxStyle;
 /// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerStyle = views.PickerStyle;
 /// Whether scroll views draw their scrollbars (`.scrollIndicators()`).
@@ -551,6 +554,26 @@ pub const ThemeFamilyPicker = views.ThemeFamilyPicker;
 pub const EditableText = views.EditableText;
 /// An `EditableText`'s text, edit and armed click; app-owned.
 pub const EditableTextState = views.EditableTextState;
+
+// -----------------------------------------------------------------------------
+// Charts
+
+/// A line chart of series in data coordinates, drawn into its frame.
+pub const LineChart = charts.LineChart;
+/// One line of a `LineChart`: its points, emphasis and color.
+pub const ChartSeries = charts.ChartSeries;
+/// How strongly a `ChartSeries` is drawn: primary or secondary.
+pub const ChartEmphasis = charts.ChartEmphasis;
+/// The range of data values one axis of a chart (`LineChart`, `BarChart`) spans.
+pub const ChartDomain = charts.ChartDomain;
+/// What a `LineChart` shows besides its series: scales, baseline and labels.
+pub const LineChartOptions = charts.LineChartOptions;
+/// A bar chart of labelled values, drawn into its frame.
+pub const BarChart = charts.BarChart;
+/// One bar of a `BarChart`: its label, value and color.
+pub const BarMark = charts.BarMark;
+/// What a `BarChart` shows besides its bars: its scale, grid, line and caption.
+pub const BarChartOptions = charts.BarChartOptions;
 
 // -----------------------------------------------------------------------------
 // 3D scenes

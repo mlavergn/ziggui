@@ -76,6 +76,8 @@ pub const SceneCameraInput = @import("core/module.zig").SceneCameraInput;
 pub const Modifiers = @import("core/module.zig").Modifiers;
 /// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
 pub const ToggleStyle = @import("core/module.zig").ToggleStyle;
+/// How a checkbox `Toggle` draws its box (`.checkboxStyle()`).
+pub const CheckboxStyle = @import("core/module.zig").CheckboxStyle;
 /// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerStyle = @import("core/module.zig").PickerStyle;
 /// Whether scroll views draw their scrollbars (`.scrollIndicators()`).

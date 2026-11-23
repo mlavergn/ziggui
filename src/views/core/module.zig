@@ -71,6 +71,8 @@ pub const SceneCameraInput = @import("scene_camera_input.zig").SceneCameraInput;
 pub const Modifiers = @import("modifiers.zig").Modifiers;
 /// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
 pub const ToggleStyle = @import("toggle_style.zig").ToggleStyle;
+/// How a checkbox `Toggle` draws its box (`.checkboxStyle()`).
+pub const CheckboxStyle = @import("checkbox_style.zig").CheckboxStyle;
 /// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerStyle = @import("picker_style.zig").PickerStyle;
 /// Whether scroll views draw their scrollbars (`.scrollIndicators()`).
@@ -293,6 +295,7 @@ test {
     _ = @import("kind.zig");
     _ = @import("modifiers.zig");
     _ = @import("toggle_style.zig");
+    _ = @import("checkbox_style.zig");
     _ = @import("scroll_indicator_visibility.zig");
     _ = @import("picker_style.zig");
     _ = @import("picker_menu.zig");

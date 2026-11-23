@@ -2,7 +2,8 @@
 //! keeps. The list shows the sections by label, or every component the cards
 //! name (`ziggui.Table`, each with its section under it); what is typed
 //! keeps the sections whose label or components (`Section.names`) hold it, or
-//! the components whose name does.
+//! the components whose name does, then those a card names beside a name that
+//! does (a modifier: "checkbox" finds `ziggui.Toggle`).
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_gallery_section_search);
@@ -52,8 +53,9 @@ pub const SectionMatch = struct {
 /// holds it, case aside, that component their detail, else whose label does,
 /// their first component their detail, so every row of a search is two
 /// lines tall. Listing components, the rows are every `ziggui.` name the
-/// cards show (`components`), alphabetically, those holding the query with
-/// one, each its section's label under it.
+/// cards show (`components`), alphabetically, with a query first those whose
+/// name holds it, then those named on a caption beside a name that holds it
+/// (`.checkboxStyle` keeps `ziggui.Toggle`), each its section's label under it.
 pub const SectionSearch = struct {
     const Self = @This();
 
@@ -200,10 +202,16 @@ pub const SectionSearch = struct {
         const needle = self.query();
         self.row_count = 0;
         if (self.listing == .components) {
-            for (components) |entry| {
-                if (needle.len > 0 and std.ascii.findIgnoreCase(entry.name, needle) == null) continue;
-                self.rows[self.row_count] = .{ .section = entry.section, .component = entry.name, .detail = entry.section.label() };
-                self.row_count += 1;
+            // The components named for the query first, then those whose
+            // caption holds it beside them (a modifier, a field).
+            for ([_]bool{ true, false }) |by_name| {
+                for (components) |entry| {
+                    const named = needle.len == 0 or std.ascii.findIgnoreCase(entry.name, needle) != null;
+                    if (by_name != named) continue;
+                    if (!named and !Self.namedBeside(entry.name, needle)) continue;
+                    self.rows[self.row_count] = .{ .section = entry.section, .component = entry.name, .detail = entry.section.label() };
+                    self.row_count += 1;
+                }
             }
             return;
         }
@@ -238,6 +246,28 @@ pub const SectionSearch = struct {
         if (lines.len == 0) return section.label();
         var first = std.mem.splitSequence(u8, lines[0], separator);
         return first.next();
+    }
+
+    /// Reports whether a caption names a component beside a name that holds
+    /// the query, as `.checkboxStyle(.rounded)` sits beside `ziggui.Toggle`.
+    ///
+    /// - `component`: the component's name, as the captions write it.
+    /// - `needle`: the query, not empty.
+    /// - Returns: true when some caption names both.
+    fn namedBeside(component: []const u8, needle: []const u8) bool {
+        for (std.enums.values(gallery.Section)) |section| {
+            for (section.names()) |line| {
+                var holds_component = false;
+                var holds_needle = false;
+                var names = std.mem.splitSequence(u8, line, separator);
+                while (names.next()) |name| {
+                    if (std.mem.eql(u8, name, component)) holds_component = true;
+                    if (std.ascii.findIgnoreCase(name, needle) != null) holds_needle = true;
+                }
+                if (holds_component and holds_needle) return true;
+            }
+        }
+        return false;
     }
 
     /// Makes `components` at compile time: each `ziggui.` name on a names
@@ -322,11 +352,27 @@ test "the components listing names every ziggui component once, alphabetically, 
     try std.testing.expectEqualStrings(components[0].name, search.shown()[0].component.?);
     try std.testing.expectEqualStrings(components[0].section.label(), search.shown()[0].detail.?);
 
-    // A query keeps the components whose name holds it, case aside.
+    // A query keeps the components whose name holds it, case aside, first,
+    // then those a caption names beside a name that holds it.
     try search.field.setText("TABLE");
     _ = search.refresh();
     try std.testing.expect(search.shown().len >= 3);
-    for (search.shown()) |row| try std.testing.expect(std.ascii.findIgnoreCase(row.component.?, "table") != null);
+    var by_name = true;
+    for (search.shown()) |row| {
+        const named = std.ascii.findIgnoreCase(row.component.?, "table") != null;
+        if (!named) by_name = false;
+        // No row named for the query after one that is not.
+        try std.testing.expect(named or !by_name);
+        try std.testing.expect(named or SectionSearch.namedBeside(row.component.?, "table"));
+    }
+
+    // A modifier finds the component its caption names: "checkbox" is
+    // `.toggleStyle(.checkbox)` and `.checkboxStyle`, beside `ziggui.Toggle`.
+    try search.field.setText("checkbox");
+    _ = search.refresh();
+    try std.testing.expectEqual(1, search.shown().len);
+    try std.testing.expectEqualStrings("ziggui.Toggle", search.shown()[0].component.?);
+    try std.testing.expectEqual(gallery.Section.controls, search.shown()[0].section);
 
     // Of a section's rows, the one chosen stays its row.
     search.clear();

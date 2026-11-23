@@ -32,9 +32,10 @@ pub const AppOptions = struct {
     sdl3_prefix: ?[]const u8 = null,
 };
 
-/// The modules every ziggui build shares: the renderer, the views over it, and
-/// the core `ziggui` barrel over both. The app `ziggui` (`linkApp`) reuses the
-/// first two, so a type is the same type in either barrel.
+/// The modules every ziggui build shares: the renderer, the 3D scenes, the
+/// views over them, the charts over the views, and the core `ziggui` barrel
+/// over them all. The app `ziggui` (`linkApp`) reuses the first four, so a type
+/// is the same type in either barrel.
 const Modules = struct {
     const Self = @This();
 
@@ -44,6 +45,8 @@ const Modules = struct {
     const scenes_name = "ziggui_scenes";
     /// The name the views module is registered under, for `linkApp`.
     const views_name = "ziggui_views";
+    /// The name the charts module is registered under, for `linkApp`.
+    const charts_name = "ziggui_charts";
     /// The name the app barrel is memoized under, so `linkApp` builds it once.
     const app_name = "ziggui_app_barrel";
     /// The name the SDL runtime module is memoized under, beside the app barrel.
@@ -57,13 +60,14 @@ const Modules = struct {
     renderer: *std.Build.Module,
     scenes: *std.Build.Module,
     views: *std.Build.Module,
+    charts: *std.Build.Module,
     core: *std.Build.Module,
 
-    /// Declare the renderer, scenes, views and core `ziggui` modules.
+    /// Declare the renderer, scenes, views, charts and core `ziggui` modules.
     ///
     /// - `b`: ziggui's build graph.
     /// - `config`: the build's configuration.
-    /// - Returns: the four modules.
+    /// - Returns: the five modules.
     fn init(b: *std.Build, config: Config) Self {
         const renderer = b.addModule(Self.renderer_name, .{
             .root_source_file = b.path("src/renderer/module.zig"),
@@ -89,6 +93,16 @@ const Modules = struct {
             },
         });
 
+        const charts = b.addModule(Self.charts_name, .{
+            .root_source_file = b.path("src/charts/module.zig"),
+            .target = config.target,
+            .optimize = config.optimize,
+            .imports = &.{
+                .{ .name = "renderer", .module = renderer },
+                .{ .name = "views", .module = views },
+            },
+        });
+
         const core = b.addModule(config.name, .{
             .root_source_file = b.path("src/module.zig"),
             .target = config.target,
@@ -97,11 +111,12 @@ const Modules = struct {
                 .{ .name = "renderer", .module = renderer },
                 .{ .name = "scenes", .module = scenes },
                 .{ .name = "views", .module = views },
+                .{ .name = "charts", .module = charts },
             },
         });
         core.addOptions("config", Self.barrelOptions(b, false));
 
-        const self = Self{ .renderer = renderer, .scenes = scenes, .views = views, .core = core };
+        const self = Self{ .renderer = renderer, .scenes = scenes, .views = views, .charts = charts, .core = core };
         return self;
     }
 
@@ -117,6 +132,7 @@ const Modules = struct {
         const renderer = b.modules.get(Self.renderer_name).?;
         const scenes = b.modules.get(Self.scenes_name).?;
         const views = b.modules.get(Self.views_name).?;
+        const charts = b.modules.get(Self.charts_name).?;
         Self.expectSameBuild(renderer.resolved_target.?, renderer.optimize.?, options);
         if (b.modules.get(Self.app_name)) |built| {
             // The first call passed the renderer's check too, so target and
@@ -176,6 +192,7 @@ const Modules = struct {
                 .{ .name = "renderer", .module = renderer },
                 .{ .name = "scenes", .module = scenes },
                 .{ .name = "views", .module = views },
+                .{ .name = "charts", .module = charts },
                 .{ .name = "sdl", .module = sdl },
             },
         });
@@ -544,9 +561,9 @@ const Docs = struct {
     /// named for the module, or failing that at whichever of its files comes
     /// first. ZIGSTYLE names every barrel `module.zig`, so the site starts at
     /// `src/root.zig`, which re-exports the barrel (as zigstorage's does). The
-    /// barrel re-exports from the `renderer`, `scenes` and `views` modules, whose own
+    /// barrel re-exports from the `renderer`, `scenes`, `views` and `charts` modules, whose own
     /// barrels autodoc would miss the same way and resolve `views.View`
-    /// against an arbitrary file; so the docs build those two from a staged
+    /// against an arbitrary file; so the docs build those from a staged
     /// copy of their sources with each barrel also saved as `root.zig`. The
     /// site is then patched to list private declarations too
     /// (`zigbuildx.Docs.includePrivate`, as zigstorage does).
@@ -577,6 +594,15 @@ const Docs = struct {
                 .{ .name = "scenes", .module = scenes },
             },
         });
+        const charts = b.createModule(.{
+            .root_source_file = Self.stage(b, staged, "charts"),
+            .target = config.target,
+            .optimize = config.optimize,
+            .imports = &.{
+                .{ .name = "renderer", .module = renderer },
+                .{ .name = "views", .module = views },
+            },
+        });
         const root = b.createModule(.{
             .root_source_file = b.path("src/root.zig"),
             .target = config.target,
@@ -585,6 +611,7 @@ const Docs = struct {
                 .{ .name = "renderer", .module = renderer },
                 .{ .name = "scenes", .module = scenes },
                 .{ .name = "views", .module = views },
+                .{ .name = "charts", .module = charts },
             },
         });
         root.addOptions("config", Modules.barrelOptions(b, false));
@@ -693,7 +720,7 @@ pub fn build(b: *std.Build) !void {
     // separate `test-sdl` step (`SdlTests`).
 
     const tests_step = b.step("test", "Run unit tests");
-    for ([_]*std.Build.Module{ modules.renderer, modules.scenes, modules.views, modules.core, gallery_module }) |module| {
+    for ([_]*std.Build.Module{ modules.renderer, modules.scenes, modules.views, modules.charts, modules.core, gallery_module }) |module| {
         const tests = b.addTest(.{ .root_module = module, .filters = filters });
         const tests_run = b.addRunArtifact(tests);
         // force tests to run on every test run
@@ -710,8 +737,8 @@ pub fn build(b: *std.Build) !void {
 /// The app `ziggui` for a package that depends on ziggui: the core barrel
 /// plus the SDL runtime as `ziggui.sdl`. An executable imports it as
 /// `ziggui`; the package's tests import `ziggui_dep.module("ziggui")`, the core
-/// barrel, also as `ziggui`. Both share ziggui's renderer and views modules,
-/// so their types agree. SDL3 is fetched lazily and built from the release on
+/// barrel, also as `ziggui`. Both share ziggui's renderer, scenes, views and
+/// charts modules, so their types agree. SDL3 is fetched lazily and built from the release on
 /// first use; on that first configure the runtime is returned unlinked and
 /// the build reruns once SDL is there. Repeated calls return the same module,
 /// so every call must pass the same options, with the target and optimize

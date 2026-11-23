@@ -38,6 +38,11 @@ pub const ControlMetrics = struct {
     pub const popup_row_padding_x: f32 = 6;
     /// A checkbox's corner radius, before the theme scales it.
     pub const checkbox_radius: f32 = 4;
+    /// The outline width of a checkbox in an explicit `CheckboxStyle`.
+    pub const checkbox_line_width: f32 = 1.5;
+    /// The check mark's stroke width in an explicit `CheckboxStyle`, as a
+    /// fraction of the box's side.
+    pub const checkbox_check_weight: f32 = 0.13;
     /// A segmented control's track inset around its segments (and between
     /// them).
     pub const segment_track_inset: f32 = 2;

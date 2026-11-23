@@ -139,6 +139,9 @@ pub const Modifiers = struct {
     soft_wrap: bool = false,
     /// How the `Toggle`s in this subtree draw, or null to inherit. See `.toggleStyle()`.
     toggle_style: ?mod.ToggleStyle = null,
+    /// How the checkbox `Toggle`s in this subtree draw their box, or null to
+    /// inherit. See `.checkboxStyle()`.
+    checkbox_style: ?mod.CheckboxStyle = null,
     /// How the `Picker`s in this subtree draw, or null to inherit. See `.pickerStyle()`.
     picker_style: ?mod.PickerStyle = null,
     /// Whether the scroll views in this subtree draw their scrollbars, or
