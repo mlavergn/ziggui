@@ -14,7 +14,7 @@ const field_radius: f32 = 6;
 
 /// `content` drawn as one field: the `raised` ground, a `line_strong`
 /// hairline border, corner radius 6. For a control composed of several views
-/// (capsules and an input, a glyph and a chromeless `TextField`) that should
+/// (capsules and an input, a glyph and a `.textFieldStyle(.plain)` `TextField`) that should
 /// read as a single text field. Pad and size `content` first: the chrome is
 /// added to its modifiers, and replaces any ground, border or corner it had.
 ///

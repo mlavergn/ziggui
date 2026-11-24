@@ -264,11 +264,11 @@ pub const ChartsDemo = struct {
         const price = allocator.print("{d:.2}", .{last}) catch @panic("oom");
         const delta = allocator.print("{s}{d:.1} %", .{ if (change >= 0) "+" else "−", @abs(change) }) catch @panic("oom");
         return ziggui.HStack(.{
-            ziggui.Text(ticker.name).mono().frameWidth(48).frameAlign(.leading),
+            ziggui.Text(ticker.name).monospaced().frameWidth(48).frameAlign(.leading),
             ziggui.LineChart(&series, .{}).frame(160, 28),
             ziggui.Spacer(),
-            ziggui.Text(price).mono(),
-            ziggui.Text(delta).mono().foreground(color).frameWidth(72).frameAlign(.trailing),
+            ziggui.Text(price).monospaced(),
+            ziggui.Text(delta).monospaced().foregroundStyle(color).frameWidth(72).frameAlign(.trailing),
         }).spacing(12).frameMaxWidth();
     }
 

@@ -56,7 +56,7 @@ const Harness = struct {
     const Self = @This();
 
     /// The font text is drawn in.
-    font: renderer.Font,
+    font: renderer.FontFile,
 
     /// The font's glyphs; set by `start`.
     cache: renderer.GlyphCache,
@@ -72,7 +72,7 @@ const Harness = struct {
     /// - Returns: the harness.
     fn init() Self {
         const self = Self{
-            .font = renderer.Font.default(),
+            .font = renderer.FontFile.default(),
             .cache = undefined,
             .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
             .hits = .empty,

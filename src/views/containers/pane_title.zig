@@ -19,7 +19,7 @@ pub fn PaneTitle(title: []const u8, focused: bool, trailing: mod.View) mod.View 
     const allocator = mod.BuildScope.shared().allocator();
     return mod.VStack(.{
         mod.HStack(.{
-            mod.Text(mod.DisplayText.clean(allocator, title)).size(11).weight(.semibold).foreground(if (focused) tokens.accent_text else tokens.secondary_label).truncated(),
+            mod.Text(mod.DisplayText.clean(allocator, title)).font(.system(11)).fontWeight(.semibold).foregroundStyle(if (focused) tokens.accent_text else tokens.secondary_label).truncated(),
             mod.Spacer(),
             trailing,
         }).spacing(8).paddingInsets(.{ .top = 5, .leading = 10, .bottom = 5, .trailing = 10 }),

@@ -28,7 +28,7 @@ const CopyRequest = struct {
 pub const CardNameRecording = struct {
     const Self = @This();
 
-    /// The lines drawn, each as written (`"ziggui.Badge · .mono()"`); they
+    /// The lines drawn, each as written (`"ziggui.Badge · .monospaced()"`); they
     /// live as long as the frame that drew them.
     lines: *std.ArrayList([]const u8),
     /// Owns the list's growth.
@@ -81,10 +81,10 @@ pub const CardName = struct {
         request.* = .{ .card_name = self, .names = names };
         const copied = self.copied != 0 and self.copied == Self.hash(names);
         return ziggui.HStack(.{
-            ziggui.WrappedText(names).font(.caption).mono().foreground(color).selectable(),
+            ziggui.WrappedText(names).font(.caption).monospaced().foregroundStyle(color).textSelection(.enabled),
             ziggui.Icon(if (copied) .copyCheck else .copy, icon_size, color)
                 .padding(2)
-                .onTap(ziggui.Callback.init(CopyRequest, request, CopyRequest.copy))
+                .onTapGesture(ziggui.Callback.init(CopyRequest, request, CopyRequest.copy))
                 .help(if (copied) "Copied" else "Copy")
                 .accessibilityLabel("Copy names")
                 .accessibilityAddTraits(.{ .is_button = true }),

@@ -261,7 +261,7 @@ pub const SettingsPanel = struct {
     /// - `text`: the help.
     /// - Returns: the view.
     fn help(text: []const u8) ziggui.View {
-        return ziggui.Text(text).font(.callout).foreground(ziggui.BuildScope.shared().tokens().secondary_label);
+        return ziggui.Text(text).font(.callout).foregroundStyle(ziggui.BuildScope.shared().tokens().secondary_label);
     }
 };
 

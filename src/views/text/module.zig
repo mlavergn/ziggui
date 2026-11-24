@@ -27,6 +27,26 @@ pub const NoticeText = @import("notice_text.zig").NoticeText;
 pub const TextLines = @import("text_lines.zig").TextLines;
 /// Tab-aware widths of edited text.
 pub const EditorMetrics = @import("editor_metrics.zig").EditorMetrics;
+/// A text field's undo and redo steps.
+pub const TextHistory = @import("text_history.zig").TextHistory;
+/// What a recorded edit was, which decides whether it joins the step before it.
+pub const TextEditKind = @import("text_history.zig").TextEditKind;
+/// One recorded edit's removed and inserted bytes.
+pub const TextEdit = @import("text_history.zig").TextEdit;
+/// One undo step's edits.
+pub const TextEditGroup = @import("text_history.zig").TextEditGroup;
+/// An edit as a field reports it to its history.
+pub const TextEditRecord = @import("text_history.zig").TextEditRecord;
+/// How an editor indents: tabs or spaces, and the width of a level.
+pub const TextIndentation = @import("text_indentation.zig").TextIndentation;
+/// What Tab inserts: spaces or a tab character.
+pub const IndentationStyle = @import("text_indentation.zig").IndentationStyle;
+/// How a document's lines end on disk: LF or CRLF.
+pub const LineEnding = @import("line_ending.zig").LineEnding;
+/// Plain-text search over a buffer.
+pub const TextSearch = @import("text_search.zig").TextSearch;
+/// How a text search matches: case, whole words.
+pub const TextSearchOptions = @import("text_search.zig").TextSearchOptions;
 
 /// A type-erased tap handler (from the views module).
 pub const Callback = @import("../module.zig").Callback;
@@ -36,6 +56,8 @@ pub const Focus = @import("../module.zig").Focus;
 pub const TextContextMenu = @import("../module.zig").TextContextMenu;
 /// The pointer's routing state (from the views module), whose text drag a freed field ends.
 pub const PointerInput = @import("../module.zig").PointerInput;
+/// The frame clock (from the views module), which times a typing run's undo step.
+pub const FrameClock = @import("../module.zig").FrameClock;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -54,4 +76,8 @@ test {
     _ = @import("notice_text.zig");
     _ = @import("text_lines.zig");
     _ = @import("editor_metrics.zig");
+    _ = @import("text_history.zig");
+    _ = @import("text_indentation.zig");
+    _ = @import("line_ending.zig");
+    _ = @import("text_search.zig");
 }

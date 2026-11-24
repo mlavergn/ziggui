@@ -438,6 +438,8 @@ const Gallery = struct {
         const gallery_options = b.addOptions();
         const fixtures = b.root.joinString(b.graph.arena, "fixtures/file_browser") catch @panic("OOM");
         gallery_options.addOption([]const u8, "fixtures_path", fixtures);
+        const fonts = b.root.joinString(b.graph.arena, "fixtures/fonts") catch @panic("OOM");
+        gallery_options.addOption([]const u8, "fonts_path", fonts);
         return gallery_options;
     }
 

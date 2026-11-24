@@ -306,7 +306,7 @@ pub const ViewLowering = struct {
             // At least one line plus its padding, so a frame can make a
             // single-line editor (a composer) exactly as tall as it asks.
             .textEditor => return .{ .leaf = .{
-                .min = .{ .width = 120, .height = renderer.TextShaper.init(context.cache.face).lineHeight(context.resolvedFontSize(view)) + 2 * (view.modifiers.editor_padding orelse 8) },
+                .min = .{ .width = 120, .height = renderer.TextShaper.init(context.cache.face).lineHeight(context.resolvedFontSize(view)) + 2 * (view.modifiers.content_margins orelse 8) },
                 .ideal = .{ .width = 360, .height = 220 },
                 .max = .{ .width = infinity, .height = infinity },
             } },

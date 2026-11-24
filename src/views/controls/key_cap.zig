@@ -18,10 +18,10 @@ const renderer = @import("renderer");
 pub fn KeyCap(key: []const u8) mod.View {
     const tokens = mod.BuildScope.shared().tokens();
     return mod.Text(key)
-        .size(mod.ControlMetrics.key_cap_text_size)
-        .mono()
-        .weight(.medium)
-        .foreground(tokens.secondary_label)
+        .font(.system(mod.ControlMetrics.key_cap_text_size))
+        .monospaced()
+        .fontWeight(.medium)
+        .foregroundStyle(tokens.secondary_label)
         .paddingInsets(.{
             .top = mod.ControlMetrics.key_cap_vertical_padding,
             .leading = mod.ControlMetrics.key_cap_horizontal_padding,

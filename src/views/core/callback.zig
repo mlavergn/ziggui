@@ -74,7 +74,7 @@ pub const Callback = struct {
 
     /// A callback that sets `binding` to `value`: the building block for
     /// selection in composed controls (sidebar rows, radio options, table
-    /// rows), which stay pure composition over `onTap` without a dedicated
+    /// rows), which stay pure composition over `onTapGesture` without a dedicated
     /// `HitAction`.
     ///
     /// - `binding`: the selection.

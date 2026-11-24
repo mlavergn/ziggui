@@ -73,6 +73,11 @@ pub const test_height: u32 = 320;
 /// fixed contents keep that section's screenshot the same on every run.
 pub const fixtures_path: []const u8 = @import("gallery_config").fixtures_path;
 
+/// The folder holding the font family the gallery registers at launch:
+/// `fixtures/fonts` (Noto Serif), so the Text Editor's font menus offer a
+/// third family on every run.
+pub const fonts_path: []const u8 = @import("gallery_config").fonts_path;
+
 // -----------------------------------------------------------------------------
 // Unit Tests
 

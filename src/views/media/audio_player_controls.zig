@@ -32,7 +32,7 @@ const AudioControls = struct {
         const number = allocator.print("{d}", .{whole}) catch @panic("oom");
         return mod.MediaControlStyle.button(mod.ZStack(.{
             mod.Icon(icon, 24, mod.MediaControlStyle.ink),
-            mod.Text(number).size(8).weight(.bold).foreground(mod.MediaControlStyle.ink),
+            mod.Text(number).font(.system(8)).fontWeight(.bold).foregroundStyle(mod.MediaControlStyle.ink),
         }), action);
     }
 
@@ -53,16 +53,16 @@ const AudioControls = struct {
         else
             mod.MediaControlStyle.clock(0);
         const times = mod.HStack(.{
-            mod.Text(mod.MediaControlStyle.clock(observation.current_seconds)).font(.footnote).mono().foreground(mod.MediaControlStyle.ink),
+            mod.Text(mod.MediaControlStyle.clock(observation.current_seconds)).font(.footnote).monospaced().foregroundStyle(mod.MediaControlStyle.ink),
             mod.Spacer(),
-            mod.Text(mod.DisplayText.clean(allocator, title)).font(.footnote).foreground(mod.MediaControlStyle.ink.withAlpha(0.7)).truncated(),
+            mod.Text(mod.DisplayText.clean(allocator, title)).font(.footnote).foregroundStyle(mod.MediaControlStyle.ink.withAlpha(0.7)).truncated(),
             mod.Spacer(),
-            mod.Text(trailing).font(.footnote).mono().foreground(mod.MediaControlStyle.ink),
+            mod.Text(trailing).font(.footnote).monospaced().foregroundStyle(mod.MediaControlStyle.ink),
         }).spacing(12).frameMaxWidth();
         if (live) return times;
         return mod.VStack(.{
             times,
-            mod.Slider(state.transport.progressBinding(), 0, 1).foreground(mod.MediaControlStyle.ink).disabled(observation.duration_seconds == null).frameMaxWidth(),
+            mod.Slider(state.transport.progressBinding(), 0, 1).foregroundStyle(mod.MediaControlStyle.ink).disabled(observation.duration_seconds == null).frameMaxWidth(),
         }).spacing(2).frameMaxWidth();
     }
 

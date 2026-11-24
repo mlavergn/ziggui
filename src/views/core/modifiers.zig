@@ -39,6 +39,9 @@ pub const Modifiers = struct {
     foreground: ?renderer.Color = null,
     /// The text style the subtree inherits.
     font: ?mod.FontToken = null,
+    /// The font family the subtree draws in (`.font(.custom(name, size))`),
+    /// or null to inherit; borrowed, it must outlive the frame.
+    font_family: ?[]const u8 = null,
     /// Overrides the weight a `.font()` token (or the inherited style) implies.
     weight: ?renderer.FontWeight = null,
     /// A point size, overriding the font token's.
@@ -99,11 +102,15 @@ pub const Modifiers = struct {
     pointer_style: ?mod.PointerStyle = null,
     /// Painted only while the cursor is inside the nearest `hover_scope`.
     reveal_on_hover: bool = false,
-    /// A `TextEditor` that draws no field surface of its own (its container
-    /// supplies the chrome) and may override its inner padding.
-    chromeless: bool = false,
-    /// A chromeless `TextEditor`'s inner padding.
-    editor_padding: ?f32 = null,
+    /// How the `TextField`s in this subtree draw their chrome, or null to
+    /// inherit. See `.textFieldStyle()`.
+    text_field_style: ?mod.TextFieldStyle = null,
+    /// How the `TextEditor`s in this subtree draw their chrome, or null to
+    /// inherit. See `.textEditorStyle()`.
+    text_editor_style: ?mod.TextEditorStyle = null,
+    /// A `TextEditor`'s inner margin around its text, or null for 8pt. See
+    /// `.contentMargins()`.
+    content_margins: ?f32 = null,
     /// A `TextEditor`'s hint while it is empty, drawn where its text starts.
     editor_placeholder: []const u8 = "",
     /// A `TextField` that shows bullets instead of its text (API keys).
@@ -144,6 +151,9 @@ pub const Modifiers = struct {
     checkbox_style: ?mod.CheckboxStyle = null,
     /// How the `Picker`s in this subtree draw, or null to inherit. See `.pickerStyle()`.
     picker_style: ?mod.PickerStyle = null,
+    /// The colors the `TextEditor`s in this subtree draw in, or null to
+    /// inherit (in the build arena). See `.textEditorColors()`.
+    text_editor_colors: ?*const mod.TextEditorColors = null,
     /// Whether the scroll views in this subtree draw their scrollbars, or
     /// null to inherit. See `.scrollIndicators()`.
     scroll_indicators: ?mod.ScrollIndicatorVisibility = null,

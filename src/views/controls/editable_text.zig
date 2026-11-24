@@ -10,7 +10,7 @@ const mod = @import("module.zig");
 const renderer = @import("renderer");
 
 /// A label that edits in place (`EditableTextState` has the rules): its text,
-/// or, while editing, a chromeless field in its place with all its text
+/// or, while editing, a plain field (`.textFieldStyle(.plain)`) in its place with all its text
 /// selected, on the raised ground with a focus ring, so it reads on a
 /// selected row's accent. A click on it calls `on_tap` (a list row's select,
 /// so a click on the name selects the row as a click beside it does); a
@@ -29,8 +29,8 @@ pub fn EditableText(state: *mod.EditableTextState, selected: bool, on_tap: ?mod.
     if (state.editing) {
         const tokens = mod.BuildScope.shared().tokens();
         return mod.TextField("", &state.field)
-            .chromeless(mod.ControlMetrics.inline_field_inset)
-            .foreground(tokens.label)
+            .textFieldStyle(.plain)
+            .foregroundStyle(tokens.label)
             .background(tokens.raised)
             .cornerRadius(mod.ControlMetrics.inline_field_radius)
             .border(tokens.focus_ring, mod.ControlMetrics.inline_field_ring)
@@ -38,7 +38,7 @@ pub fn EditableText(state: *mod.EditableTextState, selected: bool, on_tap: ?mod.
     }
     return mod.Text(state.text())
         .truncated()
-        .onTap(mod.Callback.init(mod.EditableTextState, state, mod.EditableTextState.press))
+        .onTapGesture(mod.Callback.init(mod.EditableTextState, state, mod.EditableTextState.press))
         .onHover(.{ .context = state, .function = mod.EditableTextState.hoverChanged });
 }
 

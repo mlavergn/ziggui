@@ -20,13 +20,13 @@ const renderer = @import("renderer");
 pub fn PaneHeader(title: []const u8, description: []const u8, accessory: mod.View) mod.View {
     const tokens = mod.BuildScope.shared().tokens();
     const title_row = mod.StackBuilder.make(.horizontal, 8, .center, .{
-        mod.Text(title).size(22).weight(.semibold).foreground(tokens.label).truncated(),
+        mod.Text(title).font(.system(22)).fontWeight(.semibold).foregroundStyle(tokens.label).truncated(),
         mod.Spacer(),
         accessory,
     }).frameMaxWidth();
     const block = if (description.len == 0) mod.StackBuilder.make(.vertical, 0, .leading, .{title_row}) else mod.StackBuilder.make(.vertical, 4, .leading, .{
         title_row,
-        mod.Text(description).size(12).foreground(tokens.secondary_label).truncated(),
+        mod.Text(description).font(.system(12)).foregroundStyle(tokens.secondary_label).truncated(),
     });
     return block.padding(20).frameMaxWidth();
 }

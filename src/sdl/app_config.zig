@@ -121,7 +121,7 @@ pub const AppConfig = struct {
     settings: ?views.Callback = null,
 
     /// A face behind the bundled emoji font for codepoints no bundled face has
-    /// (a system CJK font, `renderer.Font.fromExternal`). Must outlive `run`.
+    /// (a system CJK font, `renderer.FontFile.fromExternal`). Must outlive `run`.
     fallback_font: ?*const renderer.TtfFont = null,
 
     /// The largest width or height `restoring` opens a window at, in points:

@@ -11,9 +11,9 @@ pub const TestEnvironment = struct {
     const Self = @This();
 
     /// The text face.
-    font: renderer.Font,
+    font: renderer.FontFile,
     /// The icon face.
-    icon_font: renderer.Font,
+    icon_font: renderer.FontFile,
     /// Glyphs of `font`.
     cache: renderer.GlyphCache,
     /// Glyphs of `icon_font`.
@@ -29,8 +29,8 @@ pub const TestEnvironment = struct {
     /// - Returns: the fixture.
     pub fn init() Self {
         const self = Self{
-            .font = renderer.Font.default(),
-            .icon_font = renderer.Font.icons(),
+            .font = renderer.FontFile.default(),
+            .icon_font = renderer.FontFile.icons(),
             .cache = undefined,
             .icon_cache = undefined,
             .hits = .empty,

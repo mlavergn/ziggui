@@ -66,7 +66,7 @@ pub const ControlPainter = struct {
                 .hovered = hovered and !context.disabled,
                 .pressed = pressed,
             });
-            // A plain (text-only) button takes a color asked for with `.foreground()`.
+            // A plain (text-only) button takes a color asked for with `.foregroundStyle()`.
             if (button.role == .plain and !context.disabled) {
                 if (context.tint) |tint| label_color = tint;
             }
@@ -191,7 +191,7 @@ pub const ControlPainter = struct {
     }
 
     /// Paints a slider: the theme's groove, fill and handle over the view's
-    /// geometry; with a `.foreground` color, flat in that color instead
+    /// geometry; with a `.foregroundStyle` color, flat in that color instead
     /// (`paintTintedSlider`).
     ///
     /// - `context`: the context.

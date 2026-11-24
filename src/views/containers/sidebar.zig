@@ -43,10 +43,10 @@ pub fn SidebarStyled(items: []const mod.SidebarItem, selection: mod.Binding(i64)
         }
         // Truncated, so a label too long for the sidebar never pushes its icon out.
         var title = mod.Text(item.label).truncated();
-        if (prominent_selected) title = title.foreground(tokens.on_accent);
+        if (prominent_selected) title = title.foregroundStyle(tokens.on_accent);
         if (item.detail) |detail| {
             var subtitle = mod.Text(detail).font(.subheadline).truncated();
-            subtitle = subtitle.foreground(if (prominent_selected) tokens.on_accent.withAlpha(0.75) else tokens.secondary_label);
+            subtitle = subtitle.foregroundStyle(if (prominent_selected) tokens.on_accent.withAlpha(0.75) else tokens.secondary_label);
             contents[count] = mod.StackBuilder.make(.vertical, 2, .leading, .{ title, subtitle });
         } else {
             contents[count] = title;
@@ -60,7 +60,7 @@ pub fn SidebarStyled(items: []const mod.SidebarItem, selection: mod.Binding(i64)
             .paddingInsets(.{ .top = vertical_padding, .leading = 10, .bottom = vertical_padding, .trailing = 8 })
             .frameMaxWidth()
             .cornerRadius(if (style == .prominent) 10 else 6)
-            .onTap(mod.Callback.select(selection, @intCast(index)));
+            .onTapGesture(mod.Callback.select(selection, @intCast(index)));
         if (is_selected) {
             // Neutral grey wash (settings source lists) or vivid accent
             // (content lists), per the style.

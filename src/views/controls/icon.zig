@@ -9,7 +9,7 @@ const mod = @import("module.zig");
 const renderer = @import("renderer");
 
 /// A glyph from the bundled icon set, laid out as a `size`×`size` square and
-/// tinted `color` (pass `null` to inherit the surrounding `.foreground`). Call
+/// tinted `color` (pass `null` to inherit the surrounding `.foregroundStyle`). Call
 /// sites lean on enum-literal inference: `Icon(.heart, 18, null)`.
 ///
 /// - `icon`: the glyph.
@@ -22,7 +22,7 @@ pub fn Icon(icon: renderer.Icon, size: f32, color: ?renderer.Color) mod.View {
 
 /// A tappable icon (toolbar/affordance style): the glyph centered in a square
 /// control with a tap callback. The icon inherits the environment foreground;
-/// compose `.foreground`/`.padding`/`.background` for styling.
+/// compose `.foregroundStyle`/`.padding`/`.background` for styling.
 ///
 /// - `icon`: the glyph.
 /// - `size`: the glyph's side.

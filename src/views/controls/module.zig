@@ -54,6 +54,8 @@ pub const ProgressView = @import("progress_view.zig").ProgressView;
 pub const Picker = @import("picker.zig").Picker;
 /// A one-line text field.
 pub const TextField = @import("text_field.zig").TextField;
+/// A one-line field that shows dots instead of its text.
+pub const SecureField = @import("text_field.zig").SecureField;
 /// A multi-line text editor.
 pub const TextEditor = @import("text_editor.zig").TextEditor;
 /// A title behind a color swatch.
@@ -92,6 +94,10 @@ pub const Appearance = @import("appearance.zig").Appearance;
 pub const AppearancePicker = @import("appearance_picker.zig").AppearancePicker;
 /// A settings page's theme choice: a little window per theme family, then the accent swatches.
 pub const ThemePicker = @import("theme_picker.zig").ThemePicker;
+/// A color picker: a title and a row of swatches.
+pub const ColorPicker = @import("color_picker.zig").ColorPicker;
+/// An editor's settings as one plain value an app keeps and saves.
+pub const TextEditorSettings = @import("text_editor_settings.zig").TextEditorSettings;
 /// The theme families alone, as mini renderings with their names as hover hints.
 pub const ThemeFamilyPicker = @import("theme_picker.zig").ThemeFamilyPicker;
 /// The frame both settings pickers draw a choice in (internal to the controls).
@@ -117,6 +123,16 @@ pub const TextFieldState = @import("../module.zig").TextFieldState;
 pub const TextLines = @import("../module.zig").TextLines;
 /// A scroll view's app-owned offsets (from the views module).
 pub const ScrollState = @import("../module.zig").ScrollState;
+/// The colors a `TextEditor` draws its caret, selection, gutter and matches in (from the views module).
+pub const TextEditorColors = @import("../module.zig").TextEditorColors;
+/// How an editor indents (from the views module).
+pub const TextIndentation = @import("../module.zig").TextIndentation;
+/// What Tab inserts (from the views module).
+pub const IndentationStyle = @import("../module.zig").IndentationStyle;
+/// How a document's lines end on disk (from the views module).
+pub const LineEnding = @import("../module.zig").LineEnding;
+/// A family by name at a size (from the views module).
+pub const CustomFont = @import("../module.zig").CustomFont;
 /// What a `Canvas` draws with (from the views module).
 pub const GraphicsContext = @import("../module.zig").GraphicsContext;
 /// A view's text style token (from the views module).
@@ -190,6 +206,8 @@ test {
     _ = @import("appearance.zig");
     _ = @import("appearance_picker.zig");
     _ = @import("theme_picker.zig");
+    _ = @import("color_picker.zig");
+    _ = @import("text_editor_settings.zig");
     _ = @import("thumbnail_choice.zig");
     _ = @import("editable_text.zig");
     _ = @import("editable_text_state.zig");

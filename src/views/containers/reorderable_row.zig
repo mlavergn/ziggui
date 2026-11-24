@@ -16,7 +16,7 @@ const drop_line_height: f32 = 2;
 
 /// Row `index` of a reorderable list of `count` rows: `content` (a
 /// `SelectableRow`, say), draggable up and down. `content` keeps its own
-/// modifiers: a press taps it as before (`onTap`, `onSecondaryTap`) and, held
+/// modifiers: a press taps it as before (`onTapGesture`, `onSecondaryTap`) and, held
 /// and moved, drags the row. The dragged row draws at half opacity, and a
 /// line in `accent_mark` across the row marks the gap it would drop into (on
 /// row `dropIndex`'s top edge, or the last row's bottom edge for `count`).

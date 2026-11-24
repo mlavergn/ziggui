@@ -88,7 +88,7 @@ pub const Clipboard = struct {
             std.crypto.secureZero(u8, pasted);
             field.allocator.free(pasted);
         }
-        field.insert(pasted) catch |err| log.debug("clipboard text not pasted [{t}]", .{err});
+        field.paste(pasted) catch |err| log.debug("clipboard text not pasted [{t}]", .{err});
     }
 };
 

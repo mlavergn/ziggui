@@ -46,7 +46,7 @@ pub fn Menu(label: []const u8, open: *renderer.State(bool), items: anytype) mod.
 pub fn ContextMenu(trigger: mod.View, open: *renderer.State(bool), items: anytype) mod.View {
     const content = mod.VStack(items).padding(6);
     return trigger
-        .onTap(mod.Callback.init(renderer.State(bool), open, MenuToggle.flip))
+        .onTapGesture(mod.Callback.init(renderer.State(bool), open, MenuToggle.flip))
         .popover(open.binding(), content);
 }
 
@@ -61,7 +61,7 @@ pub fn MenuItem(title: []const u8, on_tap: mod.Callback) mod.View {
     const allocator = mod.BuildScope.shared().allocator();
     return mod.HStack(.{ mod.Text(mod.DisplayText.clean(allocator, title)).font(.callout), mod.Spacer() })
         .paddingInsets(.{ .top = 4, .leading = 10, .bottom = 4, .trailing = 10 }).frameMaxWidth()
-        .hoverFill(tokens.hover).onTap(on_tap);
+        .hoverFill(tokens.hover).onTapGesture(on_tap);
 }
 
 /// A pop-up menu's panel: its entries (`MenuItem`s, `Divider`s) stacked at a

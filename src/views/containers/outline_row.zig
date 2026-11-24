@@ -31,7 +31,7 @@ pub fn OutlineRow(depth: u16, expandable: bool, expanded: bool, tint: ?renderer.
         mod.Empty().frameWidth(mod.OutlineState.chevron_width)
     else
         mod.Icon(if (expanded) .chevronDown else .chevronRight, 12, color).frameWidth(mod.OutlineState.chevron_width);
-    const chevron = if (expandable and on_toggle != null) glyph.onTap(on_toggle.?) else glyph;
+    const chevron = if (expandable and on_toggle != null) glyph.onTapGesture(on_toggle.?) else glyph;
     const label = mod.HStack(.{ chevron, content }).spacing(mod.OutlineState.chevron_gap);
     const indent = mod.OutlineState.indent * @as(f32, @floatFromInt(depth));
     return mod.HStack(.{ mod.Empty().frameWidth(indent), label }).spacing(0);

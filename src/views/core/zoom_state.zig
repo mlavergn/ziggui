@@ -108,6 +108,12 @@ pub const ZoomState = struct {
     min_zoom: f32 = 0.25,
     /// The most zoom.
     max_zoom: f32 = 64,
+    /// Whether a wheel turn's up and down pans the other way: the content moves
+    /// down for a turn away from the user, rather than up as a scroll view's does.
+    invert_scroll_y: bool = false,
+    /// Whether a wheel turn's sideways pans the other way: the content moves left
+    /// for a turn to the right, rather than right.
+    invert_scroll_x: bool = false,
     /// The last layout, written by the view each frame.
     geometry: ZoomGeometry = .{},
     /// Where the view drew its zoom chip, while zoomed or panned.
@@ -239,7 +245,8 @@ pub const ZoomState = struct {
     /// A wheel turn over the view: zooms about the pointer when `zooming` (⌘ or
     /// Ctrl held, for a mouse wheel), pans otherwise (a two-finger scroll),
     /// moving the content as a scroll view moves its content for the same
-    /// deltas (`PointerInput.scrollBoth`).
+    /// deltas (`PointerInput.scrollBoth`), or the other way on an axis the app
+    /// inverts (`invert_scroll_y`, `invert_scroll_x`).
     ///
     /// - `self`: the state.
     /// - `point`: the pointer, in view points.
@@ -254,8 +261,10 @@ pub const ZoomState = struct {
         } else {
             // As a scroll view: its offset grows by `delta_y` (the content
             // moves up) and its sideways offset by `-delta_x` (the content
-            // moves right).
-            self.panBy(delta_x * points_per_line, -delta_y * points_per_line);
+            // moves right); either axis the other way when inverted.
+            const sideways: f32 = if (self.invert_scroll_x) -1 else 1;
+            const upward: f32 = if (self.invert_scroll_y) 1 else -1;
+            self.panBy(sideways * delta_x * points_per_line, upward * delta_y * points_per_line);
         }
         return true;
     }
@@ -408,6 +417,15 @@ test "zoom state takes wheel and pinch input only over the view" {
     try std.testing.expect(state.wheel(.{ .x = 50, .y = 50 }, 1, 2, false));
     try std.testing.expectApproxEqAbs(ZoomState.points_per_line, state.offset.x, 1e-4);
     try std.testing.expectApproxEqAbs(-ZoomState.points_per_line * 2, state.offset.y, 1e-4);
+    // Inverted, each axis pans the other way; zooming is not affected.
+    state.fit();
+    state.invert_scroll_y = true;
+    state.invert_scroll_x = true;
+    try std.testing.expect(state.wheel(.{ .x = 50, .y = 50 }, 1, 2, false));
+    try std.testing.expectApproxEqAbs(-ZoomState.points_per_line, state.offset.x, 1e-4);
+    try std.testing.expectApproxEqAbs(ZoomState.points_per_line * 2, state.offset.y, 1e-4);
+    state.invert_scroll_y = false;
+    state.invert_scroll_x = false;
     state.fit();
     try std.testing.expect(state.wheel(.{ .x = 50, .y = 50 }, 0, 1, true));
     try std.testing.expectApproxEqAbs(@exp(ZoomState.zoom_per_line), state.zoom, 1e-5);

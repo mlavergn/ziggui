@@ -18,9 +18,9 @@ pub fn LabeledField(label: []const u8, control: mod.View, help: []const u8) mod.
     const tokens = mod.BuildScope.shared().tokens();
     const allocator = mod.BuildScope.shared().allocator();
     return mod.VStack(.{
-        mod.Text(mod.DisplayText.clean(allocator, label)).size(12).foreground(tokens.secondary_label),
+        mod.Text(mod.DisplayText.clean(allocator, label)).font(.system(12)).foregroundStyle(tokens.secondary_label),
         control,
-        if (help.len > 0) mod.WrappedText(mod.DisplayText.clean(allocator, help)).size(12).foreground(tokens.secondary_label).frameMaxWidth().frameAlign(.leading) else mod.Empty(),
+        if (help.len > 0) mod.WrappedText(mod.DisplayText.clean(allocator, help)).font(.system(12)).foregroundStyle(tokens.secondary_label).frameMaxWidth().frameAlign(.leading) else mod.Empty(),
     }).spacing(4).alignment(.leading).frameMaxWidth();
 }
 

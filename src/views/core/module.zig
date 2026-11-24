@@ -73,6 +73,8 @@ pub const Modifiers = @import("modifiers.zig").Modifiers;
 pub const ToggleStyle = @import("toggle_style.zig").ToggleStyle;
 /// How a checkbox `Toggle` draws its box (`.checkboxStyle()`).
 pub const CheckboxStyle = @import("checkbox_style.zig").CheckboxStyle;
+/// The colors a `TextEditor` draws its caret, selection, gutter and matches in.
+pub const TextEditorColors = @import("text_editor_colors.zig").TextEditorColors;
 /// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerStyle = @import("picker_style.zig").PickerStyle;
 /// Whether scroll views draw their scrollbars (`.scrollIndicators()`).
@@ -93,6 +95,16 @@ pub const MaterialSpecification = @import("material.zig").MaterialSpecification;
 pub const OverlayStyle = @import("overlay_style.zig").OverlayStyle;
 /// Named typographic styles.
 pub const FontToken = @import("font_token.zig").FontToken;
+/// The font a view draws in (SwiftUI's `Font`): a semantic size or `.custom(name, size)`.
+pub const Font = @import("font.zig").Font;
+/// A family by name at a size.
+pub const CustomFont = @import("font.zig").CustomFont;
+/// Whether a view's text can be selected (`.textSelection()`).
+pub const TextSelectability = @import("text_selectability.zig").TextSelectability;
+/// How a `TextField` draws its chrome (`.textFieldStyle()`).
+pub const TextFieldStyle = @import("text_field_style.zig").TextFieldStyle;
+/// How a `TextEditor` draws its chrome (`.textEditorStyle()`).
+pub const TextEditorStyle = @import("text_editor_style.zig").TextEditorStyle;
 /// The outline a shape view fills.
 pub const ShapeKind = @import("shape_kind.zig").ShapeKind;
 /// The semantic appearance of a button (the theme layer's role).
@@ -255,10 +267,16 @@ pub const RichFaces = @import("../module.zig").RichFaces;
 pub const TextLines = @import("../module.zig").TextLines;
 /// Tab-aware widths of edited text (from the views module).
 pub const EditorMetrics = @import("../module.zig").EditorMetrics;
+/// A run of a text's bytes (from the views module), as a find marks its matches.
+pub const TextRange = @import("../module.zig").TextRange;
+/// A text editor's find and replace (from the views module), which `View.findNavigator` attaches.
+pub const TextFindState = @import("../module.zig").TextFindState;
 /// A media player modeled on `AVPlayer` (from the views module).
 pub const Player = @import("../module.zig").Player;
 /// One line of text (from the views module).
 pub const Text = @import("../module.zig").Text;
+/// Multi-line text, word-wrapped to its width (from the views module).
+pub const WrappedText = @import("../module.zig").WrappedText;
 /// A one-line text field (from the views module).
 pub const TextField = @import("../module.zig").TextField;
 /// Children side by side (from the views module).
@@ -296,6 +314,11 @@ test {
     _ = @import("modifiers.zig");
     _ = @import("toggle_style.zig");
     _ = @import("checkbox_style.zig");
+    _ = @import("text_editor_colors.zig");
+    _ = @import("font.zig");
+    _ = @import("text_selectability.zig");
+    _ = @import("text_field_style.zig");
+    _ = @import("text_editor_style.zig");
     _ = @import("scroll_indicator_visibility.zig");
     _ = @import("picker_style.zig");
     _ = @import("picker_menu.zig");

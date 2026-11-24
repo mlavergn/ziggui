@@ -20,8 +20,8 @@ pub fn EmptyState(title: []const u8, detail: []const u8) mod.View {
     const allocator = mod.BuildScope.shared().allocator();
     return mod.VStack(.{
         mod.Spacer(),
-        mod.Text(mod.DisplayText.clean(allocator, title)).foreground(tokens.secondary_label),
-        if (detail.len > 0) mod.WrappedText(mod.DisplayText.clean(allocator, detail)).font(.footnote).foreground(tokens.secondary_label).frameCap(420) else mod.Empty(),
+        mod.Text(mod.DisplayText.clean(allocator, title)).foregroundStyle(tokens.secondary_label),
+        if (detail.len > 0) mod.WrappedText(mod.DisplayText.clean(allocator, detail)).font(.footnote).foregroundStyle(tokens.secondary_label).frameCap(420) else mod.Empty(),
         mod.Spacer(),
     }).spacing(6).padding(16).frameMaxWidth().frameMaxHeight();
 }

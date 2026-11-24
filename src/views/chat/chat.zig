@@ -57,7 +57,7 @@ const Disclosure = struct {
             mod.HStack(.{ chevron, header, mod.Spacer(), trailing })
         else
             mod.HStack(.{ chevron, header, mod.Spacer() });
-        const row = row_stack.spacing(6).frameMaxWidth().onTap(on_toggle);
+        const row = row_stack.spacing(6).frameMaxWidth().onTapGesture(on_toggle);
         if (!expanded) return row;
         return mod.VStack(.{
             row,
@@ -122,14 +122,14 @@ pub fn DisclosureGroupAccessory(header: mod.View, accessory: mod.View, expanded:
 /// - Returns: the chip.
 pub fn Chip(label: []const u8, icon: ?mod.IconName, on_tap: ?mod.Callback) mod.View {
     const tokens = mod.BuildScope.shared().tokens();
-    const text = mod.Text(label).font(.footnote).foreground(tokens.label).truncated();
+    const text = mod.Text(label).font(.footnote).foregroundStyle(tokens.label).truncated();
     const inner = if (icon) |glyph| mod.HStack(.{ mod.Icon(glyph, 12, tokens.secondary_label), text }).spacing(5) else text;
     const chip = inner
         .paddingInsets(.{ .top = 4, .leading = 10, .bottom = 4, .trailing = 10 })
         .background(tokens.quaternary_fill)
         .cornerRadius(12);
     const callback = on_tap orelse return chip;
-    return chip.hoverFill(tokens.hover).onTap(callback);
+    return chip.hoverFill(tokens.hover).onTapGesture(callback);
 }
 
 /// Preformatted text — a code block — in a monospaced face, wrapped, on a
@@ -139,7 +139,7 @@ pub fn Chip(label: []const u8, icon: ?mod.IconName, on_tap: ?mod.Callback) mod.V
 /// - Returns: the block.
 pub fn CodeBlock(code: []const u8) mod.View {
     const tokens = mod.BuildScope.shared().tokens();
-    return mod.WrappedText(code).font(.footnote).mono().selectable()
+    return mod.WrappedText(code).font(.footnote).monospaced().textSelection(.enabled)
         .frameMaxWidth().frameAlign(.leading)
         .padding(10)
         .background(tokens.row_stripe)

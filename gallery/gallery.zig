@@ -196,11 +196,11 @@ pub const Section = enum {
     /// - Returns: its lines, each names separated by ` · `.
     pub fn names(self: *const Self) []const []const u8 {
         return switch (self.*) {
-            .text => &.{ "ziggui.Text", "ziggui.WrappedText", "ziggui.RichText · ziggui.RichTextSpaced · ziggui.RichTextPreformatted", "ziggui.HighlightedText · ziggui.TextRange", "ziggui.Label", "ziggui.TextField", "ziggui.SearchField" },
-            .textEditor => &.{ "ziggui.TextEditor", "ziggui.TextEditor · ziggui.FindBar · ziggui.FindCount · ziggui.FindActions" },
+            .text => &.{ "ziggui.Text", "ziggui.WrappedText", "ziggui.RichText · ziggui.RichTextSpaced · ziggui.RichTextPreformatted", "ziggui.HighlightedText · ziggui.TextRange", "ziggui.Label", "ziggui.TextField", "ziggui.SearchField", "ziggui.SecureField" },
+            .textEditor => &.{ "ziggui.TextEditor · ziggui.TextEditorSettings · ziggui.TextEditorColors · .font(.custom)", "ziggui.TextEditor · .findNavigator · ziggui.TextFindState · ziggui.FindBar · ziggui.FindActions" },
             .controls => &.{ "ziggui.Button · ziggui.ButtonRoled · ziggui.IconButton · ziggui.ButtonIcon · ziggui.ButtonIconRoled", "ziggui.ButtonKeyed", "ziggui.Toggle · .toggleStyle(.checkbox) · .checkboxStyle(.rounded) · .square · .circular", "ziggui.Slider · ziggui.ProgressView", "ziggui.Spinner · ziggui.LoadingDots", "ziggui.Stepper", "ziggui.Badge", "ziggui.KeyCap" },
-            .pickers => &.{ "ziggui.Picker · ziggui.Form · .pickerStyle(.automatic)", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu)", "ziggui.RadioGroup", "ziggui.SegmentedControl", "ziggui.IconSegmentedControl" },
-            .images => &.{ "ziggui.Image · .scaledToFit()", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", "CanvasMarkers.crosshair · .ring · .halo · .reticle · .pill · .chip · .callout · .nearest", "ziggui.ZoomableImage · ZoomState · AnnotationState · CanvasMarkers", "ziggui.Rectangle · ziggui.RoundedRectangle · ziggui.Circle · ziggui.Capsule · ziggui.Ellipse", "ziggui.LinearGradient", "ziggui.Icon · ziggui.LazyVGrid" },
+            .pickers => &.{ "ziggui.Picker · ziggui.Form · .pickerStyle(.automatic)", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu)", "ziggui.RadioGroup", "ziggui.SegmentedControl", "ziggui.IconSegmentedControl", "ziggui.ColorPicker" },
+            .images => &.{ "ziggui.Image · .scaledToFit()", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", "CanvasMarkers.crosshair · .ring · .halo · .reticle · .pill · .chip · .callout · .nearest", "ziggui.ZoomableImage · ZoomState (invert_scroll_y, invert_scroll_x) · AnnotationState · CanvasMarkers", "ziggui.Rectangle · ziggui.RoundedRectangle · ziggui.Circle · ziggui.Capsule · ziggui.Ellipse", "ziggui.LinearGradient", "ziggui.Icon · ziggui.LazyVGrid" },
             .layout => &.{ "ziggui.HStack · ziggui.VStack · ziggui.ZStack · ziggui.Spacer · ziggui.MinSpacer · ziggui.ForEach · ziggui.Empty", "ziggui.FlowStack", "ziggui.LazyVGrid", "ziggui.LazyHGrid", "ziggui.Divider · ziggui.VDivider", "ziggui.GeometryReader", "ziggui.ScrollView · ziggui.ScrollViewState · ziggui.ScrollViewStateBoth · ziggui.ScrollViewOffset", ".scrollIndicators · ziggui.ScrollIndicatorVisibility" },
             .lists => &.{ "ziggui.PaneHeader", "ziggui.SelectableRow", "ziggui.SelectableLabeledRow", "ziggui.ReorderableRow", "ziggui.OutlineState · ziggui.OutlineRow", "ziggui.DisclosureGroup · ziggui.DisclosureGroupAccessory", "ziggui.EditableText · ziggui.EditableTextState", "ziggui.CheckList · ziggui.CheckRow", "ziggui.List", "ziggui.PaneTitle · ziggui.EmptyState", "ziggui.VirtualListBoth", "ziggui.VirtualList" },
             .table => &.{ "ziggui.Table · ziggui.TableColumn", "ziggui.TableState · ziggui.TableOptions · ziggui.SortColumn", "TableOptions.header_accessory · .empty", "TableOptions.highlighted · .row_height", "ziggui.TableRows · ziggui.TableLayout", "ziggui.Visibility · TableOptions.column_headers", "ziggui.TableSelectionMode · ziggui.TableCell" },
@@ -642,7 +642,7 @@ pub const Gallery = struct {
     /// - `active_theme`: the theme this frame draws with.
     /// - Returns: the band.
     fn topBar(self: *Self, active_theme: ziggui.Theme) ziggui.View {
-        const title = ziggui.Text("ziggui Gallery").font(.headline).foreground(active_theme.colors.label).truncated();
+        const title = ziggui.Text("ziggui Gallery").font(.headline).foregroundStyle(active_theme.colors.label).truncated();
         return ziggui.WindowChrome.topBarLeading(
             ziggui.IconSegmentedControl(self.listingBinding(), &listing_segments),
             ziggui.IconSegment.controlWidth(listing_segments.len),
@@ -893,7 +893,7 @@ pub const Gallery = struct {
         }).frame(dark_button_size, dark_button_size)
             .background(if (dark) colors.accent else colors.quaternary_fill)
             .cornerRadius(active_theme.metrics.radius(dark_button_radius))
-            .onTap(ziggui.Callback.init(Self, self, Self.toggleDark))
+            .onTapGesture(ziggui.Callback.init(Self, self, Self.toggleDark))
             .help(if (dark) "Dark mode: on" else "Dark mode: off")
             .accessibilityLabel("Dark mode")
             .accessibilityAddTraits(.{ .is_button = true, .is_selected = dark });
@@ -927,7 +927,7 @@ pub const Gallery = struct {
             }) else ziggui.ZStack(.{
                 ziggui.Circle(swatch).frame(swatch_size - 6, swatch_size - 6),
             });
-            dots[index] = dot.frame(swatch_size, swatch_row_height).onTap(ziggui.Callback.select(self.accent.binding(), @intCast(index)));
+            dots[index] = dot.frame(swatch_size, swatch_row_height).onTapGesture(ziggui.Callback.select(self.accent.binding(), @intCast(index)));
         }
         dots[accents.len] = ziggui.Spacer();
         dots[accents.len + 1] = self.darkModeButton(active_theme);
@@ -961,10 +961,10 @@ pub const Gallery = struct {
     /// - Returns: the panel's view.
     fn panel(self: *Self, section: Section, active_theme: ziggui.Theme) ziggui.View {
         return switch (section) {
-            .text => Self.cards(.{ self.showcase.typeScaleCard(active_theme), self.showcase.wrappedTextCard(active_theme), self.showcase.richTextCard(active_theme), self.showcase.highlightedTextCard(active_theme), self.showcase.labelCard(active_theme), self.showcase.textFieldCard(active_theme), self.kit.searchFieldCard(active_theme) }),
+            .text => Self.cards(.{ self.showcase.typeScaleCard(active_theme), self.showcase.wrappedTextCard(active_theme), self.showcase.richTextCard(active_theme), self.showcase.highlightedTextCard(active_theme), self.showcase.labelCard(active_theme), self.showcase.textFieldCard(active_theme), self.kit.searchFieldCard(active_theme), self.showcase.secureFieldCard(active_theme) }),
             .textEditor => self.editor.body(active_theme),
             .controls => Self.cards(.{ self.showcase.buttonsCard(active_theme), self.kit.buttonKeyedCard(active_theme), self.showcase.togglesCard(active_theme), self.showcase.sliderCard(active_theme), self.showcase.progressCard(active_theme), self.showcase.stepperCard(active_theme), self.kit.badgeCard(active_theme), self.kit.keyCapCard(active_theme) }),
-            .pickers => Self.cards(.{ self.pickers.panel(active_theme), self.showcase.radioGroupCard(active_theme), self.kit.segmentedControlCard(active_theme), self.kit.iconSegmentedControlCard(active_theme) }),
+            .pickers => Self.cards(.{ self.pickers.panel(active_theme), self.showcase.radioGroupCard(active_theme), self.kit.segmentedControlCard(active_theme), self.kit.iconSegmentedControlCard(active_theme), self.pickers.colorCard(active_theme) }),
             .images => Self.cards(.{ self.showcase.canvasPanel(active_theme), self.showcase.shapesCard(active_theme), self.showcase.gradientCard(active_theme), self.showcase.iconGalleryCard(active_theme) }),
             .layout => Self.cards(.{ self.showcase.stacksCard(active_theme), self.showcase.flowStackCard(active_theme), self.showcase.verticalGridCard(active_theme), self.showcase.horizontalGridCard(active_theme), self.showcase.dividersCard(active_theme), self.showcase.geometryPanel(active_theme), self.showcase.scrollViewsCard(active_theme), self.showcase.scrollIndicatorsCard(active_theme) }),
             .lists => Self.cards(.{ self.kit.rowsPanel(active_theme), self.kit.reorderPanel(active_theme), self.kit.outlinePanel(active_theme), self.kit.disclosureCard(active_theme), self.kit.editablePanel(active_theme), self.kit.checkListCard(active_theme), self.kit.listCard(active_theme), self.kit.paneCard(active_theme), self.wideListCard(active_theme), self.virtualListCard(active_theme) }),
@@ -1041,13 +1041,13 @@ pub const Gallery = struct {
             gallery.Card.view(active_theme, "Transcript", "ziggui.Bubble · ziggui.CodeBlock · ziggui.Quote", ziggui.VStack(.{
                 Self.leading(ziggui.Bubble(ziggui.WrappedText("List the files and explain the build."), active_theme.colors.accent.withAlpha(0.16))),
                 ziggui.DisclosureGroup(
-                    ziggui.Text("Thought for 4 seconds").font(.footnote).foreground(active_theme.colors.secondary_label),
+                    ziggui.Text("Thought for 4 seconds").font(.footnote).foregroundStyle(active_theme.colors.secondary_label),
                     self.thought_open,
                     ziggui.Callback.init(Self, self, Self.toggleThought),
-                    ziggui.WrappedText("The build file names every step; list the folder first.").font(.footnote).foreground(active_theme.colors.secondary_label),
+                    ziggui.WrappedText("The build file names every step; list the folder first.").font(.footnote).foregroundStyle(active_theme.colors.secondary_label),
                 ),
                 ziggui.DisclosureGroupAccessory(
-                    ziggui.Text("ls -la").font(.footnote).mono(),
+                    ziggui.Text("ls -la").font(.footnote).monospaced(),
                     ziggui.Badge("3 files", .neutral),
                     self.tool_open,
                     toggle,
@@ -1055,7 +1055,7 @@ pub const Gallery = struct {
                 ),
                 ziggui.WrappedText("The build is driven by build.zig:"),
                 ziggui.CodeBlock("pub fn build(b: *std.Build) void {\n    // ...\n}"),
-                ziggui.Quote(ziggui.WrappedText("Tip: run zig build test after every change.").foreground(active_theme.colors.secondary_label)),
+                ziggui.Quote(ziggui.WrappedText("Tip: run zig build test after every change.").foregroundStyle(active_theme.colors.secondary_label)),
             }).spacing(10).alignment(.leading)),
         }).spacing(16);
     }
@@ -1088,7 +1088,7 @@ pub const Gallery = struct {
     fn wideRow(self: *const Self, index: usize) ziggui.View {
         _ = self;
         const line = ziggui.BuildScope.shared().allocator().print("{d:0>4}  a line too long for the card, so the list scrolls sideways to show the rest of it, gutter and all", .{index}) catch @panic("oom");
-        return ziggui.Text(line).mono().padding(4);
+        return ziggui.Text(line).monospaced().padding(4);
     }
 
     /// The 10,000-row table card: sortable by name and kind, columns that
@@ -1107,7 +1107,7 @@ pub const Gallery = struct {
         });
         return gallery.Card.view(active_theme, "10,000 rows: sort, drag a column edge, ⌘/⇧-click, ↑↓, ⌘A; a double click or Return opens", "ziggui.TableState · ziggui.TableOptions · ziggui.SortColumn", ziggui.VStack(.{
             table.frameHeight(180),
-            ziggui.Text(status).font(.footnote).foreground(active_theme.colors.secondary_label),
+            ziggui.Text(status).font(.footnote).foregroundStyle(active_theme.colors.secondary_label),
         }).spacing(8).alignment(.leading));
     }
 
@@ -1213,7 +1213,7 @@ pub const Gallery = struct {
         const text = Self.fileText(self.fileAt(position), column);
         // The kind's secondary color turns on-accent on a selected row, as its other text does.
         if (column != 1) return text;
-        return text.foreground(ziggui.SelectableRowStyle.secondaryText(self.files.isRowSelected(position), true));
+        return text.foregroundStyle(ziggui.SelectableRowStyle.secondaryText(self.files.isRowSelected(position), true));
     }
 
     /// Row `index` of the Lists section's virtual list: the file's name, and
@@ -1239,8 +1239,8 @@ pub const Gallery = struct {
         const allocator = ziggui.BuildScope.shared().allocator();
         return switch (column) {
             0 => ziggui.Text(allocator.print("file-{d:0>5}.zig", .{index}) catch @panic("oom")).truncated(),
-            1 => ziggui.Text(if (index % 3 == 0) "Test" else "Source").foreground(ziggui.BuildScope.shared().tokens().secondary_label),
-            else => ziggui.Text(allocator.print("{d} KB", .{(index * 37) % 512 + 1}) catch @panic("oom")).mono(),
+            1 => ziggui.Text(if (index % 3 == 0) "Test" else "Source").foregroundStyle(ziggui.BuildScope.shared().tokens().secondary_label),
+            else => ziggui.Text(allocator.print("{d} KB", .{(index * 37) % 512 + 1}) catch @panic("oom")).monospaced(),
         };
     }
 
@@ -1331,7 +1331,7 @@ pub const Gallery = struct {
             ziggui.MenuBar(&self.menu_bar, self.barMenus(), .{}),
             ziggui.Divider(),
             ziggui.VStack(.{
-                ziggui.Text(self.menu_choice).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+                ziggui.Text(self.menu_choice).foregroundStyle(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
                 ziggui.Spacer(),
             }).padding(12).frameHeight(260),
         }).spacing(0).border(active_theme.colors.separator, 1));
@@ -1369,7 +1369,7 @@ pub const Gallery = struct {
                 "~/src/mlavergn/ziggui",
                 ziggui.WindowButtons(.gnome, true, actions),
             ).frameWidth(360).border(active_theme.colors.separator, 1))),
-            ziggui.Text(self.window_said).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text(self.window_said).foregroundStyle(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
     }
 
@@ -1416,7 +1416,7 @@ pub const Gallery = struct {
         const rows = self.search.shown();
         if (rows.len == 0) {
             return ziggui.VStack(.{
-                ziggui.Text("No component matches.").font(.footnote).foreground(active_theme.colors.secondary_label).padding(10),
+                ziggui.Text("No component matches.").font(.footnote).foregroundStyle(active_theme.colors.secondary_label).padding(10),
                 ziggui.Spacer(),
             }).frameMaxWidth().frameMaxHeight();
         }
@@ -1590,7 +1590,7 @@ pub const Gallery = struct {
                 Self.topBarTitle(active_theme),
                 true,
             )).frameWidth(560))),
-            ziggui.Text(ziggui.BuildScope.shared().print("Mode: {s}", .{top_bar_segments[@intCast(std.math.clamp(self.top_bar_mode.get(), 0, top_bar_segments.len - 1))].title})).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text(ziggui.BuildScope.shared().print("Mode: {s}", .{top_bar_segments[@intCast(std.math.clamp(self.top_bar_mode.get(), 0, top_bar_segments.len - 1))].title})).foregroundStyle(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
     }
 
@@ -1599,7 +1599,7 @@ pub const Gallery = struct {
     /// - `active_theme`: the theme this frame draws with.
     /// - Returns: the title.
     fn topBarTitle(active_theme: ziggui.Theme) ziggui.View {
-        return ziggui.Text("~/src/mlavergn/ziggui/gallery").font(.footnote).mono().foreground(active_theme.colors.secondary_label).truncated();
+        return ziggui.Text("~/src/mlavergn/ziggui/gallery").font(.footnote).monospaced().foregroundStyle(active_theme.colors.secondary_label).truncated();
     }
 
     /// A macOS window's top band, its traffic lights drawn over it where
@@ -1633,7 +1633,7 @@ pub const Gallery = struct {
         const listing = [_]ziggui.KeyHint{ .{ .key = "↑↓", .action = "rows" }, .{ .key = "space", .action = "stage" }, .{ .key = "ctrl+N", .action = "new" }, .{ .key = "alt", .action = "menus" } };
         return ziggui.VStack(.{
             gallery.Card.view(active_theme, "StatusLine while typing", "ziggui.StatusLine", ziggui.VStack(.{
-                ziggui.Text("Sent to claude-ziggui.").font(.footnote).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading).padding(6),
+                ziggui.Text("Sent to claude-ziggui.").font(.footnote).foregroundStyle(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading).padding(6),
                 ziggui.StatusLine(&typing),
             }).spacing(0).border(active_theme.colors.separator, 1)),
             gallery.Card.view(active_theme, "StatusLine over a list", "ziggui.StatusLine", ziggui.StatusLine(&listing).border(active_theme.colors.separator, 1)),
@@ -1653,11 +1653,11 @@ pub const Gallery = struct {
         for (rows, names, branches, 0..) |*row, name, branch, index| {
             const details = if (self.hover.shows(index, ziggui.FrameClock.shared().time())) ziggui.VStack(.{
                 ziggui.Text(name).font(.headline),
-                ziggui.Text(ziggui.BuildScope.shared().allocator().print("~/src/mlavergn/{s} · {s}", .{ name, branch }) catch @panic("oom")).font(.footnote).foreground(active_theme.colors.secondary_label),
+                ziggui.Text(ziggui.BuildScope.shared().allocator().print("~/src/mlavergn/{s} · {s}", .{ name, branch }) catch @panic("oom")).font(.footnote).foregroundStyle(active_theme.colors.secondary_label),
             }).spacing(4).alignment(.leading).padding(12) else ziggui.Empty();
             row.* = ziggui.HoverPopover(ziggui.VStack(.{
                 ziggui.Text(name).font(.callout),
-                ziggui.Text(branch).font(.caption).foreground(active_theme.colors.secondary_label),
+                ziggui.Text(branch).font(.caption).foregroundStyle(active_theme.colors.secondary_label),
             }).spacing(2).alignment(.leading).paddingInsets(.{ .top = 4, .leading = 10, .bottom = 4, .trailing = 10 }).frameMaxWidth().frameAlign(.leading), &self.hover, index, details);
         }
         return ziggui.VStack(.{
@@ -1695,7 +1695,7 @@ pub const Gallery = struct {
     fn pane(active_theme: ziggui.Theme, title: []const u8, text: []const u8) ziggui.View {
         return ziggui.VStack(.{
             ziggui.Text(title).font(.headline).frameMaxWidth().frameAlign(.leading),
-            ziggui.WrappedText(text).foreground(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.WrappedText(text).foregroundStyle(active_theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             ziggui.Spacer(),
         }).spacing(6).padding(12).frameMaxWidth().frameMaxHeight();
     }

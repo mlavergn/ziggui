@@ -10,7 +10,7 @@ pub const std_options: std.Options = .{
 
 /// The command line: `ziggui-gallery [--section <n>] [--theme <n>] [--accent <n>]
 /// [--dark] [--menu <n>] [--sheet] [--alert] [--popover] [--passthrough]
-/// [--options-menu] [--picker-menu] [--find] [--dialog] [--select] [--rename] [--path-entry]
+/// [--options-menu] [--picker-menu] [--find] [--replace] [--editor-style] [--dialog] [--select] [--rename] [--path-entry]
 /// [--search <text>] [--components] [--video <url or path>] [--ray-traced]
 /// [--screenshot <out.bmp> [--size <w>x<h>] [--gpu] [--workers <n>] [--bench <n>]]`.
 ///
@@ -31,7 +31,11 @@ pub const std_options: std.Options = .{
 /// (`--section 3`), as the theme family opens it (`--theme`). `--find`,
 /// `--dialog` and `--select` show the Text Editor section's find bar (after
 /// `greeting`), its Open dialog, and a selection across three lines
-/// (`--section 1`). `--rename` shows the Lists section's renamed row, its
+/// (`--section 1`); `--replace` shows the find bar with its replace row
+/// (`greeting` to `salutation`), and `--editor-style` dresses the editor in
+/// a style of its own (Noto Serif, colors for its text, ground, caret,
+/// selection, gutter, current line and matches, the colors bar open, `total`
+/// found). `--rename` shows the Lists section's renamed row, its
 /// name selected (`--section 6`). `--path-entry` shows the Files section's
 /// path bar as the field a path is typed into (`--section 14`). `--search` types
 /// its text into the sidebar's search, which shows its first match.
@@ -100,6 +104,12 @@ const Arguments = struct {
     /// Show the Text Editor section's find bar, its first match selected.
     find: bool = false,
 
+    /// Show the Text Editor section's find bar with its replace row.
+    replace: bool = false,
+
+    /// Dress the Text Editor section in a font and colors of its own.
+    editor_style: bool = false,
+
     /// List every component in the sidebar, as the top bar's switch does.
     components: bool = false,
 
@@ -166,6 +176,10 @@ const Arguments = struct {
                 arguments.picker_menu = true;
             } else if (std.mem.eql(u8, argument, "--find")) {
                 arguments.find = true;
+            } else if (std.mem.eql(u8, argument, "--replace")) {
+                arguments.replace = true;
+            } else if (std.mem.eql(u8, argument, "--editor-style")) {
+                arguments.editor_style = true;
             } else if (std.mem.eql(u8, argument, "--components")) {
                 arguments.components = true;
             } else if (std.mem.eql(u8, argument, "--dialog")) {
@@ -278,6 +292,8 @@ const Arguments = struct {
         if (self.options_menu) shown.showcase.menu_open.set(true);
         if (self.picker_menu) shown.pickers.openMenu();
         if (self.find) shown.editor.showMatch("greeting");
+        if (self.replace) shown.editor.showReplace("greeting", "salutation");
+        if (self.editor_style) shown.editor.showStyle();
         if (self.components) _ = shown.search.setListing(.components);
         if (self.dialog) shown.editor.openDialog();
         if (self.select) shown.editor.selectBetween("const greeting", "// Click");
@@ -301,6 +317,11 @@ pub fn main(init: std.process.Init) !void {
 
     const allocator = init.gpa;
     const arguments = Arguments.parse(try init.minimal.args.toSlice(init.arena.allocator()));
+
+    // Noto Serif, from the fixtures, for the Text Editor's font menus,
+    // headless too; freed once every frame and window is gone.
+    Fonts.register(allocator, init.io);
+    defer ziggui.FontRegistry.shared().reset();
 
     const shown = try allocator.create(gallery.Gallery);
     defer allocator.destroy(shown);
@@ -346,6 +367,8 @@ pub fn main(init: std.process.Init) !void {
 
     WindowSettings.load(allocator, init.io, init.environ_map);
     defer WindowSettings.unload();
+    // `--editor-style` asks for its own look, which a saved one must not replace.
+    EditorSettings.load(shown, !arguments.editor_style);
     try Window.run(allocator, shown, !arguments.dark);
 }
 
@@ -642,30 +665,43 @@ const WindowSettings = struct {
     /// a failure is logged and the place kept for the next save.
     fn write() void {
         const place = Self.saved orelse return;
-        const folder_path = Self.folder orelse return;
-        var buffer: [512]u8 = undefined;
+        _ = Self.writeZon(file_name, place, "window place");
+    }
+
+    /// Writes a value as ZON to a file in the settings folder, making the
+    /// folder if need be, through `replaceFile`; a failure is logged.
+    ///
+    /// - `name`: the file's name in the folder.
+    /// - `value`: what to write.
+    /// - `what`: what it is, for the log.
+    /// - Returns: whether it was written.
+    fn writeZon(name: []const u8, value: anytype, comptime what: []const u8) bool {
+        const folder_path = Self.folder orelse return false;
+        var buffer: [4096]u8 = undefined;
         var writer: std.Io.Writer = .fixed(&buffer);
         var serializer: std.zon.Serializer = .{ .writer = &writer };
-        serializer.value(place, .{}) catch |err| {
-            log.warn("window place not saved: {s}", .{@errorName(err)});
-            return;
+        serializer.value(value, .{}) catch |err| {
+            log.warn(what ++ " not saved: {s}", .{@errorName(err)});
+            return false;
         };
         writer.writeByte('\n') catch |err| {
-            log.warn("window place not saved: {s}", .{@errorName(err)});
-            return;
+            log.warn(what ++ " not saved: {s}", .{@errorName(err)});
+            return false;
         };
-        const path = std.fs.path.join(Self.settings_allocator, &.{ folder_path, file_name }) catch |err| {
-            log.warn("window place not saved: {s}", .{@errorName(err)});
-            return;
+        const path = std.fs.path.join(Self.settings_allocator, &.{ folder_path, name }) catch |err| {
+            log.warn(what ++ " not saved: {s}", .{@errorName(err)});
+            return false;
         };
         defer Self.settings_allocator.free(path);
         std.Io.Dir.cwd().createDirPath(Self.settings_io, folder_path) catch |err| {
-            log.warn("window place not saved: no folder {s}: {s}", .{ folder_path, @errorName(err) });
-            return;
+            log.warn(what ++ " not saved: no folder {s}: {s}", .{ folder_path, @errorName(err) });
+            return false;
         };
         Self.replaceFile(path, writer.buffered()) catch |err| {
-            log.warn("window place not saved to {s}: {s}", .{ path, @errorName(err) });
+            log.warn(what ++ " not saved to {s}: {s}", .{ path, @errorName(err) });
+            return false;
         };
+        return true;
     }
 
     /// Writes `data` to a temporary file beside `path`, then renames it over
@@ -708,6 +744,154 @@ const WindowSettings = struct {
     fn absoluteVariable(environment: *const std.process.Environ.Map, name: []const u8) ?[]const u8 {
         const value = environment.get(name) orelse return null;
         return if (std.fs.path.isAbsolute(value)) value else null;
+    }
+};
+
+/// The Text Editor section's settings (`ziggui.TextEditorSettings`), kept
+/// in `gallery-editor.zon` beside `gallery-window.zon`: read as the window
+/// opens, noted each frame and written once they have rested
+/// `WindowMemory.settle_ms`, and at quit, through `WindowSettings`' folder
+/// and atomic replace. Headless runs never read or write it, so screenshots
+/// stay the same whatever was saved. A file that cannot be read or parsed is
+/// logged and ignored.
+const EditorSettings = struct {
+    const Self = @This();
+
+    /// The file's name in the settings folder.
+    const file_name = "gallery-editor.zon";
+
+    /// The longest file read; the settings are a few hundred bytes.
+    const most_bytes = 16384;
+
+    /// The editor whose settings are kept, while the window is up.
+    var editor: ?*gallery.Editor = null;
+
+    /// The settings as last written (or read).
+    var written: ziggui.TextEditorSettings = .{};
+
+    /// The settings as last noted, which `changed_at` times.
+    var pending: ziggui.TextEditorSettings = .{};
+
+    /// When the settings last changed and are not written yet, in ms.
+    var changed_at: ?u64 = null;
+
+    /// Reads the saved settings into the editor, if any; `WindowSettings.load` ran first.
+    ///
+    /// - `target`: the gallery, whose editor takes them.
+    /// - `read`: whether to read the file (false keeps what the arguments set).
+    fn load(target: *gallery.Gallery, read: bool) void {
+        Self.editor = &target.editor;
+        defer {
+            Self.written = target.editor.settings;
+            Self.pending = Self.written;
+        }
+        if (!read) return;
+        const folder_path = WindowSettings.folder orelse return;
+        const allocator = WindowSettings.settings_allocator;
+        const path = std.fs.path.join(allocator, &.{ folder_path, file_name }) catch |err| {
+            log.warn("editor settings not read: {s}", .{@errorName(err)});
+            return;
+        };
+        defer allocator.free(path);
+        const source = std.Io.Dir.cwd().readFileAllocOptions(WindowSettings.settings_io, path, allocator, .limited(most_bytes), .of(u8), 0) catch |err| {
+            if (err != error.FileNotFound) log.warn("editor settings not read from {s}: {s}", .{ path, @errorName(err) });
+            return;
+        };
+        defer allocator.free(source);
+        // The strings land in the arena; `restoreSettings` keeps the registry's own names.
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        var diagnostics: std.zon.parse.Diagnostics = undefined;
+        const saved = std.zon.parse.fromSlice(ziggui.TextEditorSettings, .{
+            .gpa = arena.allocator(),
+            .arena = arena.allocator(),
+            .source = source,
+            .diagnostics = &diagnostics,
+            .ignore_unknown_fields = true,
+        }) catch |err| {
+            log.warn("editor settings in {s} ignored: {s}", .{ path, @errorName(err) });
+            return;
+        };
+        target.editor.restoreSettings(saved);
+    }
+
+    /// Notes the editor's settings, timing a change, and writes them once
+    /// they have rested.
+    fn note() void {
+        const target = Self.editor orelse return;
+        const now = ziggui.FrameClock.shared().time();
+        if (!std.meta.eql(target.settings, Self.pending)) {
+            Self.pending = target.settings;
+            Self.changed_at = now;
+        }
+        const since = Self.changed_at orelse return;
+        if (now -| since >= ziggui.WindowMemory.settle_ms) Self.write();
+    }
+
+    /// Whether a change waits to be written, so the loop keeps waking.
+    ///
+    /// - Returns: true while one waits.
+    fn settling() bool {
+        return Self.changed_at != null;
+    }
+
+    /// Writes a change that has not rested yet, as the loop ends.
+    fn flush() void {
+        if (Self.changed_at != null) Self.write();
+        Self.editor = null;
+    }
+
+    /// Writes the noted settings, making the folder if need be; a failure
+    /// is logged and the settings tried again at the next change or quit.
+    fn write() void {
+        Self.changed_at = null;
+        if (std.meta.eql(Self.pending, Self.written)) return;
+        if (WindowSettings.writeZon(file_name, Self.pending, "editor settings")) Self.written = Self.pending;
+    }
+};
+
+/// The font family the gallery registers at launch: Noto Serif from
+/// `fixtures/fonts` (`gallery.fonts_path`), regular and bold.
+const Fonts = struct {
+    const Self = @This();
+
+    /// The family's name, as the font menus list it.
+    const family_name = "Noto Serif";
+
+    /// The most bytes a face may hold.
+    const most_bytes = 8 * 1024 * 1024;
+
+    /// Reads the faces and registers the family; a face that cannot be
+    /// read or parsed is logged and the family left out.
+    ///
+    /// - `allocator`: allocator for the reads and the registry's copies.
+    /// - `io`: the I/O the faces are read through.
+    fn register(allocator: std.mem.Allocator, io: std.Io) void {
+        const regular = Self.read(allocator, io, "NotoSerif-Regular.ttf") orelse return;
+        defer allocator.free(regular);
+        const bold = Self.read(allocator, io, "NotoSerif-Bold.ttf");
+        defer if (bold) |bytes| allocator.free(bytes);
+        ziggui.FontRegistry.shared().register(allocator, .{ .name = family_name, .regular = regular, .bold = bold }) catch |err| {
+            log.warn("{s} not registered: {s}", .{ family_name, @errorName(err) });
+        };
+    }
+
+    /// Reads one face's file.
+    ///
+    /// - `allocator`: allocator for the bytes.
+    /// - `io`: the I/O it is read through.
+    /// - `file`: the file's name in the fonts folder.
+    /// - Returns: the bytes, owned by the caller, or null (logged) when it cannot be read.
+    fn read(allocator: std.mem.Allocator, io: std.Io, file: []const u8) ?[]u8 {
+        const path = std.fs.path.join(allocator, &.{ gallery.fonts_path, file }) catch |err| {
+            log.warn("{s} not read: {s}", .{ file, @errorName(err) });
+            return null;
+        };
+        defer allocator.free(path);
+        return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(most_bytes)) catch |err| {
+            log.warn("{s} not read: {s}", .{ path, @errorName(err) });
+            return null;
+        };
     }
 };
 
@@ -775,11 +959,13 @@ const Window = struct {
         app.setQuitHandler(Self.onQuit);
         app.setMouseHandler(Self.onMouse);
         app.setBusyInterval(Self.wakeInterval);
-        // The window reopens where and as large as it was left.
-        app.setFrameHook(WindowSettings.note);
+        // The window reopens where and as large as it was left, and the
+        // Text Editor with the settings it was left with.
+        app.setFrameHook(Self.frameHook);
         defer {
             app.setFrameHook(null);
             WindowSettings.flush();
+            EditorSettings.flush();
         }
         const config: ziggui.AppConfig = .{
             .title = "ziggui — Gallery",
@@ -798,6 +984,13 @@ const Window = struct {
             .warp_fallback = true,
         };
         try app.run(allocator, gallery.Gallery, target, config.restoring(WindowSettings.saved), gallery.Gallery.body, null);
+    }
+
+    /// The frame hook: notes the window's place and the editor's settings,
+    /// saving each once it has rested.
+    fn frameHook() void {
+        WindowSettings.note();
+        EditorSettings.note();
     }
 
     /// Makes the Media Native section's platform view: on macOS a layer-hosting
@@ -932,7 +1125,7 @@ const Window = struct {
     /// - Returns: milliseconds between wakes, 0 for none.
     fn wakeInterval() u32 {
         // A moved or resized window is saved once it rests, which needs a wake.
-        if (WindowSettings.memory.settling()) return WindowSettings.settle_wake_ms;
+        if (WindowSettings.memory.settling() or EditorSettings.settling()) return WindowSettings.settle_wake_ms;
         const target = Self.shown orelse return 0;
         return if (target.hoverWaiting()) 16 else 0;
     }

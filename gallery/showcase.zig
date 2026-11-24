@@ -89,7 +89,7 @@ const table_rows = [_][]const []const u8{
 
 /// The Controls panel's radio group's options.
 /// The Toggles card's checkbox rows: each explicit `CheckboxStyle`, its row's
-/// title, and the color its checkboxes are given with `.foreground()`, if any.
+/// title, and the color its checkboxes are given with `.foregroundStyle()`, if any.
 const checkbox_styles = [_]struct { style: ziggui.CheckboxStyle, title: []const u8, tint: ?ziggui.Color }{
     .{ .style = .rounded, .title = "Rounded", .tint = null },
     .{ .style = .square, .title = "Square", .tint = ziggui.Color.hex(0xDD4466) },
@@ -280,6 +280,8 @@ pub const Showcase = struct {
 
     /// The Controls panel's text field.
     name: ziggui.TextFieldState,
+    /// The secure field card's password.
+    password: ziggui.TextFieldState,
 
     // Layout and table
 
@@ -328,6 +330,16 @@ pub const Showcase = struct {
     picture_pixels: []u8 = &.{},
     /// The Picture card's zoom and pan.
     picture_zoom: ziggui.ZoomState = .{},
+    /// The Picture card's "Reverse ↕" toggle: `picture_zoom.invert_scroll_y`, set from it each frame.
+    picture_invert_y: ziggui.State(bool),
+    /// The Picture card's "Reverse ↔" toggle: `picture_zoom.invert_scroll_x`, set from it each frame.
+    picture_invert_x: ziggui.State(bool),
+    /// The Picture card's "Grid" toggle: whether the pattern shows its grid.
+    picture_grid: ziggui.State(bool),
+    /// Whether `picture_pixels` were last painted with the grid.
+    picture_grid_painted: bool = true,
+    /// The picture's pixels' generation, bumped as they are painted again, so its texture uploads afresh.
+    picture_generation: u64 = 1,
     /// The Picture card's marking up: a segment's first click, the end a press holds.
     picture_annotation: ziggui.AnnotationState = .{},
     /// The Picture card's segments, in picture pixels; the first `picture_segment_count` are drawn.
@@ -381,10 +393,14 @@ pub const Showcase = struct {
                 ziggui.State(bool).init(allocator, false), ziggui.State(bool).init(allocator, true),
             },
             .remember = ziggui.State(bool).init(allocator, true),
+            .picture_invert_y = ziggui.State(bool).init(allocator, false),
+            .picture_invert_x = ziggui.State(bool).init(allocator, false),
+            .picture_grid = ziggui.State(bool).init(allocator, true),
             .slider = ziggui.State(f32).init(allocator, 0.5),
             .stepper = ziggui.State(i64).init(allocator, 2),
             .radio = ziggui.State(i64).init(allocator, 0),
             .name = ziggui.TextFieldState.init(allocator),
+            .password = ziggui.TextFieldState.init(allocator),
             .tab = ziggui.State(i64).init(allocator, 0),
             .progress = ziggui.State(f32).init(allocator, 0.3),
             .show_sheet = ziggui.State(bool).init(allocator, false),
@@ -400,7 +416,7 @@ pub const Showcase = struct {
         };
         errdefer self.deinit();
         self.picture_pixels = try allocator.alloc(u8, picture_width * picture_height * 4);
-        Self.paintPattern(self.picture_pixels);
+        Self.paintPattern(self.picture_pixels, true);
         // The first row selected, and in the cell mode card a cell, shown as
         // the cursor while that table has the keyboard.
         self.table.select(0);
@@ -429,11 +445,15 @@ pub const Showcase = struct {
         self.show_sheet.deinit();
         self.progress.deinit();
         self.tab.deinit();
+        self.password.deinit();
         self.name.deinit();
         self.radio.deinit();
         self.stepper.deinit();
         self.slider.deinit();
         self.remember.deinit();
+        self.picture_grid.deinit();
+        self.picture_invert_x.deinit();
+        self.picture_invert_y.deinit();
         for (&self.checkboxes) |*checkbox| checkbox.deinit();
         self.notifications.deinit();
         self.wifi.deinit();
@@ -459,7 +479,7 @@ pub const Showcase = struct {
             ziggui.Text("Sheet").font(.title),
             ziggui.WrappedText("A centered window-modal sheet over a dimming scrim. Tap outside or Done to dismiss."),
             ziggui.WrappedText("The wheel over the sheet scrolls only its list, never the page it covers.")
-                .font(.footnote).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+                .font(.footnote).foregroundStyle(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             ziggui.ScrollViewState(&self.sheet_scroll, ziggui.VStack(.{
                 ziggui.ForEach(&scroll_labels, Self.scrollRow),
             }).spacing(6).padding(8)).scrollIndicators(.visible).frameMaxWidth().frameHeight(90).background(theme.colors.secondary_background).cornerRadius(6),
@@ -525,7 +545,7 @@ pub const Showcase = struct {
 
     /// The Toggles card: two switches in rows, then a row of checkboxes per
     /// explicit `CheckboxStyle`, one off and one on, the square ones tinted
-    /// with their own `.foreground()`, and a labeled circular one.
+    /// with their own `.foregroundStyle()`, and a labeled circular one.
     ///
     /// - `self`: the showcase.
     /// - `theme`: the theme this frame draws with.
@@ -552,7 +572,7 @@ pub const Showcase = struct {
         var pair: [2]ziggui.View = undefined;
         for (&pair, 0..) |*checkbox, column| {
             checkbox.* = ziggui.Toggle("", self.checkboxes[2 * index + column].binding());
-            if (style.tint) |tint| checkbox.* = checkbox.foreground(tint);
+            if (style.tint) |tint| checkbox.* = checkbox.foregroundStyle(tint);
         }
         return Self.row(style.title, ziggui.HStack(.{ pair[0], pair[1] }).spacing(14).toggleStyle(.checkbox).checkboxStyle(style.style));
     }
@@ -582,9 +602,9 @@ pub const Showcase = struct {
         clock.requestFrameAt(now + progress_frame_ms);
         return gallery.Card.view(theme, "Progress indicators", "ziggui.Spinner · ziggui.LoadingDots", ziggui.HStack(.{
             ziggui.Spinner(now, 18, theme.colors.secondary_label),
-            ziggui.Text("Spinner").foreground(theme.colors.secondary_label),
+            ziggui.Text("Spinner").foregroundStyle(theme.colors.secondary_label),
             ziggui.LoadingDots(now, theme.colors.accent),
-            ziggui.Text("LoadingDots").foreground(theme.colors.secondary_label),
+            ziggui.Text("LoadingDots").foregroundStyle(theme.colors.secondary_label),
             ziggui.Spacer(),
         }).spacing(10));
     }
@@ -634,7 +654,20 @@ pub const Showcase = struct {
         return gallery.Card.view(theme, "Text field", "ziggui.TextField", ziggui.VStack(.{
             ziggui.TextField("Type your name…", &self.name).frameHeight(36).cornerRadius(8).frameMaxWidth(),
             ziggui.Text("Right-click for Cut / Copy / Paste / Select All.")
-                .font(.footnote).foreground(theme.colors.secondary_label),
+                .font(.footnote).foregroundStyle(theme.colors.secondary_label),
+        }).spacing(8));
+    }
+
+    /// The Secure field card: a password's field, a dot per character.
+    ///
+    /// - `self`: the showcase.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    pub fn secureFieldCard(self: *Self, theme: ziggui.Theme) ziggui.View {
+        return gallery.Card.view(theme, "Secure field", "ziggui.SecureField", ziggui.VStack(.{
+            ziggui.SecureField("Password", &self.password).frameHeight(36).cornerRadius(8).frameMaxWidth(),
+            ziggui.Text("Shows a dot per character; its text is never copied, cut or read out.")
+                .font(.footnote).foregroundStyle(theme.colors.secondary_label),
         }).spacing(8));
     }
 
@@ -650,7 +683,7 @@ pub const Showcase = struct {
             ziggui.Text("Title").font(.title).frameMaxWidth().frameAlign(.leading),
             ziggui.Text("Headline").font(.headline).frameMaxWidth().frameAlign(.leading),
             ziggui.Text("Body — the quick brown fox.").font(.body).frameMaxWidth().frameAlign(.leading),
-            ziggui.Text("Footnote").font(.footnote).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("Footnote").font(.footnote).foregroundStyle(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
         }).spacing(6));
     }
 
@@ -664,7 +697,7 @@ pub const Showcase = struct {
         return gallery.Card.view(theme, "Wrapped paragraph", "ziggui.WrappedText", ziggui.WrappedText(
             "WrappedText word-wraps to the width it is given, growing taller as the " ++
                 "column narrows. Reach for it for paragraphs, descriptions, captions.",
-        ).foreground(theme.colors.label));
+        ).foregroundStyle(theme.colors.label));
     }
 
     /// The Search results card: matches marked, the last cut by a narrow cell.
@@ -847,7 +880,7 @@ pub const Showcase = struct {
             }).frameMaxWidth(),
             ziggui.ZStack(.{
                 ziggui.RoundedRectangle(swatches[7], 10).frameMaxWidth().frameHeight(60),
-                ziggui.Text("ZStack overlay").foreground(ziggui.Color.white).font(.headline),
+                ziggui.Text("ZStack overlay").foregroundStyle(ziggui.Color.white).font(.headline),
             }),
         }).spacing(10));
     }
@@ -937,7 +970,7 @@ pub const Showcase = struct {
         return gallery.Card.view(theme, "A find's current match marked; rows taller than a table's own", "TableOptions.highlighted · .row_height", ziggui.VStack(.{
             ziggui.HStack(.{
                 ziggui.Button("Next Match", ziggui.Callback.init(Self, self, Self.nextMatch)),
-                ziggui.Text(label).foreground(theme.colors.secondary_label),
+                ziggui.Text(label).foregroundStyle(theme.colors.secondary_label),
                 ziggui.Spacer(),
             }).spacing(10),
             table,
@@ -1187,7 +1220,7 @@ pub const Showcase = struct {
             ziggui.Button("Open popover", ziggui.Callback.init(Self, self, Self.togglePassPopover))
                 .popover(self.show_pass_popover.binding(), ziggui.WrappedText("The button beside this trigger still takes taps; anywhere else closes it.").padding(14).frameWidth(220)),
             ziggui.Button("Tap me while it is open", ziggui.Callback.init(Self, self, Self.passTap)).popoverPassthrough(),
-            ziggui.Text(taps_text).foreground(theme.colors.secondary_label),
+            ziggui.Text(taps_text).foregroundStyle(theme.colors.secondary_label),
             ziggui.Spacer(),
         }).spacing(10));
     }
@@ -1202,7 +1235,7 @@ pub const Showcase = struct {
             ziggui.RoundedRectangle(if (self.hovering.get()) theme.colors.accent else theme.colors.control_track, 8)
                 .frame(120, 44)
                 .onHover(.{ .context = self, .function = Self.hovered }),
-            ziggui.Text(if (self.hovering.get()) "Pointer inside" else "Point at the box").foreground(theme.colors.secondary_label),
+            ziggui.Text(if (self.hovering.get()) "Pointer inside" else "Point at the box").foregroundStyle(theme.colors.secondary_label),
             ziggui.Spacer(),
         }).spacing(12));
     }
@@ -1227,7 +1260,7 @@ pub const Showcase = struct {
         else
             ziggui.BuildScope.shared().allocator().print("Last key-up: keycode 0x{x}", .{self.last_key_up.get()}) catch @panic("oom");
         return gallery.Card.view(theme, "Key-ups and quitting", "ziggui.App.setKeyUpHandler · ziggui.Toggle", ziggui.VStack(.{
-            ziggui.Text(key_up_text).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text(key_up_text).foregroundStyle(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             Self.row("Ask before quitting (close button, ⌘Q)", ziggui.Toggle("", self.ask_quit.binding())),
         }).spacing(10));
     }
@@ -1281,7 +1314,7 @@ pub const Showcase = struct {
         if (self.navigation.top()) |route| return self.navigationDetail(theme, title, route);
         const page = ziggui.VStack(.{
             Self.header(title),
-            ziggui.Text("Tap a row to push its view onto the stack; ‹ pops it.").foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("Tap a row to push its view onto the stack; ‹ pops it.").foregroundStyle(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             gallery.Card.view(theme, "Stack", "ziggui.NavigationLinkIcon · ziggui.NavigationPath", self.navigationList(&navigation_folders, 0)),
             gallery.Card.view(theme, "A plain link, and the button that pops", "ziggui.NavigationLink · ziggui.NavigationBackButton", ziggui.VStack(.{
                 ziggui.NavigationLink(navigation_folders[2].title, navigation_folders[2].route, &self.navigation),
@@ -1305,7 +1338,7 @@ pub const Showcase = struct {
                 }).spacing(8).padding(8).frameMaxHeight(),
                 ziggui.VStack(.{
                     ziggui.Spacer(),
-                    ziggui.Text("Select a chat").foreground(theme.colors.secondary_label),
+                    ziggui.Text("Select a chat").foregroundStyle(theme.colors.secondary_label),
                     ziggui.Spacer(),
                 }).frameMaxWidth().frameMaxHeight(),
             ).frameMaxWidth()),
@@ -1346,7 +1379,7 @@ pub const Showcase = struct {
             }).spacing(16)),
             gallery.Card.view(theme, "Canvas: a view that draws itself", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", ziggui.Canvas(Self, self, Self.drawClock).frameMaxWidth().frameHeight(160).clipped().cornerRadius(8)),
             gallery.Card.view(theme, "Markers: point at one to light it", "CanvasMarkers.crosshair · .ring · .halo · .reticle · .pill · .chip · .callout · .nearest", ziggui.Canvas(Self, self, Self.drawMarkers).frameMaxWidth().frameHeight(220).clipped().cornerRadius(8)),
-            gallery.Card.view(theme, "A large picture marked up (click twice for a segment, drag an end; drag to pan, pinch or ⌘-scroll to zoom)", "ziggui.ZoomableImage · ZoomState · AnnotationState · CanvasMarkers", self.pictureDemo(theme)),
+            gallery.Card.view(theme, "A large picture marked up (click twice for a segment, drag an end; drag or scroll to pan, pinch or ⌘-scroll to zoom)", "ziggui.ZoomableImage · ZoomState (invert_scroll_y, invert_scroll_x) · AnnotationState · CanvasMarkers", self.pictureDemo(theme)),
         }).spacing(16);
     }
 
@@ -1534,14 +1567,14 @@ pub const Showcase = struct {
             ziggui.Canvas(Self, self, Self.drawTitleBar).frameMaxWidth().frameHeight(32),
             ziggui.HStack(.{
                 ziggui.Icon(.boxes, 16, foreground),
-                ziggui.Text("File").foreground(foreground),
-                ziggui.Text("View").foreground(foreground),
+                ziggui.Text("File").foregroundStyle(foreground),
+                ziggui.Text("View").foregroundStyle(foreground),
                 ziggui.Spacer(),
-                ziggui.Text("~/src/ziggui").font(.footnote).foreground(foreground),
+                ziggui.Text("~/src/ziggui").font(.footnote).foregroundStyle(foreground),
                 ziggui.Spacer(),
-                ziggui.Text("–").foreground(foreground).padding(6).onTap(ziggui.Callback.init(Self, self, Self.minimizeWindow)),
-                ziggui.Text(if (self.platform.isMaximized()) "❐" else "□").foreground(foreground).padding(6).onTap(ziggui.Callback.init(Self, self, Self.maximizeWindow)),
-                ziggui.Text("×").foreground(foreground).padding(6).onTap(ziggui.Callback.init(Self, self, Self.closeWindow)).modalPassthrough(),
+                ziggui.Text("–").foregroundStyle(foreground).padding(6).onTapGesture(ziggui.Callback.init(Self, self, Self.minimizeWindow)),
+                ziggui.Text(if (self.platform.isMaximized()) "❐" else "□").foregroundStyle(foreground).padding(6).onTapGesture(ziggui.Callback.init(Self, self, Self.maximizeWindow)),
+                ziggui.Text("×").foregroundStyle(foreground).padding(6).onTapGesture(ziggui.Callback.init(Self, self, Self.closeWindow)).modalPassthrough(),
             }).spacing(12).paddingInsets(.{ .leading = 10, .trailing = 4 }).frameHeight(32),
         }).frameMaxWidth().frameHeight(32);
     }
@@ -1606,7 +1639,7 @@ pub const Showcase = struct {
         const columns = allocator.alloc(ziggui.View, indicator_choices.len) catch @panic("oom");
         for (indicator_choices, &self.indicator_scrolls, columns) |choice, *scroll, *column| {
             column.* = ziggui.VStack(.{
-                ziggui.Text(choice[1]).font(.caption).mono().foreground(theme.colors.secondary_label),
+                ziggui.Text(choice[1]).font(.caption).monospaced().foregroundStyle(theme.colors.secondary_label),
                 ziggui.ScrollViewState(scroll, ziggui.VStack(.{
                     ziggui.ForEach(&scroll_labels, Self.scrollRow),
                 }).spacing(6).padding(8)).scrollIndicators(choice[0])
@@ -1647,7 +1680,11 @@ pub const Showcase = struct {
     /// The Picture card: a 2048 × 1536 picture drawn from a texture of its own
     /// (`GraphicsContext.picture`, never the atlas) in a `ZoomableImage`, with
     /// markers over it, dragged to pan and zoomed with the buttons, a pinch or a
-    /// ⌘-scroll (`Gallery.pictureZoom`, from the event loop). Two clicks draw a
+    /// ⌘-scroll (`Gallery.pictureZoom`, from the event loop); a scroll pans it, the
+    /// other way on an axis its Reverse toggles turn around (`ZoomState.invert_scroll_y`,
+    /// `invert_scroll_x`), and its Grid toggle paints the pattern again
+    /// without or with its grid (a new `ZoomPicture.generation`, so its
+    /// texture uploads afresh). Two clicks draw a
     /// segment, the second ending at the picture's edge when it lands off it,
     /// and a drag on a segment's end moves it (`AnnotationState`); a press that
     /// pans is no click. The tap is the picture's, the drag the stack's around
@@ -1658,15 +1695,26 @@ pub const Showcase = struct {
     /// - Returns: the card's content.
     fn pictureDemo(self: *Self, theme: ziggui.Theme) ziggui.View {
         const zoom_text = ziggui.BuildScope.shared().allocator().print("{d:.0}%", .{self.picture_zoom.zoom * 100}) catch @panic("oom");
+        // The toggles set the picture's scrolling for the events before the next frame.
+        self.picture_zoom.invert_scroll_y = self.picture_invert_y.get();
+        self.picture_zoom.invert_scroll_x = self.picture_invert_x.get();
+        // The Grid toggle paints the pattern again, with or without its grid.
+        const grid = self.picture_grid.get();
+        if (grid != self.picture_grid_painted) {
+            Self.paintPattern(self.picture_pixels, grid);
+            self.picture_grid_painted = grid;
+            self.picture_generation += 1;
+        }
         const picture = ziggui.ZoomPicture{
             .image = .{ .width = picture_width, .height = picture_height, .pixels = self.picture_pixels },
             .key = @intFromPtr(self.picture_pixels.ptr),
+            .generation = self.picture_generation,
             .fit_hint = "Fit to see it all",
         };
         return ziggui.VStack(.{
             ziggui.ZStack(.{
                 ziggui.ZoomableImage(Self, self, Self.drawPictureMarkers, &self.picture_zoom, picture)
-                    .onTap(ziggui.Callback.init(Self, self, Self.pictureTapped))
+                    .onTapGesture(ziggui.Callback.init(Self, self, Self.pictureTapped))
                     .pointerStyle(.grabIdle),
             }).frameHeight(180).cornerRadius(8)
                 .onDrag(.{ .context = self, .function = Self.pictureDragged, .end = Self.pictureReleased })
@@ -1675,8 +1723,11 @@ pub const Showcase = struct {
                 ziggui.ButtonRoled("−", .normal, ziggui.Callback.init(Self, self, Self.zoomPictureOut)),
                 ziggui.ButtonRoled("Fit", .normal, ziggui.Callback.init(Self, self, Self.fitPicture)),
                 ziggui.ButtonRoled("+", .normal, ziggui.Callback.init(Self, self, Self.zoomPictureIn)),
-                ziggui.Text(zoom_text).foreground(theme.colors.secondary_label),
+                ziggui.Text(zoom_text).foregroundStyle(theme.colors.secondary_label),
                 ziggui.Spacer(),
+                ziggui.Toggle("Reverse ↕", self.picture_invert_y.binding()).toggleStyle(.checkbox).help("Scrolling up pans the picture down instead of up"),
+                ziggui.Toggle("Reverse ↔", self.picture_invert_x.binding()).toggleStyle(.checkbox).help("Scrolling right pans the picture left instead of right"),
+                ziggui.Toggle("Grid", self.picture_grid.binding()).toggleStyle(.checkbox).help("The pattern's grid, a line every 128 pixels"),
             }).spacing(8),
         }).spacing(8);
     }
@@ -1816,15 +1867,17 @@ pub const Showcase = struct {
         self.picture_zoom.fit();
     }
 
-    /// Paints the Picture card's test pattern: hue across, light down, and a
-    /// grid every 128 pixels, so zooming and panning are easy to follow.
+    /// Paints the Picture card's test pattern: hue across, light down, and,
+    /// when asked, a grid every 128 pixels, so zooming and panning are easy
+    /// to follow.
     ///
     /// - `pixels`: `picture_width × picture_height` RGBA8.
-    fn paintPattern(pixels: []u8) void {
+    /// - `with_grid`: whether to draw the grid's white lines.
+    fn paintPattern(pixels: []u8, with_grid: bool) void {
         for (0..picture_height) |y| {
             for (0..picture_width) |x| {
                 const index = (y * picture_width + x) * 4;
-                const grid = x % 128 < 3 or y % 128 < 3;
+                const grid = with_grid and (x % 128 < 3 or y % 128 < 3);
                 const across: f32 = @as(f32, @floatFromInt(x)) / picture_width;
                 const down: f32 = @as(f32, @floatFromInt(y)) / picture_height;
                 pixels[index] = if (grid) 255 else @intFromFloat(255 * across);
@@ -1881,7 +1934,7 @@ pub const Showcase = struct {
             gallery.Card.view(theme, "Messages", "ziggui.NavigationLinkIcon", self.navigationList(&navigation_messages, route * 10))
         else
             ziggui.WrappedText(allocator.print("Two views deep. ‹ {s} pops back one; leaving the section empties the stack.", .{under}) catch @panic("oom"))
-                .foreground(theme.colors.secondary_label)
+                .foregroundStyle(theme.colors.secondary_label)
                 .frameMaxWidth()
                 .frameAlign(.leading);
         return ziggui.VStack(.{
@@ -2180,4 +2233,35 @@ test "the highlighted table's match steps through its rows and back to the first
     try std.testing.expect(showcase.isMatch(0) and !showcase.isMatch(1));
     for (0..plain_rows.len) |_| showcase.nextMatch();
     try std.testing.expect(showcase.isMatch(0));
+}
+
+test "the Picture card's Grid toggle paints the pattern again without its grid, and back" {
+    const allocator = std.testing.allocator;
+
+    var showcase = try Showcase.init(allocator);
+    defer showcase.deinit();
+    const window = try ziggui.TestWindow.create(allocator);
+    defer window.destroy();
+    const theme = ziggui.ThemeFamily.all[0].forScheme(.light);
+
+    // The first pixel is on the grid's corner: white while the grid shows.
+    try std.testing.expectEqualSlices(u8, &.{ 255, 255, 255, 255 }, showcase.picture_pixels[0..4]);
+    const first = showcase.picture_generation;
+    showcase.picture_grid.set(false);
+    window.begin(theme);
+    _ = showcase.pictureDemo(theme);
+    window.end();
+    try std.testing.expect(!std.mem.eql(u8, &.{ 255, 255, 255 }, showcase.picture_pixels[0..3]));
+    try std.testing.expect(showcase.picture_generation > first);
+    // Unchanged, the next frame paints nothing.
+    const painted = showcase.picture_generation;
+    window.begin(theme);
+    _ = showcase.pictureDemo(theme);
+    window.end();
+    try std.testing.expectEqual(painted, showcase.picture_generation);
+    showcase.picture_grid.set(true);
+    window.begin(theme);
+    _ = showcase.pictureDemo(theme);
+    window.end();
+    try std.testing.expectEqualSlices(u8, &.{ 255, 255, 255, 255 }, showcase.picture_pixels[0..4]);
 }

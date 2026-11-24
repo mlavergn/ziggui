@@ -56,13 +56,13 @@ pub const TextClick = struct {
             const row = self.rows[row_index];
             const start = @min(row.start, text.len);
             const end = @min(row.end, text.len);
-            return start + mod.EditorMetrics.init(self.face, self.pixel_size).caretInLine(text[start..end], point.x - self.origin.x);
+            return start + mod.EditorMetrics.forField(self.face, self.pixel_size, self.state).caretInLine(text[start..end], point.x - self.origin.x);
         }
         const total = mod.TextLines.init(text).lineCount();
         var line_index: usize = if (relative_y <= 0) 0 else @intFromFloat(relative_y / self.line_height);
         if (line_index >= total) line_index = total - 1;
         const range = mod.TextLines.init(text).lineRange(line_index);
-        return range.start + mod.EditorMetrics.init(self.face, self.pixel_size).caretInLine(text[range.start..range.end], point.x - self.origin.x);
+        return range.start + mod.EditorMetrics.forField(self.face, self.pixel_size, self.state).caretInLine(text[range.start..range.end], point.x - self.origin.x);
     }
 };
 

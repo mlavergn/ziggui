@@ -24,17 +24,17 @@ pub fn TokenField(state: *mod.TokenFieldState, placeholder: []const u8) mod.View
     const items = allocator.alloc(mod.View, committed.len + 1) catch @panic("oom");
     for (committed, 0..) |token, index| {
         items[index] = mod.StackBuilder.make(.horizontal, 2, .center, .{
-            mod.Text(token).size(11).weight(.medium).foreground(tokens.label),
+            mod.Text(token).font(.system(11)).fontWeight(.medium).foregroundStyle(tokens.label),
             mod.Icon(.x, 10, tokens.secondary_label)
                 .paddingInsets(.{ .top = 4, .leading = 3, .bottom = 4, .trailing = 6 })
-                .onTap(mod.Callback.tagged(mod.TokenFieldState, state, mod.TokenFieldState.remove, index))
+                .onTapGesture(mod.Callback.tagged(mod.TokenFieldState, state, mod.TokenFieldState.remove, index))
                 .accessibilityLabel("Remove"),
         }).paddingInsets(.{ .leading = 8 })
             .background(tokens.neutral_soft)
             .cornerRadius(9);
     }
     items[committed.len] = mod.TextField(placeholder, &state.input)
-        .chromeless(0)
+        .textFieldStyle(.plain)
         .onSubmit(mod.Callback.attempt(mod.TokenFieldState, state, mod.TokenFieldState.commit, "tokens not committed"))
         .frameMaxWidth();
     return mod.FieldChrome(mod.StackBuilder.fromSlice(.horizontal, 4, .center, items)

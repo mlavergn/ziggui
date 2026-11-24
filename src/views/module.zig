@@ -78,6 +78,8 @@ pub const Modifiers = @import("core/module.zig").Modifiers;
 pub const ToggleStyle = @import("core/module.zig").ToggleStyle;
 /// How a checkbox `Toggle` draws its box (`.checkboxStyle()`).
 pub const CheckboxStyle = @import("core/module.zig").CheckboxStyle;
+/// The colors a `TextEditor` draws its caret, selection, gutter and matches in.
+pub const TextEditorColors = @import("core/module.zig").TextEditorColors;
 /// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerStyle = @import("core/module.zig").PickerStyle;
 /// Whether scroll views draw their scrollbars (`.scrollIndicators()`).
@@ -98,6 +100,16 @@ pub const MaterialSpecification = @import("core/module.zig").MaterialSpecificati
 pub const OverlayStyle = @import("core/module.zig").OverlayStyle;
 /// Named typographic styles.
 pub const FontToken = @import("core/module.zig").FontToken;
+/// The font a view draws in (SwiftUI's `Font`): a semantic size or `.custom(name, size)`.
+pub const Font = @import("core/module.zig").Font;
+/// A family by name at a size.
+pub const CustomFont = @import("core/module.zig").CustomFont;
+/// Whether a view's text can be selected (`.textSelection()`).
+pub const TextSelectability = @import("core/module.zig").TextSelectability;
+/// How a `TextField` draws its chrome (`.textFieldStyle()`).
+pub const TextFieldStyle = @import("core/module.zig").TextFieldStyle;
+/// How a `TextEditor` draws its chrome (`.textEditorStyle()`).
+pub const TextEditorStyle = @import("core/module.zig").TextEditorStyle;
 /// The outline a shape view fills.
 pub const ShapeKind = @import("core/module.zig").ShapeKind;
 /// The semantic appearance of a button.
@@ -246,6 +258,26 @@ pub const DisplayText = @import("text/module.zig").DisplayText;
 pub const TextLines = @import("text/module.zig").TextLines;
 /// Tab-aware widths of edited text (caret, selection, click).
 pub const EditorMetrics = @import("text/module.zig").EditorMetrics;
+/// A text field's undo and redo steps.
+pub const TextHistory = @import("text/module.zig").TextHistory;
+/// What a recorded edit was, which decides whether it joins the undo step before it.
+pub const TextEditKind = @import("text/module.zig").TextEditKind;
+/// One recorded edit's removed and inserted bytes.
+pub const TextEdit = @import("text/module.zig").TextEdit;
+/// One undo step's edits.
+pub const TextEditGroup = @import("text/module.zig").TextEditGroup;
+/// An edit as a field reports it to its history.
+pub const TextEditRecord = @import("text/module.zig").TextEditRecord;
+/// How an editor indents: tabs or spaces, and a level's width.
+pub const TextIndentation = @import("text/module.zig").TextIndentation;
+/// What Tab inserts: spaces or a tab character.
+pub const IndentationStyle = @import("text/module.zig").IndentationStyle;
+/// How a document's lines end on disk: LF or CRLF.
+pub const LineEnding = @import("text/module.zig").LineEnding;
+/// Plain-text search over a buffer.
+pub const TextSearch = @import("text/module.zig").TextSearch;
+/// How a text search matches: case, whole words.
+pub const TextSearchOptions = @import("text/module.zig").TextSearchOptions;
 
 // -----------------------------------------------------------------------------
 // Controls (controls/)
@@ -298,6 +330,8 @@ pub const ProgressView = @import("controls/module.zig").ProgressView;
 pub const Picker = @import("controls/module.zig").Picker;
 /// A one-line text field.
 pub const TextField = @import("controls/module.zig").TextField;
+/// A one-line field that shows dots instead of its text.
+pub const SecureField = @import("controls/module.zig").SecureField;
 /// A multi-line text editor.
 pub const TextEditor = @import("controls/module.zig").TextEditor;
 /// A title behind a color swatch.
@@ -336,6 +370,10 @@ pub const Appearance = @import("controls/module.zig").Appearance;
 pub const AppearancePicker = @import("controls/module.zig").AppearancePicker;
 /// A settings page's theme choice: a little window per theme family, then the accent swatches.
 pub const ThemePicker = @import("controls/module.zig").ThemePicker;
+/// A color picker: a title and a row of swatches.
+pub const ColorPicker = @import("controls/module.zig").ColorPicker;
+/// An editor's settings as one plain value an app keeps and saves.
+pub const TextEditorSettings = @import("controls/module.zig").TextEditorSettings;
 /// The theme families alone, as mini renderings with their names as hover hints.
 pub const ThemeFamilyPicker = @import("controls/module.zig").ThemeFamilyPicker;
 /// A label renamed in place: a click while it is selected makes it a field.
@@ -672,6 +710,10 @@ pub const SearchField = @import("forms/module.zig").SearchField;
 pub const FindCount = @import("forms/module.zig").FindCount;
 /// What a `FindBar`'s field, buttons and keys do (`handleKey`).
 pub const FindActions = @import("forms/module.zig").FindActions;
+/// A find bar's replace row: its field and its buttons.
+pub const FindReplace = @import("forms/module.zig").FindReplace;
+/// A text editor's find and replace, which `View.findNavigator` attaches.
+pub const TextFindState = @import("forms/module.zig").TextFindState;
 /// A find bar: a search field, the count, and Previous, Next and Done.
 pub const FindBar = @import("forms/module.zig").FindBar;
 /// A composed field's look: the raised ground, a strong hairline border, a 6pt corner.

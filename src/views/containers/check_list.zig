@@ -41,7 +41,7 @@ pub fn CheckRow(content: mod.View, checked: bool, on_tap: mod.Callback) mod.View
         .paddingInsets(.{ .top = row_inset, .leading = side_inset, .bottom = row_inset, .trailing = side_inset })
         .frameMaxWidth()
         .hoverFill(tokens.hover)
-        .onTap(on_tap);
+        .onTapGesture(on_tap);
     return if (checked) row.accessibilityAddTraits(.{ .is_selected = true }) else row;
 }
 

@@ -155,7 +155,7 @@ test "the top band keeps its title centered in the window with a view at its lef
     defer before.deinit();
 
     window.begin(renderer.MacosTheme.light);
-    const leading = mod.Rectangle(renderer.Color.black).frame(30, 20).onTap(on_tap);
+    const leading = mod.Rectangle(renderer.Color.black).frame(30, 20).onTapGesture(on_tap);
     const band = WindowChrome.topBarLeading(leading, 30, mod.HStack(.{mod.Rectangle(renderer.Color.black).frame(40, 10)}), true);
     window.end();
     var after = try window.render(band, 600, WindowChrome.top_bar_height);

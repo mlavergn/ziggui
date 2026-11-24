@@ -21,7 +21,7 @@ const Rows = struct {
     /// - `value`: the value.
     /// - Returns: the row.
     fn row(label: []const u8, value: []const u8) mod.View {
-        return mod.LabeledContent(label, mod.Text(mod.DisplayText.clean(mod.BuildScope.shared().allocator(), mod.SystemReport.orUnknown(value))).selectable());
+        return mod.LabeledContent(label, mod.Text(mod.DisplayText.clean(mod.BuildScope.shared().allocator(), mod.SystemReport.orUnknown(value))).textSelection(.enabled));
     }
 
     /// The audio devices, one a line, the system's default marked.
@@ -30,11 +30,11 @@ const Rows = struct {
     /// - Returns: the lines, or "None listed".
     fn devices(report: *const mod.SystemReport) mod.View {
         const allocator = mod.BuildScope.shared().allocator();
-        if (report.audio_outputs.len == 0) return mod.Text("None listed").foreground(mod.BuildScope.shared().tokens().secondary_label);
+        if (report.audio_outputs.len == 0) return mod.Text("None listed").foregroundStyle(mod.BuildScope.shared().tokens().secondary_label);
         var lines: std.ArrayList(mod.View) = .empty;
         for (report.audio_outputs) |output| {
             const line = allocator.print("{s}{s}", .{ output.name, output.defaultMark() }) catch @panic("oom");
-            lines.append(allocator, mod.Text(mod.DisplayText.clean(allocator, line)).selectable()) catch @panic("oom");
+            lines.append(allocator, mod.Text(mod.DisplayText.clean(allocator, line)).textSelection(.enabled)) catch @panic("oom");
         }
         return mod.StackBuilder.fromSlice(.vertical, 4, .leading, lines.items);
     }

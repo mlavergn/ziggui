@@ -4,6 +4,20 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_find_actions);
 const mod = @import("module.zig");
 
+/// A `FindBar`'s replace row: its field and its two buttons.
+pub const FindReplace = struct {
+    const Self = @This();
+
+    /// The replacement's text; app-owned. Enter in it replaces.
+    field: *mod.TextFieldState,
+
+    /// Replace: the current match, then on to the next.
+    on_replace: mod.Callback,
+
+    /// Replace All.
+    on_replace_all: mod.Callback,
+};
+
 /// A `FindBar`'s actions, and the keys that reach them while it shows:
 /// Enter in the field submits, Shift-Enter in the field and ⌘⇧G go to the
 /// previous match, ⌘G to the next, Esc closes the bar.
@@ -18,6 +32,13 @@ pub const FindActions = struct {
     on_previous: mod.Callback,
     /// Closes the bar.
     on_done: mod.Callback,
+
+    /// The search's options, which the bar's Aa (match case) and ab| (whole
+    /// word) toggles flip; null for a bar without them.
+    search_options: ?*mod.TextSearchOptions = null,
+
+    /// The replace row under the find row; null for none.
+    replace: ?FindReplace = null,
 
     /// Handles a key meant for the bar: call it from the app's key handler
     /// while the bar shows, before a focused field takes the key.

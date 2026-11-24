@@ -16,6 +16,16 @@ const Offer = struct {
     rect: renderer.Rect,
 };
 
+/// A hint's label, laid out: the view and its size.
+const Label = struct {
+    const Self = @This();
+
+    /// The label: one line of text, or text wrapped at the hint's widest line.
+    content: mod.View,
+    /// Its size, in points.
+    size: renderer.Size,
+};
+
 /// The hover hint, drawn by ziggui above everything as `ViewRenderer.render`'s
 /// last step, so every app gets it from `View.help` alone.
 ///
@@ -31,7 +41,7 @@ pub const HelpTip = struct {
 
     /// How long the pointer rests on a view before its hint shows, in ms.
     pub const delay_ms: u64 = 600;
-    /// The hint's widest line, in points; a longer one is cut.
+    /// The hint's widest line, in points; a longer hint wraps onto more lines.
     const max_width: f32 = 280;
     /// How far below the pointer the hint sits, in points.
     const below_pointer: f32 = 20;
@@ -127,25 +137,55 @@ pub const HelpTip = struct {
         const scope = mod.BuildScope.shared();
         const saved_arena = scope.swapAllocator(context.arena);
         defer _ = scope.swapAllocator(saved_arena);
-        // Cleaned, and in the app's label color (its token provider), as every other view's text.
-        const content = mod.Text(mod.DisplayText.clean(context.arena, found.text)).size(12).foreground(scope.tokens().label).truncated()
-            .paddingInsets(.{ .top = 4, .leading = 8, .bottom = 4, .trailing = 8 });
-        const size = mod.ViewRenderer.measure(context, content, .{ .width = null, .height = null }) catch |err| {
+        const shown = Self.label(context, found.text) catch |err| {
             log.warn("the hover hint was not drawn [{t}]", .{err});
             return;
         };
-        // One line, cut at `max_width`: a hint is a few words.
-        const width = @min(size.width, max_width);
+        const target = Self.frameOf(point, root, shown.size);
+        try context.theme.painter.panel(context.surface(display_list), target, @min(context.theme.metrics.corner_radius, 6), .popover);
+        // Clipped: a hint taller than the window is cut at its edge, not drawn past it.
+        try display_list.pushClip(target, 0);
+        defer display_list.popClip() catch |err| log.warn("the hover hint's clip was not closed [{t}]", .{err});
+        try mod.ViewRenderer.renderInto(context, shown.content, target, display_list);
+    }
+
+    /// Where a hint of a size goes: below the pointer, or above it when it would
+    /// run off the bottom, inside the window, and no taller than it. Its width is
+    /// rounded up, so the label laid out in it never wraps a line more than it was
+    /// measured to.
+    ///
+    /// - `point`: the pointer.
+    /// - `root`: the window's frame.
+    /// - `size`: the label's size.
+    /// - Returns: the hint's frame.
+    fn frameOf(point: renderer.Point, root: renderer.Rect, size: renderer.Size) renderer.Rect {
+        const width = @min(@ceil(size.width), max_width);
+        const height = @min(size.height, root.height);
         var x = point.x;
         if (x + width > root.maxX()) x = root.maxX() - width;
         if (x < root.x) x = root.x;
-        // Below the pointer, or above it when it would run off the bottom.
         var y = point.y + below_pointer;
-        if (y + size.height > root.maxY()) y = point.y - below_pointer / 2 - size.height;
+        if (y + height > root.maxY()) y = point.y - below_pointer / 2 - height;
         if (y < root.y) y = root.y;
-        const target = renderer.Rect{ .x = x, .y = y, .width = width, .height = size.height };
-        try context.theme.painter.panel(context.surface(display_list), target, @min(context.theme.metrics.corner_radius, 6), .popover);
-        try mod.ViewRenderer.renderInto(context, content, target, display_list);
+        return .{ .x = x, .y = y, .width = width, .height = height };
+    }
+
+    /// Lays out a hint's label: cleaned, in the app's label color (its token provider), as every
+    /// other view's text. A few words keep one line; a longer hint wraps at `max_width`, as
+    /// macOS's help tags do.
+    ///
+    /// - `context`: the paint context, with the build arena open.
+    /// - `text`: the hint.
+    /// - Returns: the label and its size; propagates a failed measure.
+    fn label(context: *const mod.Context, text: []const u8) !Label {
+        const tokens = mod.BuildScope.shared().tokens();
+        const clean = mod.DisplayText.clean(context.arena, text);
+        const insets: renderer.EdgeInsets = .{ .top = 4, .leading = 8, .bottom = 4, .trailing = 8 };
+        const line = mod.Text(clean).font(.system(12)).foregroundStyle(tokens.label).paddingInsets(insets);
+        const natural = try mod.ViewRenderer.measure(context, line, .{ .width = null, .height = null });
+        if (natural.width <= max_width) return .{ .content = line, .size = natural };
+        const wrapped = mod.WrappedText(clean).font(.system(12)).foregroundStyle(tokens.label).paddingInsets(insets);
+        return .{ .content = wrapped, .size = try mod.ViewRenderer.measure(context, wrapped, .{ .width = max_width, .height = null }) };
     }
 
     /// A hash of an offer's text and frame: the same view, offered frame after frame.
@@ -192,4 +232,39 @@ test "help tip shows once the pointer rests on one view, and goes on a press or 
     try std.testing.expect(!tip.showing(5000));
     // Another view's text or frame is another rest.
     try std.testing.expect(HelpTip.keyOf(.{ .text = "Download…", .rect = rect }) != tip.resting_key);
+}
+
+test "help tip keeps a short hint on one line and wraps a long one at its widest line" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    const context = environment.context();
+    const scope = mod.BuildScope.shared();
+    const saved_arena = scope.swapAllocator(context.arena);
+    defer _ = scope.swapAllocator(saved_arena);
+
+    const short = try HelpTip.label(&context, "Upload…");
+    try std.testing.expect(short.size.width < HelpTip.max_width);
+    const long = try HelpTip.label(&context, "How much the lens bends a ray, from the photo's distortion centre on the left to its farthest corner on the right, in pixels; the faint line undoes it.");
+    // Wrapped onto three lines or more.
+    try std.testing.expect(long.size.height >= 2.5 * short.size.height - 8);
+    // Laid out in the frame it is drawn in, it wraps onto no more lines than it was measured to.
+    const root = renderer.Rect{ .x = 0, .y = 0, .width = 800, .height = 600 };
+    const target = HelpTip.frameOf(.{ .x = 100, .y = 100 }, root, long.size);
+    try std.testing.expect(target.width <= HelpTip.max_width);
+    const relaid = try mod.ViewRenderer.measure(&context, long.content, .{ .width = target.width, .height = null });
+    try std.testing.expectApproxEqAbs(long.size.height, relaid.height, 0.5);
+}
+
+test "help tip stays inside the window, above the pointer near its foot, and no taller than it" {
+    const root = renderer.Rect{ .x = 0, .y = 0, .width = 400, .height = 300 };
+    // Near the right edge and the foot: pulled in, and put above the pointer.
+    const near = HelpTip.frameOf(.{ .x = 390, .y = 290 }, root, .{ .width = 120, .height = 40 });
+    try std.testing.expect(near.maxX() <= root.maxX());
+    try std.testing.expect(near.maxY() <= 290);
+    // Taller than the window: as tall as it, from its top.
+    const tall = HelpTip.frameOf(.{ .x = 10, .y = 10 }, root, .{ .width = 120.3, .height = 900 });
+    try std.testing.expectEqual(root.height, tall.height);
+    try std.testing.expectEqual(root.y, tall.y);
+    try std.testing.expectEqual(121, tall.width);
 }

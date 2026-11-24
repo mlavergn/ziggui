@@ -19,10 +19,10 @@ pub const TestWindow = struct {
     arena: std.heap.ArenaAllocator,
 
     /// The text face.
-    font: renderer.Font,
+    font: renderer.FontFile,
 
     /// The icon face.
-    icon_font: renderer.Font,
+    icon_font: renderer.FontFile,
 
     /// Glyphs of `font`.
     cache: renderer.GlyphCache,
@@ -62,8 +62,8 @@ pub const TestWindow = struct {
         self.* = .{
             .allocator = allocator,
             .arena = .init(allocator),
-            .font = renderer.Font.default(),
-            .icon_font = renderer.Font.icons(),
+            .font = renderer.FontFile.default(),
+            .icon_font = renderer.FontFile.icons(),
             .cache = undefined,
             .icon_cache = undefined,
         };
@@ -189,7 +189,7 @@ test "a test window draws a view and replays a tap on it" {
     };
     var probe: Probe = .{};
     window.begin(renderer.MacosTheme.light);
-    const view = mod.Rectangle(renderer.Color.red).onTap(mod.Callback.init(Probe, &probe, Probe.onTap));
+    const view = mod.Rectangle(renderer.Color.red).onTapGesture(mod.Callback.init(Probe, &probe, Probe.onTap));
     window.end();
     var frame = try window.render(view, 20, 20);
     defer frame.deinit();

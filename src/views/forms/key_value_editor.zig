@@ -21,10 +21,10 @@ pub fn KeyValueEditor(state: *mod.KeyValueState, key_placeholder: []const u8, va
     const items = mod.BuildScope.shared().allocator().alloc(mod.View, state.count() + 1) catch @panic("oom");
     for (state.rows.items, 0..) |row, index| {
         items[index] = mod.StackBuilder.make(.horizontal, 6, .center, .{
-            mod.TextField(key_placeholder, &row.key).mono().frameMaxWidth(),
-            mod.TextField(value_placeholder, &row.value).mono().frameMaxWidth(),
+            mod.TextField(key_placeholder, &row.key).monospaced().frameMaxWidth(),
+            mod.TextField(value_placeholder, &row.value).monospaced().frameMaxWidth(),
             mod.IconButton(.x, 12, mod.Callback.tagged(mod.KeyValueState, state, mod.KeyValueState.remove, index))
-                .foreground(tokens.secondary_label)
+                .foregroundStyle(tokens.secondary_label)
                 .accessibilityLabel("Remove"),
         }).frameMaxWidth();
     }

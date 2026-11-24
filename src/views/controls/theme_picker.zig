@@ -160,7 +160,7 @@ const AccentSwatches = struct {
         const name = if (chosen) |accent| accent.displayName() else scope.allocator().print("{s}'s own", .{family.displayName()}) catch @panic("oom");
         return mod.StackBuilder.make(.vertical, 4, .leading, .{
             mod.StackBuilder.fromSlice(.horizontal, 6, .center, swatches),
-            mod.Text(name).font(.caption).foreground(tokens.secondary_label),
+            mod.Text(name).font(.caption).foregroundStyle(tokens.secondary_label),
         });
     }
 
@@ -177,7 +177,7 @@ const AccentSwatches = struct {
     fn swatch(color: renderer.Color, on: renderer.Color, chosen: bool, index: i64, name: []const u8, selection: mod.Binding(i64)) mod.View {
         const disc = mod.Circle(color).frame(side, side);
         const marked = if (chosen) mod.StackBuilder.make(.depth, 0, .center, .{ disc, mod.Circle(on).frame(mark, mark) }) else mod.StackBuilder.make(.depth, 0, .center, .{disc});
-        return marked.onTap(mod.Callback.select(selection, index))
+        return marked.onTapGesture(mod.Callback.select(selection, index))
             .accessibilityLabel(name)
             .accessibilityAddTraits(.{ .is_button = true, .is_selected = chosen });
     }

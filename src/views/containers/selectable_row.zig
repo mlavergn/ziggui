@@ -28,7 +28,7 @@ pub fn SelectableRow(content: mod.View, selected: bool, focused: bool, on_tap: m
         .frameMaxWidth()
         .frameAlign(.leading)
         .cornerRadius(6)
-        .onTap(on_tap);
+        .onTapGesture(on_tap);
     if (!selected) return row.hoverFill(tokens.hover);
     return row.background(if (focused) tokens.accent else tokens.quaternary_fill);
 }
@@ -48,8 +48,8 @@ pub fn SelectableRow(content: mod.View, selected: bool, focused: bool, on_tap: m
 pub fn SelectableLabeledRow(icon: ?mod.IconName, title: []const u8, value: []const u8, selected: bool, focused: bool, on_tap: mod.Callback) mod.View {
     const ink = mod.SelectableRowStyle.selectionText(selected, focused);
     const soft = mod.SelectableRowStyle.secondaryText(selected, focused);
-    const label = mod.Text(title).foreground(ink).truncated();
-    const detail = mod.Text(value).font(.footnote).foreground(soft).truncated();
+    const label = mod.Text(title).foregroundStyle(ink).truncated();
+    const detail = mod.Text(value).font(.footnote).foregroundStyle(soft).truncated();
     const content = if (icon) |glyph|
         mod.HStack(.{ mod.Icon(glyph, 13, soft), label, mod.Spacer(), detail }).spacing(6)
     else

@@ -40,8 +40,8 @@ pub const ThumbnailChoice = struct {
         if (chosen) ringed = ringed.background(tokens.accent);
         return mod.StackBuilder.make(.vertical, spacing, .center, .{
             ringed,
-            mod.Text(title).font(font).foreground(if (chosen) tokens.label else tokens.secondary_label),
-        }).onTap(mod.Callback.select(selection, value))
+            mod.Text(title).font(.of(font)).foregroundStyle(if (chosen) tokens.label else tokens.secondary_label),
+        }).onTapGesture(mod.Callback.select(selection, value))
             .accessibilityLabel(title)
             .accessibilityAddTraits(.{ .is_button = true, .is_selected = chosen });
     }
@@ -62,7 +62,7 @@ pub const ThumbnailChoice = struct {
         const tokens = mod.BuildScope.shared().tokens();
         var ringed = mod.StackBuilder.make(.vertical, 0, .center, .{picture}).padding(compact_ring).cornerRadius(radius + compact_ring);
         if (chosen) ringed = ringed.background(tokens.accent);
-        return ringed.onTap(mod.Callback.select(selection, value))
+        return ringed.onTapGesture(mod.Callback.select(selection, value))
             .help(title)
             .accessibilityLabel(title)
             .accessibilityAddTraits(.{ .is_button = true, .is_selected = chosen });

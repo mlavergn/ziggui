@@ -1,4 +1,5 @@
-//! The text-field context menu (right-click → Cut / Copy / Paste / Select All).
+//! The text-field context menu (right-click → Undo / Redo / Cut / Copy /
+//! Paste / Select All).
 //! Drawn by ziggui (not a native OS menu) as a top-level popup in
 //! `ViewRenderer.render`, so it works for every app and reuses the hit-region
 //! machinery. Cut/Copy/Paste need the clipboard, which lives in the SDL layer;
@@ -25,6 +26,10 @@ pub const ClipboardOperations = struct {
 const MenuAction = enum {
     const Self = @This();
 
+    /// Take back the last edit.
+    undo,
+    /// Put back the last edit undone.
+    redo,
     /// Copy the selection, then delete it.
     cut,
     /// Copy the selection.
@@ -61,6 +66,8 @@ const MenuItem = struct {
         const self: *Self = @ptrCast(@alignCast(context.?));
         const field = self.field;
         switch (self.action) {
+            .undo => _ = field.undo() catch |err| log.warn("undo failed: {s}", .{@errorName(err)}),
+            .redo => _ = field.redo() catch |err| log.warn("redo failed: {s}", .{@errorName(err)}),
             .cut => if (!field.secure) {
                 if (TextContextMenu.clipboard_operations) |operations| operations.copy(field);
                 _ = field.deleteSelection();
@@ -265,15 +272,15 @@ pub const TextContextMenu = struct {
         const label_color = if (hovered) context.theme.colors.on_accent else if (enabled) context.theme.colors.label else context.theme.colors.tertiary_label;
         const shortcut_color = if (hovered) context.theme.colors.on_accent else context.theme.colors.tertiary_label;
         var view = mod.HStack(.{
-            mod.Text(label).foreground(label_color),
+            mod.Text(label).foregroundStyle(label_color),
             mod.Spacer(),
-            mod.Text(shortcut).font(.caption).foreground(shortcut_color),
+            mod.Text(shortcut).font(.caption).foregroundStyle(shortcut_color),
         }).spacing(20).paddingInsets(.{ .top = 5, .leading = 10, .bottom = 5, .trailing = 10 }).frameMaxWidth();
         if (hovered) view = view.background(context.theme.colors.accent).cornerRadius(5);
         if (enabled) {
             const item = context.arena.create(MenuItem) catch @panic("oom");
             item.* = .{ .field = field, .action = action };
-            view = view.onTap(.{ .context = item, .function = MenuItem.perform });
+            view = view.onTapGesture(.{ .context = item, .function = MenuItem.perform });
         }
         return view;
     }
@@ -288,12 +295,15 @@ pub const TextContextMenu = struct {
         // A secure field offers no Cut or Copy.
         const has_selection = field.hasSelection() and !field.secure;
         const hovered: ?MenuAction = if (self.open_menu) |menu| menu.hover else null;
-        const rows = context.arena.alloc(mod.View, 5) catch @panic("oom");
-        rows[0] = self.row(context, field, "Cut", "⌘X", .cut, has_selection, MenuAction.cut.isHovered(hovered));
-        rows[1] = self.row(context, field, "Copy", "⌘C", .copy, has_selection, MenuAction.copy.isHovered(hovered));
-        rows[2] = self.row(context, field, "Paste", "⌘V", .paste, true, MenuAction.paste.isHovered(hovered));
-        rows[3] = mod.Divider();
-        rows[4] = self.row(context, field, "Select All", "⌘A", .selectAll, field.text().len > 0, MenuAction.selectAll.isHovered(hovered));
+        const rows = context.arena.alloc(mod.View, 8) catch @panic("oom");
+        rows[0] = self.row(context, field, "Undo", "⌘Z", .undo, field.canUndo(), MenuAction.undo.isHovered(hovered));
+        rows[1] = self.row(context, field, "Redo", "⇧⌘Z", .redo, field.canRedo(), MenuAction.redo.isHovered(hovered));
+        rows[2] = mod.Divider();
+        rows[3] = self.row(context, field, "Cut", "⌘X", .cut, has_selection, MenuAction.cut.isHovered(hovered));
+        rows[4] = self.row(context, field, "Copy", "⌘C", .copy, has_selection, MenuAction.copy.isHovered(hovered));
+        rows[5] = self.row(context, field, "Paste", "⌘V", .paste, true, MenuAction.paste.isHovered(hovered));
+        rows[6] = mod.Divider();
+        rows[7] = self.row(context, field, "Select All", "⌘A", .selectAll, field.text().len > 0, MenuAction.selectAll.isHovered(hovered));
         return mod.VStack(rows).spacing(2).paddingInsets(.{ .top = 5, .leading = 6, .bottom = 5, .trailing = 6 }).frameMaxWidth();
     }
 

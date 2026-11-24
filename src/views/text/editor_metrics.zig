@@ -11,7 +11,7 @@ const renderer = @import("renderer");
 pub const EditorMetrics = struct {
     const Self = @This();
 
-    /// Editor tab width, in spaces (tabs snap to the next multiple of this).
+    /// The default tab width, in spaces (tabs snap to the next multiple of it).
     pub const tab_size: f32 = 4;
 
     /// The face the text is drawn in.
@@ -19,6 +19,9 @@ pub const EditorMetrics = struct {
 
     /// The text's size.
     pixel_size: f32,
+
+    /// The tab width, in spaces.
+    tab_columns: f32 = tab_size,
 
     /// Metrics of `face` at `pixel_size`.
     ///
@@ -30,13 +33,25 @@ pub const EditorMetrics = struct {
         return self;
     }
 
+    /// Metrics of `face` at `pixel_size` with a field's tab width (its
+    /// indentation's).
+    ///
+    /// - `face`: the face the text is drawn in.
+    /// - `pixel_size`: the text's size.
+    /// - `state`: the field.
+    /// - Returns: the metrics.
+    pub fn forField(face: *const renderer.TtfFont, pixel_size: f32, state: *const mod.TextFieldState) Self {
+        const self = Self{ .face = face, .pixel_size = pixel_size, .tab_columns = @floatFromInt(state.indentation.columns()) };
+        return self;
+    }
+
     /// The advance of a single space and of a tab stop.
     ///
     /// - `self`: the metrics.
     /// - Returns: the space's and the tab's widths.
     pub fn tabMetrics(self: *const Self) struct { space: f32, tab: f32 } {
         const space = renderer.TextShaper.init(self.face).measureLineWidth(" ", self.pixel_size);
-        return .{ .space = space, .tab = space * tab_size };
+        return .{ .space = space, .tab = space * self.tab_columns };
     }
 
     /// Pixel width of `slice`, honoring tab stops (so `\t` advances to the
@@ -121,8 +136,8 @@ test {
 }
 
 test "the caret after an emoji sits where the drawn text puts the next glyph" {
-    var font = renderer.Font.default();
-    var emoji = renderer.Font.emoji();
+    var font = renderer.FontFile.default();
+    var emoji = renderer.FontFile.emoji();
     font.face.fallback = &emoji.face;
     const line = "a\u{1F600}b"; // the emoji is in the fallback face only
     const after_emoji = 5;
@@ -139,7 +154,7 @@ test "the caret after an emoji sits where the drawn text puts the next glyph" {
 }
 
 test "a bad byte measures as one replacement glyph, and the letters after it as themselves" {
-    const font = renderer.Font.default();
+    const font = renderer.FontFile.default();
     const metrics = EditorMetrics.init(&font.face, 14);
     const shaper = renderer.TextShaper.init(&font.face);
     const expected = shaper.measureLineWidth("\u{FFFD}", 14) + shaper.measureLineWidth("a", 14);

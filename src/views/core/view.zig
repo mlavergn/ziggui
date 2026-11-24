@@ -3,7 +3,7 @@
 //! a fluent, chainable API, as in SwiftUI:
 //!
 //!     VStack(.{
-//!         Text("Hello").font(.title).foreground(theme.accent),
+//!         Text("Hello").font(.title).foregroundStyle(theme.accent),
 //!         Button("Tap", on_tap).padding(8),
 //!     })
 //!
@@ -209,6 +209,35 @@ pub const View = struct {
         return view;
     }
 
+    /// Sets the colors the `TextEditor`s in this subtree draw their caret,
+    /// selection, gutter, current line and find matches in (each null keeps
+    /// the theme's). Its chrome is `.textEditorStyle()`.
+    ///
+    /// - `self`: the view.
+    /// - `colors`: the colors; copied into the build arena.
+    /// - Returns: the view with its editor colors.
+    pub fn textEditorColors(self: *const Self, colors: mod.TextEditorColors) Self {
+        var view = self.*;
+        const kept = mod.BuildScope.shared().allocator().create(mod.TextEditorColors) catch @panic("oom");
+        kept.* = colors;
+        view.modifiers.text_editor_colors = kept;
+        return view;
+    }
+
+    /// Gives a `TextEditor` a find navigator, as SwiftUI's
+    /// `.findNavigator(isPresented:)`: while `is_presented` is true a
+    /// `FindBar` (and its replace row once asked for) shows above the text
+    /// and the editor marks the matches; ⌘F and ⌥⌘F (Ctrl+F and Ctrl+H off
+    /// macOS) open it from the editor. Any other view is returned as it is.
+    ///
+    /// - `self`: the editor.
+    /// - `is_presented`: whether the bar shows; the find sets it as it opens and closes.
+    /// - `find`: the find's state; app-owned.
+    /// - Returns: the editor, with the bar above it while it shows.
+    pub fn findNavigator(self: *const Self, is_presented: mod.Binding(bool), find: *mod.TextFindState) Self {
+        return find.navigate(self.*, is_presented);
+    }
+
     /// Paints a color behind the view.
     ///
     /// - `self`: the view.
@@ -243,34 +272,50 @@ pub const View = struct {
         return view;
     }
 
-    /// Sets the text and glyph color the subtree inherits.
+    /// Sets the text and glyph color the subtree inherits (SwiftUI's
+    /// `.foregroundStyle`, given a color).
     ///
     /// - `self`: the view.
     /// - `color`: the foreground color.
     /// - Returns: the tinted view.
-    pub fn foreground(self: *const Self, color: renderer.Color) Self {
+    pub fn foregroundStyle(self: *const Self, color: renderer.Color) Self {
         var view = self.*;
         view.modifiers.foreground = color;
         return view;
     }
 
-    /// Sets the text style the subtree inherits.
+    /// Sets the text style the subtree inherits: a semantic size of the
+    /// theme's type scale (`.font(.body)`), a size (`.font(.system(13))`,
+    /// SwiftUI's `Font.system(size:)`), or a registered family at a size
+    /// (`.font(.custom("Noto Serif", 15))`, SwiftUI's `Font.custom`). A size
+    /// or family keeps the weight, italic and monospace set around it.
     ///
     /// - `self`: the view.
-    /// - `token`: the named style.
+    /// - `font_choice`: the font.
     /// - Returns: the styled view.
-    pub fn font(self: *const Self, token: mod.FontToken) Self {
+    pub fn font(self: *const Self, font_choice: mod.Font) Self {
         var view = self.*;
-        view.modifiers.font = token;
+        switch (font_choice) {
+            .named => |custom| {
+                view.modifiers.font = null;
+                view.modifiers.font_family = custom.name;
+                view.modifiers.size = custom.size;
+            },
+            .sized => |size| {
+                view.modifiers.font = null;
+                view.modifiers.size = size;
+            },
+            else => view.modifiers.font = font_choice.token(),
+        }
         return view;
     }
 
-    /// Overrides the text weight.
+    /// Overrides the text weight (SwiftUI's `.fontWeight`).
     ///
     /// - `self`: the view.
     /// - `font_weight`: the weight.
     /// - Returns: the styled view.
-    pub fn weight(self: *const Self, font_weight: renderer.FontWeight) Self {
+    pub fn fontWeight(self: *const Self, font_weight: renderer.FontWeight) Self {
         var view = self.*;
         view.modifiers.weight = font_weight;
         return view;
@@ -286,24 +331,13 @@ pub const View = struct {
         return view;
     }
 
-    /// Monospace face (JetBrains Mono).
+    /// Draws the text in the monospaced face (JetBrains Mono; SwiftUI's `.monospaced()`).
     ///
     /// - `self`: the view.
     /// - Returns: the styled view.
-    pub fn mono(self: *const Self) Self {
+    pub fn monospaced(self: *const Self) Self {
         var view = self.*;
         view.modifiers.mono = true;
-        return view;
-    }
-
-    /// Point size override, independent of the font tokens.
-    ///
-    /// - `self`: the view.
-    /// - `pixel_size`: the size, in points.
-    /// - Returns: the styled view.
-    pub fn size(self: *const Self, pixel_size: f32) Self {
-        var view = self.*;
-        view.modifiers.size = pixel_size;
         return view;
     }
 
@@ -344,16 +378,6 @@ pub const View = struct {
         return view;
     }
 
-    /// A `TextField` that shows bullets instead of its text.
-    ///
-    /// - `self`: the view.
-    /// - Returns: the secure field.
-    pub fn secure(self: *const Self) Self {
-        var view = self.*;
-        view.modifiers.secure = true;
-        return view;
-    }
-
     /// The hint a `TextEditor` shows while empty, wrapped and placed exactly
     /// where typed text (and the caret) will start.
     ///
@@ -366,31 +390,57 @@ pub const View = struct {
         return view;
     }
 
-    /// A `TextEditor` or `TextField` without its own field chrome; `inner_padding`
-    /// is the editor's inner padding (a field keeps its own).
+    /// Sets how the `TextField`s in this subtree draw their chrome (SwiftUI's
+    /// `.textFieldStyle()`): `.plain` draws the text alone, for a field
+    /// whose container draws the ground (`FieldChrome`, a search field).
     ///
     /// - `self`: the view.
-    /// - `inner_padding`: the editor's inner padding.
-    /// - Returns: the chromeless view.
-    pub fn chromeless(self: *const Self, inner_padding: f32) Self {
+    /// - `style`: `.automatic` (the theme's field) or `.plain`.
+    /// - Returns: the styled view.
+    pub fn textFieldStyle(self: *const Self, style: mod.TextFieldStyle) Self {
         var view = self.*;
-        view.modifiers.chromeless = true;
-        view.modifiers.editor_padding = inner_padding;
+        view.modifiers.text_field_style = style;
         return view;
     }
 
-    /// Lets the text of this rich-text view be selected with the mouse and
-    /// copied (⌘C). Selection stays within the one view. The view is told
-    /// apart from others by its text and, among views with the same text, by
-    /// the order the frame builds them in; see `selectionId` where that order
-    /// shifts.
+    /// Sets how the `TextEditor`s in this subtree draw their chrome
+    /// (SwiftUI's `.textEditorStyle()`): `.plain` draws the text alone,
+    /// for an editor whose container draws the ground.
     ///
     /// - `self`: the view.
-    /// - Returns: the selectable view.
-    pub fn selectable(self: *const Self) Self {
+    /// - `style`: `.automatic` (the theme's field) or `.plain`.
+    /// - Returns: the styled view.
+    pub fn textEditorStyle(self: *const Self, style: mod.TextEditorStyle) Self {
         var view = self.*;
-        view.modifiers.selectable = true;
-        if (view.kind == .richText) {
+        view.modifiers.text_editor_style = style;
+        return view;
+    }
+
+    /// Sets a `TextEditor`'s margin between its edges and its text (SwiftUI's
+    /// `.contentMargins()`); 8pt without it.
+    ///
+    /// - `self`: the view.
+    /// - `length`: the margin on every side, in points.
+    /// - Returns: the view with its margins.
+    pub fn contentMargins(self: *const Self, length: f32) Self {
+        var view = self.*;
+        view.modifiers.content_margins = length;
+        return view;
+    }
+
+    /// Lets the text of this view be selected with the mouse and copied (⌘C)
+    /// when `.enabled`, as SwiftUI's `.textSelection(_:)`. Selection stays
+    /// within the one view. The view is told apart from others by its text
+    /// and, among views with the same text, by the order the frame builds
+    /// them in; see `selectionId` where that order shifts.
+    ///
+    /// - `self`: the view.
+    /// - `selectability`: `.enabled` or `.disabled`.
+    /// - Returns: the view.
+    pub fn textSelection(self: *const Self, selectability: mod.TextSelectability) Self {
+        var view = self.*;
+        view.modifiers.selectable = selectability == .enabled;
+        if (view.modifiers.selectable and view.kind == .richText) {
             view.modifiers.selection_ordinal = mod.BuildScope.shared().selectionOrdinal(mod.TextSelection.contentHash(view.kind.richText.spans));
         }
         return view;
@@ -459,12 +509,12 @@ pub const View = struct {
         return view;
     }
 
-    /// Runs `callback` on a primary tap inside this view.
+    /// Runs `callback` on a primary tap inside this view (SwiftUI's `.onTapGesture`).
     ///
     /// - `self`: the view.
     /// - `callback`: the tap handler.
     /// - Returns: the tappable view.
-    pub fn onTap(self: *const Self, callback: mod.Callback) Self {
+    pub fn onTapGesture(self: *const Self, callback: mod.Callback) Self {
         var view = self.*;
         view.modifiers.on_tap = callback;
         return view;
@@ -504,7 +554,7 @@ pub const View = struct {
     }
 
     /// Paints `color` behind this view only while the cursor hovers it (honoring
-    /// the view's `corner_radius`). Pair with `onTap` for menu/list rows.
+    /// the view's `corner_radius`). Pair with `onTapGesture` for menu/list rows.
     ///
     /// - `self`: the view.
     /// - `color`: the hover color.
@@ -652,7 +702,7 @@ pub const View = struct {
     /// Sets how the checkbox `Toggle`s in this subtree draw their box:
     /// `.rounded` (outlined in the label color), `.square` or `.circular`
     /// (outlined in the accent, filled while on); `.automatic` (the default)
-    /// is the theme family's own. A toggle's own `.foreground()` colors its box.
+    /// is the theme family's own. A toggle's own `.foregroundStyle()` colors its box.
     /// It does not make a toggle a checkbox: pair it with `.toggleStyle(.checkbox)`.
     ///
     /// - `self`: the view.

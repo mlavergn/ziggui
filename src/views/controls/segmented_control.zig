@@ -41,7 +41,7 @@ const Segments = struct {
             .frameHeight(segment_height)
             .frameMaxWidth()
             .cornerRadius(5)
-            .onTap(mod.Callback.select(selection, @intCast(index)));
+            .onTapGesture(mod.Callback.select(selection, @intCast(index)));
         return if (chosen) framed.background(tokens.raised).border(tokens.separator, 1) else framed.hoverFill(tokens.hover);
     }
 
@@ -83,13 +83,13 @@ pub fn SegmentedControl(selection: mod.Binding(i64), options: []const []const u8
         // out equal without measuring text while the view is built.
         const layers = allocator.alloc(mod.View, options.len + 1) catch @panic("oom");
         for (layers[0..options.len], options) |*layer, title| {
-            layer.* = mod.Text(title).weight(.medium).opacity(0).accessibilityHidden(true);
+            layer.* = mod.Text(title).fontWeight(.medium).opacity(0).accessibilityHidden(true);
         }
         layers[options.len] = mod.Text(option)
-            .weight(if (chosen) .medium else .regular)
-            .foreground(if (chosen) tokens.label else tokens.secondary_label);
+            .fontWeight(if (chosen) .medium else .regular)
+            .foregroundStyle(if (chosen) tokens.label else tokens.secondary_label);
         const content = mod.StackBuilder.fromSlice(.depth, 0, .center, layers)
-            .size(segment_text_size)
+            .font(.system(segment_text_size))
             .paddingInsets(.{ .leading = segment_padding, .trailing = segment_padding });
         segment.* = Segments.chrome(content, selection, index, chosen, tokens);
     }

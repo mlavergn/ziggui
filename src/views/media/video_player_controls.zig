@@ -44,7 +44,7 @@ const Controls = struct {
         else
             mod.Empty();
         const volume = mod.MediaControlStyle.group(mod.HStack(.{
-            mod.Slider(player.volumeBinding(), 0, 1).foreground(mod.MediaControlStyle.ink).frameWidth(volume_width),
+            mod.Slider(player.volumeBinding(), 0, 1).foregroundStyle(mod.MediaControlStyle.ink).frameWidth(volume_width),
             mod.MediaControlStyle.symbol(mod.MediaControlStyle.volumeIcon(player), 16, mod.Callback.init(mod.VideoPlayerControlsState, state, mod.VideoPlayerControlsState.toggleMute)),
         }).spacing(6));
         // Without accessories the row is the one it always was.
@@ -67,15 +67,15 @@ const Controls = struct {
         const observation = player.observe();
         const allocator = mod.BuildScope.shared().allocator();
         const playing = player.rate > 0;
-        const elapsed = mod.Text(mod.MediaControlStyle.clock(observation.current_seconds)).font(.footnote).mono().foreground(mod.MediaControlStyle.ink);
+        const elapsed = mod.Text(mod.MediaControlStyle.clock(observation.current_seconds)).font(.footnote).monospaced().foregroundStyle(mod.MediaControlStyle.ink);
         // A live item has no end to scrub to; with no item the scrubber shows, idle.
         const live = observation.isLive();
         const scrubber = if (live) mod.HStack(.{
-            mod.Text("Live").font(.footnote).weight(.semibold).foreground(mod.MediaControlStyle.ink),
+            mod.Text("Live").font(.footnote).fontWeight(.semibold).foregroundStyle(mod.MediaControlStyle.ink),
             mod.Spacer(),
         }).frameMaxWidth() else mod.HStack(.{
-            mod.Slider(state.progressBinding(), 0, 1).foreground(mod.MediaControlStyle.ink).disabled(observation.duration_seconds == null).frameMaxWidth(),
-            mod.Text(mod.MediaControlStyle.clock(observation.duration_seconds orelse 0)).font(.footnote).mono().foreground(mod.MediaControlStyle.ink),
+            mod.Slider(state.progressBinding(), 0, 1).foregroundStyle(mod.MediaControlStyle.ink).disabled(observation.duration_seconds == null).frameMaxWidth(),
+            mod.Text(mod.MediaControlStyle.clock(observation.duration_seconds orelse 0)).font(.footnote).monospaced().foregroundStyle(mod.MediaControlStyle.ink),
         }).spacing(12).frameMaxWidth();
         const speed = allocator.print("{d}×", .{state.rate()}) catch @panic("oom");
         const subtitles = state.on_subtitles orelse mod.Callback.init(mod.VideoPlayerControlsState, state, mod.VideoPlayerControlsState.nextSubtitles);

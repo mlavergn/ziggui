@@ -769,6 +769,11 @@ const EventRouter = struct {
                     views.TextContextMenu.shared().close();
                     return;
                 }
+                // A text editor's find navigator takes its keys (⌘F, ⌘G, Esc, …)
+                // while the editor or the find's fields hold the keyboard.
+                if (views.Key.fromSdl(event.key.key, @intCast(event.key.mod), mod.os_tag == .macos)) |key| {
+                    if (views.TextFindState.keyDown(key, mod.os_tag == .macos)) return;
+                }
                 // ⌘C with no field focused copies selected text (chat, code).
                 if (views.Focus.shared().focused() == null and event.key.key == sdl_c.SDLK_C and (event.key.mod & (sdl_c.SDL_KMOD_GUI | sdl_c.SDL_KMOD_CTRL)) != 0) {
                     if (views.TextSelection.shared().selectedText()) |selected| mod.Clipboard.setText(std.heap.page_allocator, selected);
@@ -799,6 +804,16 @@ const EventRouter = struct {
                                 field.selectAll();
                                 return;
                             },
+                            // ⌘Z undoes and ⇧⌘Z redoes; off macOS Ctrl+Y redoes too.
+                            sdl_c.SDLK_Z => {
+                                const redoing = (event.key.mod & sdl_c.SDL_KMOD_SHIFT) != 0;
+                                _ = (if (redoing) field.redo() else field.undo()) catch |err| log.warn("undo failed: {s}", .{@errorName(err)});
+                                return;
+                            },
+                            sdl_c.SDLK_Y => if (mod.os_tag != .macos) {
+                                _ = field.redo() catch |err| log.warn("redo failed: {s}", .{@errorName(err)});
+                                return;
+                            },
                             else => {},
                         }
                     }
@@ -819,9 +834,9 @@ const EventRouter = struct {
                         sdl_c.SDLK_END => field.end(shift),
                         // Multi-line editors insert a newline; single-line fields submit.
                         sdl_c.SDLK_RETURN, sdl_c.SDLK_KP_ENTER => if (field.multiline) field.insert("\n") catch |err| log.debug("newline not inserted [{t}]", .{err}) else views.Focus.shared().submit(),
-                        // Tab indents a multi-line editor; in a one-line field it
-                        // moves to the next field (⇧Tab the previous).
-                        sdl_c.SDLK_TAB => if (field.multiline) field.insert("    ") catch |err| log.debug("indent not inserted [{t}]", .{err}) else {
+                        // Tab indents a multi-line editor (⇧Tab outdents); in a
+                        // one-line field it moves to the next field (⇧Tab the previous).
+                        sdl_c.SDLK_TAB => if (field.multiline) (if (shift) field.outdent() else field.indent()) catch |err| log.debug("indent not changed [{t}]", .{err}) else {
                             _ = views.Focus.shared().advance(self.hits, shift);
                         },
                         sdl_c.SDLK_ESCAPE => views.Focus.shared().clear(),
@@ -908,13 +923,13 @@ pub fn EventLoop(comptime AppState: type) type {
         // codepoints Inter lacks (emoji, etc.) still render; it lives for the
         // whole loop, so the `&emoji_font.face` pointer stays valid.
         /// The bundled text face (Inter).
-        font: renderer.Font = undefined,
+        font: renderer.FontFile = undefined,
         /// The bundled emoji face, the text face's fallback.
-        emoji_font: renderer.Font = undefined,
+        emoji_font: renderer.FontFile = undefined,
         /// Glyphs of `font`.
         cache: renderer.GlyphCache = undefined,
         /// The bundled icon face (Lucide).
-        icon_font: renderer.Font = undefined,
+        icon_font: renderer.FontFile = undefined,
         /// Glyphs of `icon_font`.
         icon_cache: renderer.GlyphCache = undefined,
         /// The faces by weight, italic and mono.
@@ -1046,14 +1061,14 @@ pub fn EventLoop(comptime AppState: type) type {
 
             _ = sdl_c.SDL_StartTextInput(self.window);
 
-            self.font = renderer.Font.default();
-            self.emoji_font = renderer.Font.emoji();
+            self.font = renderer.FontFile.default();
+            self.emoji_font = renderer.FontFile.emoji();
             self.emoji_font.face.fallback = config.fallback_font;
             self.font.face.fallback = &self.emoji_font.face;
             self.cache = renderer.GlyphCache.init(allocator, &self.font.face);
             errdefer self.cache.deinit();
 
-            self.icon_font = renderer.Font.icons();
+            self.icon_font = renderer.FontFile.icons();
             self.icon_cache = renderer.GlyphCache.init(allocator, &self.icon_font.face);
             errdefer self.icon_cache.deinit();
 

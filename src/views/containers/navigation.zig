@@ -46,7 +46,7 @@ const NavigationPush = struct {
         push.* = .{ .navigation = navigation, .route = route };
         return mod.HStack(.{
             if (icon) |symbol| mod.Icon(symbol, 16, tokens.accent) else mod.Empty(),
-            mod.Text(label).foreground(tokens.label),
+            mod.Text(label).foregroundStyle(tokens.label),
             mod.Spacer(),
             mod.Icon(.chevronRight, 14, tokens.tertiary_label),
         }).spacing(10)
@@ -54,7 +54,7 @@ const NavigationPush = struct {
             .frameMaxWidth()
             .hoverFill(tokens.hover)
             .cornerRadius(6)
-            .onTap(.{ .context = push, .function = Self.apply });
+            .onTapGesture(.{ .context = push, .function = Self.apply });
     }
 };
 

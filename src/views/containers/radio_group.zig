@@ -51,7 +51,7 @@ pub fn RadioGroup(selection: mod.Binding(i64), options: []const []const u8) mod.
             mod.Spacer(),
         }).spacing(8)
             .frameMaxWidth()
-            .onTap(mod.Callback.select(selection, @intCast(index)));
+            .onTapGesture(mod.Callback.select(selection, @intCast(index)));
     }
     return mod.StackBuilder.fromSlice(.vertical, 8, .leading, rows).frameMaxWidth();
 }

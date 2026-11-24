@@ -31,6 +31,8 @@ pub const Pickers = struct {
     copy_kind: ziggui.State(i64),
     /// The undo send delay (10 Seconds).
     delay: ziggui.State(i64),
+    /// The color picker's color (the blue accent).
+    color: ziggui.State(ziggui.Color),
 
     /// Makes the panel's choices.
     ///
@@ -44,6 +46,7 @@ pub const Pickers = struct {
             .copy_myself = ziggui.State(bool).init(allocator, false),
             .copy_kind = ziggui.State(i64).init(allocator, 0),
             .delay = ziggui.State(i64).init(allocator, 1),
+            .color = ziggui.State(ziggui.Color).init(allocator, ziggui.Accent.blue.color()),
         };
         return self;
     }
@@ -52,6 +55,7 @@ pub const Pickers = struct {
     ///
     /// - `self`: the panel.
     pub fn deinit(self: *Self) void {
+        self.color.deinit();
         self.delay.deinit();
         self.copy_kind.deinit();
         self.copy_myself.deinit();
@@ -64,6 +68,22 @@ pub const Pickers = struct {
     /// - `self`: the panel.
     pub fn openMenu(self: *Self) void {
         ziggui.PickerMenu.shared().open(self.format.binding());
+    }
+
+    /// The color picker's card: the picker, and a sample drawn in its color.
+    ///
+    /// - `self`: the panel.
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    pub fn colorCard(self: *Self, theme: ziggui.Theme) ziggui.View {
+        const chosen = self.color.get();
+        return gallery.Card.view(theme, "ColorPicker: one palette under every theme, the choice marked", "ziggui.ColorPicker", ziggui.VStack(.{
+            ziggui.ColorPicker("Highlight", self.color.binding()),
+            ziggui.HStack(.{
+                ziggui.RoundedRectangle(chosen, 4).frame(48, 20),
+                ziggui.Text("Text drawn in the color chosen").foregroundStyle(chosen),
+            }).spacing(10),
+        }).spacing(12).alignment(.leading).frameMaxWidth().frameAlign(.leading));
     }
 
     /// The Pickers panel.
@@ -92,11 +112,11 @@ pub const Pickers = struct {
                 ziggui.HStack(.{ ziggui.Picker(self.spelling.binding(), &spelling_options).pickerStyle(.menu), ziggui.Spacer() }),
             }).spacing(12).alignment(.leading)),
             ziggui.Text("Each theme opens the menu as its platform does; switch themes in the sidebar.")
-                .foreground(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
+                .foregroundStyle(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
             ziggui.Text("Over the picker, choice checked: macOS, KDE. Below it, choice highlighted: Windows, Material.")
-                .foreground(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
+                .foregroundStyle(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
             ziggui.Text("While the menu is open: ↑ ↓ move, Return chooses, Esc closes.")
-                .foreground(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
+                .foregroundStyle(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
     }
 };

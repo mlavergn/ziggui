@@ -75,7 +75,7 @@ pub const SplitState = struct {
     /// arms `PointerInput` to feed it the pointer's movement until the button is up.
     ///
     /// - `self`: the state; must outlive the drag.
-    /// - Returns: the callback, for the divider's `onTap`.
+    /// - Returns: the callback, for the divider's `onTapGesture`.
     pub fn pressCallback(self: *Self) mod.Callback {
         return .{ .context = self, .function = Self.onPress };
     }

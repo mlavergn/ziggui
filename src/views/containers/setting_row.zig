@@ -19,10 +19,10 @@ const renderer = @import("renderer");
 /// - Returns: the row.
 pub fn SettingRow(label: []const u8, description: []const u8, control: mod.View) mod.View {
     const tokens = mod.BuildScope.shared().tokens();
-    const title = mod.Text(label).size(13).foreground(tokens.label);
+    const title = mod.Text(label).font(.system(13)).foregroundStyle(tokens.label);
     const texts = if (description.len == 0) mod.StackBuilder.make(.vertical, 0, .leading, .{title}) else mod.StackBuilder.make(.vertical, 2, .leading, .{
         title,
-        mod.WrappedText(description).size(12).foreground(tokens.secondary_label).frameMaxWidth().frameAlign(.leading),
+        mod.WrappedText(description).font(.system(12)).foregroundStyle(tokens.secondary_label).frameMaxWidth().frameAlign(.leading),
     });
     return mod.StackBuilder.make(.horizontal, 12, .center, .{
         texts.frameMaxWidth().frameAlign(.leading),

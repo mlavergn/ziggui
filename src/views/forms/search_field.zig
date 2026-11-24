@@ -41,14 +41,14 @@ const SearchFieldClear = struct {
 /// - Returns: the field, as wide as it is given.
 pub fn SearchField(placeholder: []const u8, state: *mod.TextFieldState, on_submit: ?mod.Callback, on_clear: ?mod.Callback) mod.View {
     const tokens = mod.BuildScope.shared().tokens();
-    var input = mod.TextField(placeholder, state).chromeless(0).frameMaxWidth();
+    var input = mod.TextField(placeholder, state).textFieldStyle(.plain).frameMaxWidth();
     if (on_submit) |callback| input = input.onSubmit(callback);
     const clear: mod.View = if (state.text().len == 0) mod.Empty() else blk: {
         const action = mod.BuildScope.shared().allocator().create(SearchFieldClear) catch @panic("oom");
         action.* = .{ .state = state, .on_clear = on_clear };
         break :blk mod.Icon(.circleX, 13, tokens.secondary_label)
             .paddingInsets(.{ .top = 4, .leading = 4, .bottom = 4, .trailing = 4 })
-            .onTap(mod.Callback.init(SearchFieldClear, action, SearchFieldClear.apply))
+            .onTapGesture(mod.Callback.init(SearchFieldClear, action, SearchFieldClear.apply))
             .accessibilityLabel("Clear");
     };
     return mod.FieldChrome(mod.StackBuilder.make(.horizontal, 4, .center, .{

@@ -34,6 +34,10 @@ pub const SearchField = @import("search_field.zig").SearchField;
 pub const FindCount = @import("find_count.zig").FindCount;
 /// What a `FindBar`'s field, buttons and keys do (`handleKey`).
 pub const FindActions = @import("find_actions.zig").FindActions;
+/// A find bar's replace row: its field and its buttons.
+pub const FindReplace = @import("find_actions.zig").FindReplace;
+/// A text editor's find and replace, which `View.findNavigator` attaches.
+pub const TextFindState = @import("text_find_state.zig").TextFindState;
 /// A find bar: a search field, the count, and Previous, Next and Done.
 pub const FindBar = @import("find_bar.zig").FindBar;
 /// A composed field's look: the raised ground, a strong hairline border, a 6pt corner.
@@ -101,6 +105,21 @@ pub const View = @import("../module.zig").View;
 /// Children stacked vertically (from the views module).
 pub const VStack = @import("../module.zig").VStack;
 
+/// How a text search matches (from the views module).
+pub const TextSearchOptions = @import("../module.zig").TextSearchOptions;
+/// A text search (from the views module).
+pub const TextSearch = @import("../module.zig").TextSearch;
+/// A run of a text's bytes (from the views module).
+pub const TextRange = @import("../module.zig").TextRange;
+/// A frame of one window (from the views module).
+pub const FrameStamp = @import("../module.zig").FrameStamp;
+/// A read/write handle on a value (from the views module).
+pub const Binding = @import("../module.zig").Binding;
+/// A button's role (from the views module).
+pub const ButtonRole = @import("../module.zig").ButtonRole;
+/// A multi-line editor (from the views module).
+pub const TextEditor = @import("../module.zig").TextEditor;
+
 // -----------------------------------------------------------------------------
 // Unit Tests
 
@@ -116,4 +135,5 @@ test {
     _ = @import("file_browser.zig");
     _ = @import("search_field.zig");
     _ = @import("field_chrome.zig");
+    _ = @import("text_find_state.zig");
 }

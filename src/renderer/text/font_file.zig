@@ -4,11 +4,11 @@
 //! Inter (OFL).
 
 const std = @import("std");
-const log = std.log.scoped(.ziggui_font);
+const log = std.log.scoped(.ziggui_font_file);
 const mod = @import("module.zig");
 
 /// A font face and its metrics.
-pub const Font = struct {
+pub const FontFile = struct {
     const Self = @This();
 
     /// The parsed face.
@@ -92,14 +92,14 @@ test {
     _ = log;
 }
 
-test "Font: icons parses and maps a known PUA codepoint to a glyph" {
-    const font = Font.icons();
+test "FontFile: icons parses and maps a known PUA codepoint to a glyph" {
+    const font = FontFile.icons();
     // lucide `heart` lives at U+E0F2 in the bundled subset.
     try std.testing.expect(font.face.glyphIndex(0xE0F2) != 0);
 }
 
-test "Font: default parses and measures text" {
-    const font = Font.default();
+test "FontFile: default parses and measures text" {
+    const font = FontFile.default();
     const size = font.measure("Hello", 16);
     try std.testing.expect(size.width > 0);
     try std.testing.expect(size.height > 0);

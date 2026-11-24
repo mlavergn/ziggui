@@ -43,7 +43,7 @@ pub const MediaControlStyle = struct {
             .frame(height, height)
             .hoverFill(ink.withAlpha(0.15))
             .cornerRadius(height / 2)
-            .onTap(action);
+            .onTapGesture(action);
     }
 
     /// A tappable label (the speed), white, lit under the pointer.
@@ -52,12 +52,12 @@ pub const MediaControlStyle = struct {
     /// - `action`: what a tap does.
     /// - Returns: the button.
     pub fn label(text: []const u8, action: mod.Callback) mod.View {
-        return mod.Text(text).font(.footnote).weight(.semibold).foreground(ink)
+        return mod.Text(text).font(.footnote).fontWeight(.semibold).foregroundStyle(ink)
             .paddingInsets(.{ .leading = 8, .trailing = 8 })
             .frameHeight(height)
             .hoverFill(ink.withAlpha(0.15))
             .cornerRadius(height / 2)
-            .onTap(action);
+            .onTapGesture(action);
     }
 
     /// A group of controls on its rounded ground.

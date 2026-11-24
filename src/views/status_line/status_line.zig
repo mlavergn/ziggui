@@ -23,8 +23,8 @@ pub fn StatusLine(hints: []const mod.KeyHint) mod.View {
     const items = mod.BuildScope.shared().allocator().alloc(mod.View, hints.len + 1) catch @panic("oom");
     for (hints, 0..) |hint, index| {
         items[index] = mod.HStack(.{
-            mod.Text(hint.key).font(.caption).mono().weight(.semibold).foreground(tokens.label),
-            mod.Text(hint.action).font(.caption).foreground(tokens.secondary_label),
+            mod.Text(hint.key).font(.caption).monospaced().fontWeight(.semibold).foregroundStyle(tokens.label),
+            mod.Text(hint.action).font(.caption).foregroundStyle(tokens.secondary_label),
         }).spacing(4);
     }
     items[hints.len] = mod.Spacer();

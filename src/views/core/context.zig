@@ -65,7 +65,7 @@ pub const Context = struct {
     hit_regions: *std.ArrayList(mod.HitRegion),
     /// The inherited text and glyph color.
     foreground: renderer.Color,
-    /// The color the view being painted asked for with its own `.foreground()`,
+    /// The color the view being painted asked for with its own `.foregroundStyle()`,
     /// or null (never inherited): a `.plain` button draws its label in it (a
     /// red "Delete…" with no fill).
     tint: ?renderer.Color = null,
@@ -77,10 +77,19 @@ pub const Context = struct {
     disabled: bool = false,
     /// How the subtree's `Toggle`s draw (`.toggleStyle()`).
     toggle_style: mod.ToggleStyle = .automatic,
+
+    /// How a `TextField` here draws its chrome (`.textFieldStyle()`).
+    text_field_style: mod.TextFieldStyle = .automatic,
+
+    /// How a `TextEditor` here draws its chrome (`.textEditorStyle()`).
+    text_editor_style: mod.TextEditorStyle = .automatic,
     /// How the subtree's checkbox `Toggle`s draw their box (`.checkboxStyle()`).
     checkbox_style: mod.CheckboxStyle = .automatic,
     /// How the subtree's `Picker`s draw (`.pickerStyle()`).
     picker_style: mod.PickerStyle = .automatic,
+
+    /// The colors a `TextEditor` here draws in (`.textEditorColors()`), null for the theme's.
+    text_editor_colors: ?*const mod.TextEditorColors = null,
     /// Whether the subtree's scroll views draw their scrollbars (`.scrollIndicators()`).
     scroll_indicators: mod.ScrollIndicatorVisibility = .automatic,
     /// The subtree is inside a `Form`: its automatic toggles are checkboxes,
@@ -148,6 +157,9 @@ pub const Context = struct {
     font_italic: bool = false,
     /// The inherited monospace.
     font_mono: bool = false,
+
+    /// The font family text here draws in (`.font(.custom(...))`), or null for the bundled faces.
+    font_family: ?[]const u8 = null,
     /// The cursor is inside the nearest enclosing `hoverScope`.
     in_hover_scope: bool = false,
 
@@ -241,9 +253,11 @@ pub const Context = struct {
         if (modifiers.weight) |weight| self.font_weight = weight;
         if (modifiers.italic) self.font_italic = true;
         if (modifiers.mono) self.font_mono = true;
+        if (modifiers.font_family) |family| self.font_family = family;
         if (self.fonts) |font_set| {
-            if (modifiers.font != null or modifiers.size != null or modifiers.weight != null or modifiers.italic or modifiers.mono) {
-                self.cache = font_set.cache(.{ .weight = self.font_weight, .italic = self.font_italic, .mono = self.font_mono });
+            if (modifiers.font != null or modifiers.size != null or modifiers.weight != null or modifiers.italic or modifiers.mono or modifiers.font_family != null) {
+                const style: renderer.FontStyle = .{ .weight = self.font_weight, .italic = self.font_italic, .mono = self.font_mono };
+                self.cache = if (self.font_family) |family| font_set.familyCache(family, style) else font_set.cache(style);
             }
         }
     }
@@ -255,8 +269,11 @@ pub const Context = struct {
     /// - `view`: the view.
     pub fn applyEnvironment(self: *Self, view: mod.View) void {
         if (view.modifiers.toggle_style) |style| self.toggle_style = style;
+        if (view.modifiers.text_field_style) |style| self.text_field_style = style;
+        if (view.modifiers.text_editor_style) |style| self.text_editor_style = style;
         if (view.modifiers.checkbox_style) |style| self.checkbox_style = style;
         if (view.modifiers.picker_style) |style| self.picker_style = style;
+        if (view.modifiers.text_editor_colors) |style| self.text_editor_colors = style;
         if (view.modifiers.scroll_indicators) |visibility| self.scroll_indicators = visibility;
         if (view.modifiers.form_columns) self.in_form = true;
     }

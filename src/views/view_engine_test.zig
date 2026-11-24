@@ -96,7 +96,7 @@ test "view: modifiers chain and set fields" {
     var environment = mod.TestEnvironment.init();
     environment.setup();
     defer environment.deinit();
-    const view = mod.Text("Hi").padding(8).foreground(renderer.Color.red).font(.title).opacity(0.5);
+    const view = mod.Text("Hi").padding(8).foregroundStyle(renderer.Color.red).font(.title).opacity(0.5);
     try std.testing.expectEqual(renderer.EdgeInsets.all(8), view.modifiers.padding.?);
     try std.testing.expectEqual(renderer.Color.red, view.modifiers.foreground.?);
     try std.testing.expectEqual(mod.FontToken.title, view.modifiers.font.?);
@@ -229,7 +229,7 @@ test "view: disabled view's tap region does not fire" {
     var display_list = renderer.DisplayList.init(std.testing.allocator);
     defer display_list.deinit();
     Counter.value = 0;
-    const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTap(mod.Callback.action(Counter.increment)).disabled(true);
+    const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTapGesture(mod.Callback.action(Counter.increment)).disabled(true);
     try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &display_list);
     try std.testing.expect(!mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 10, .y = 10 }));
     try std.testing.expectEqual(@as(u32, 0), Counter.value);
@@ -243,7 +243,7 @@ test "view: a right-click handler fires on secondary only, a tap on primary only
     var display_list = renderer.DisplayList.init(std.testing.allocator);
     defer display_list.deinit();
     Counter.value = 0;
-    const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTap(mod.Callback.action(Counter.increment)).onSecondaryTap(mod.Callback.action(Counter.incrementSecondary));
+    const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTapGesture(mod.Callback.action(Counter.increment)).onSecondaryTap(mod.Callback.action(Counter.incrementSecondary));
     try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 20, .height = 20 }, &display_list);
     try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 10, .y = 10 }));
     try std.testing.expectEqual(@as(u32, 1), Counter.value);
@@ -263,7 +263,7 @@ test "view: a tap handler can arm a drag from its own press; the end hook fires 
     defer display_list.deinit();
     DragProbe.travel = 0;
     DragProbe.ended = 0;
-    const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTap(mod.Callback.action(struct {
+    const tree = mod.Rectangle(renderer.Color.red).frame(20, 20).onTapGesture(mod.Callback.action(struct {
         /// Arms a drag from the tap.
         fn arm() void {
             mod.PointerInput.shared().armDrag(.{ .function = DragProbe.move });
@@ -590,7 +590,7 @@ test "view: WrappedText renders ink spanning more than one line vertically" {
     const full = renderer.TextShaper.init(&environment.font.face).measureLineWidth(sentence, pixel_size);
     const line_height = renderer.TextShaper.init(&environment.font.face).lineHeight(pixel_size);
     const width: u32 = @intFromFloat(@ceil(full / 2));
-    const tree = mod.WrappedText(sentence).foreground(renderer.Color.black);
+    const tree = mod.WrappedText(sentence).foregroundStyle(renderer.Color.black);
     var framebuffer = try environment.renderToFramebuffer(&context, tree, .{ .x = 0, .y = 0, .width = @floatFromInt(width), .height = 120 }, width, 120);
     defer framebuffer.deinit();
     // top-most and bottom-most inked rows should differ by more than a line —
@@ -1517,7 +1517,7 @@ test "view: a popoverPassthrough view takes taps while a popover is open" {
     const tree = mod.VStack(.{
         mod.HStack(.{
             mod.Rectangle(renderer.Color.red).frame(60, 30).popover(presented.binding(), mod.Rectangle(renderer.Color.blue).frame(80, 80)),
-            mod.Rectangle(renderer.Color.green).frame(60, 30).onTap(.{ .function = Probe.tapped }).popoverPassthrough(),
+            mod.Rectangle(renderer.Color.green).frame(60, 30).onTapGesture(.{ .function = Probe.tapped }).popoverPassthrough(),
             mod.Spacer(),
         }),
         mod.Spacer(),
@@ -1563,8 +1563,8 @@ test "view: a modalPassthrough view takes taps under an alert; a popoverPassthro
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 300, .height = 300 };
     const tree = mod.VStack(.{
         mod.HStack(.{
-            mod.Rectangle(renderer.Color.green).frame(60, 30).onTap(.{ .function = Probe.modalTap }).modalPassthrough(),
-            mod.Rectangle(renderer.Color.red).frame(60, 30).onTap(.{ .function = Probe.popoverTap }).popoverPassthrough(),
+            mod.Rectangle(renderer.Color.green).frame(60, 30).onTapGesture(.{ .function = Probe.modalTap }).modalPassthrough(),
+            mod.Rectangle(renderer.Color.red).frame(60, 30).onTapGesture(.{ .function = Probe.popoverTap }).popoverPassthrough(),
             mod.Spacer(),
         }),
         mod.Spacer(),
@@ -1611,7 +1611,7 @@ test "view: press-drag over selectable text selects it for copying" {
     var display_list = renderer.DisplayList.init(std.testing.allocator);
     defer display_list.deinit();
     const root = renderer.Rect{ .x = 0, .y = 0, .width = 400, .height = 40 };
-    const tree = mod.RichText(&.{.{ .text = "hello world" }}).selectable().frameMaxWidth().frameAlign(.leading);
+    const tree = mod.RichText(&.{.{ .text = "hello world" }}).textSelection(.enabled).frameMaxWidth().frameAlign(.leading);
     try mod.ViewRenderer.render(&context, tree, root, &display_list);
     // Press at the far left, drag past the end: the whole text.
     try std.testing.expect(mod.PointerInput.shared().tap(context.hit_regions.items, .{ .x = 1, .y = 20 }));
@@ -1643,9 +1643,9 @@ test "view: identical selectable paragraphs select apart, and stay apart frame t
         fn build(scroll_state: *mod.ScrollState) mod.View {
             const reply = mod.RichText(&.{.{ .text = "OK" }});
             return mod.ScrollViewState(scroll_state, mod.VStack(.{
-                reply.selectable().frameMaxWidth().frameAlign(.leading),
+                reply.textSelection(.enabled).frameMaxWidth().frameAlign(.leading),
                 mod.Rectangle(renderer.Color.white).frame(10, 100),
-                reply.selectable().frameMaxWidth().frameAlign(.leading),
+                reply.textSelection(.enabled).frameMaxWidth().frameAlign(.leading),
             }).spacing(0));
         }
 
@@ -1703,8 +1703,8 @@ test "view: identical selectable paragraphs select apart, and stay apart frame t
     try std.testing.expectEqual(second_key, found[0].key);
 
     // An explicit id stands in for the text and its order.
-    const tagged = mod.RichText(&.{.{ .text = "OK" }}).selectable().selectionId(7);
-    const retagged = mod.RichText(&.{.{ .text = "other" }}).selectable().selectionId(7);
+    const tagged = mod.RichText(&.{.{ .text = "OK" }}).textSelection(.enabled).selectionId(7);
+    const retagged = mod.RichText(&.{.{ .text = "other" }}).textSelection(.enabled).selectionId(7);
     const spans = [_]mod.Span{.{ .text = "OK" }};
     try std.testing.expectEqual(mod.TextSelection.keyFor(&spans, 13, &tagged.modifiers), mod.TextSelection.keyFor(&spans, 13, &retagged.modifiers));
     try std.testing.expect(mod.TextSelection.keyFor(&spans, 13, &tagged.modifiers) != first_key);
@@ -2278,7 +2278,7 @@ test "view: clipped content takes no taps outside the frame" {
     const view = mod.HStack(.{
         mod.HStack(.{
             mod.Rectangle(renderer.Color.red).frame(30, 20),
-            mod.Rectangle(renderer.Color.red).frame(60, 20).onTap(.{ .function = Probe.tapped }),
+            mod.Rectangle(renderer.Color.red).frame(60, 20).onTapGesture(.{ .function = Probe.tapped }),
         }).spacing(0).frame(40, 20).clipped(),
         mod.Spacer(),
     }).spacing(0).frameMaxWidth().frameAlign(.leading);
@@ -2309,11 +2309,11 @@ test "view: a row scrolled up under a header leaves the header its taps" {
         }
     };
     var scroll: mod.ScrollState = .{ .offset = 30 };
-    const row = mod.Rectangle(renderer.Color.blue).frame(200, 40).onTap(.{ .function = Probe.rowTap });
+    const row = mod.Rectangle(renderer.Color.blue).frame(200, 40).onTapGesture(.{ .function = Probe.rowTap });
     // Scrolled by 30, the first row's frame (y 0..40) reaches up over the
     // header (y 0..30), though the viewport (y 30..130) hides that part.
     const view = mod.VStack(.{
-        mod.Rectangle(renderer.Color.red).frame(200, 30).onTap(.{ .function = Probe.headerTap }),
+        mod.Rectangle(renderer.Color.red).frame(200, 30).onTapGesture(.{ .function = Probe.headerTap }),
         mod.ScrollViewState(&scroll, mod.VStack(.{ row, row, row, row, row }).spacing(0)).frameHeight(100),
         mod.Spacer(),
     }).spacing(0).frameMaxWidth().frameMaxHeight();
@@ -2685,7 +2685,7 @@ const EditorProbe = struct {
     /// - Returns: the tree.
     fn body(self: *Self) mod.View {
         const editor = mod.TextEditor(&self.field, &self.scroll, false);
-        return if (self.mono) editor.mono() else editor;
+        return if (self.mono) editor.monospaced() else editor;
     }
 
     /// The rightmost column of the frame's top 30 rows that differs from the
@@ -2708,7 +2708,7 @@ const EditorProbe = struct {
     }
 };
 
-test "view: a TextEditor's .mono() draws it in the fixed-width face" {
+test "view: a TextEditor's .monospaced() draws it in the fixed-width face" {
     const allocator = std.testing.allocator;
     const previous = mod.BuildScope.shared().viewport();
     defer mod.BuildScope.shared().setViewport(previous.width, previous.height);

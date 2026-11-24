@@ -11,7 +11,7 @@
 
 .DEFAULT_GOAL := all
 
-.PHONY: build dist app
+.PHONY: build dist app install
 
 # ---------------------------------------------
 # Configuration
@@ -32,7 +32,11 @@ HOST_OS := $(shell uname -s)
 endif
 
 # The gallery's macOS app bundle, under the install prefix (`zig build gallery-app`).
-GALLERY_APP := zig-out/ziggui Gallery.app
+GALLERY_BUNDLE := ziggui Gallery.app
+GALLERY_APP := zig-out/$(GALLERY_BUNDLE)
+
+# Where `make install` puts the gallery's bundle: `make install APP_DIR=/Applications`.
+APP_DIR ?= $(HOME)/Applications
 
 # The Zig source roots `format` and `lint` walk (see ../styleguide/Makefile.in).
 ZIG_DIRS := src gallery build
@@ -57,19 +61,34 @@ build:
 dist:
 	$(ZIG) build --release=fast
 
-# Build and launch the gallery (every ziggui component, with theme and
-# light/dark switchers) in a window. SDL3 is fetched and built by Zig on first
-# use. ReleaseFast because the software fallback is ~10x slower in Debug.
+# Build the ziggui module (`build`), then build and launch the gallery (every
+# ziggui component, with theme and light/dark switchers) in a window. SDL3 is
+# fetched and built by Zig on first use. ReleaseFast because the software
+# fallback is ~10x slower in Debug.
 # On macOS it is built as $(GALLERY_APP) and opened with `open`, so it
 # launches as an app (its name, icon and menu from the bundle; unsigned, the
 # linker signing the executable ad hoc); elsewhere it runs directly.
 # Pass arguments with `make app ARGS="--dark"`.
-app:
+app: build
 ifeq ($(HOST_OS),Darwin)
 	$(ZIG) build gallery-app -Doptimize=ReleaseFast
 	open -n "$(GALLERY_APP)" --args $(ARGS)
 else
+	$(ZIG) build gallery -Doptimize=ReleaseFast
 	$(ZIG) build run-gallery -Doptimize=ReleaseFast -- $(ARGS)
+endif
+
+# Build the gallery's bundle as `app` does and copy it to $(APP_DIR),
+# replacing any older copy (unsigned, as built). macOS only.
+install:
+ifeq ($(HOST_OS),Darwin)
+	$(ZIG) build gallery-app -Doptimize=ReleaseFast
+	install -d "$(APP_DIR)"
+	rm -rf "$(APP_DIR)/$(GALLERY_BUNDLE)"
+	cp -R "$(GALLERY_APP)" "$(APP_DIR)/"
+	@echo "installed $(APP_DIR)/$(GALLERY_BUNDLE)"
+else
+	@echo "❌ make install copies the gallery's macOS bundle; on $(HOST_OS) use make app"; exit 1
 endif
 
 # ---------------------------------------------

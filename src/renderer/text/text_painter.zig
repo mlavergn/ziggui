@@ -191,7 +191,7 @@ test {
 }
 
 test "drawIcon: inks pixels for a real icon and is a no-op for a blank slot" {
-    const font = mod.Font.icons();
+    const font = mod.FontFile.icons();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
     var display_list = mod.DisplayList.init(std.testing.allocator);
@@ -206,7 +206,7 @@ test "drawIcon: inks pixels for a real icon and is a no-op for a blank slot" {
 }
 
 test "drawText: emits one glyph command per visible character" {
-    const font = mod.Font.default();
+    const font = mod.FontFile.default();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
     var display_list = mod.DisplayList.init(std.testing.allocator);
@@ -218,7 +218,7 @@ test "drawText: emits one glyph command per visible character" {
 }
 
 test "drawText: actually inks pixels when rasterized" {
-    const font = mod.Font.default();
+    const font = mod.FontFile.default();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
     var display_list = mod.DisplayList.init(std.testing.allocator);
@@ -239,8 +239,8 @@ test "drawText: actually inks pixels when rasterized" {
 }
 
 test "drawText: renders an emoji through the fallback face" {
-    var font = mod.Font.default();
-    var emoji_font = mod.Font.emoji();
+    var font = mod.FontFile.default();
+    var emoji_font = mod.FontFile.emoji();
     font.face.fallback = &emoji_font.face;
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
@@ -265,7 +265,7 @@ test "drawText: renders an emoji through the fallback face" {
 }
 
 test "drawText: whitespace produces no glyph commands" {
-    const font = mod.Font.default();
+    const font = mod.FontFile.default();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
     var display_list = mod.DisplayList.init(std.testing.allocator);
@@ -275,7 +275,7 @@ test "drawText: whitespace produces no glyph commands" {
 }
 
 test "drawIcon and drawText: a negative, zero or NaN size draws nothing and does not panic" {
-    const font = mod.Font.icons();
+    const font = mod.FontFile.icons();
     var cache = mod.GlyphCache.init(std.testing.allocator, &font.face);
     defer cache.deinit();
     var display_list = mod.DisplayList.init(std.testing.allocator);
@@ -284,7 +284,7 @@ test "drawIcon and drawText: a negative, zero or NaN size draws nothing and does
     try painter.drawIcon(&display_list, &cache, 0xE0F2, .{ .x = 0, .y = 0, .width = -4, .height = 10 }, 1, mod.Color.black);
     try painter.drawIcon(&display_list, &cache, 0xE0F2, .{ .x = 0, .y = 0, .width = 24, .height = 24 }, std.math.nan(f32), mod.Color.black);
     try painter.drawIcon(&display_list, &cache, 0xE0F2, .{ .x = 0, .y = 0, .width = 24, .height = 24 }, 0, mod.Color.black);
-    const text_font = mod.Font.default();
+    const text_font = mod.FontFile.default();
     var text_cache = mod.GlyphCache.init(std.testing.allocator, &text_font.face);
     defer text_cache.deinit();
     try painter.drawText(&display_list, &text_cache, "Hi", -12, mod.Color.black, .{ .x = 0, .y = 0 });

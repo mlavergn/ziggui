@@ -61,7 +61,7 @@ pub const BadgeTone = enum {
 
 /// A short label on its tone's soft ground, in the tone's strong color:
 /// 11pt medium, 6pt by 2pt of padding, corner radius 4. As wide as its text,
-/// never stretched. Chain `.mono()` for codes (`-32601`, `HTTP 404`).
+/// never stretched. Chain `.monospaced()` for codes (`-32601`, `HTTP 404`).
 ///
 /// - `text`: the label.
 /// - `tone`: what the badge says.
@@ -69,9 +69,9 @@ pub const BadgeTone = enum {
 pub fn Badge(text: []const u8, tone: BadgeTone) mod.View {
     const tokens = mod.BuildScope.shared().tokens();
     return mod.Text(text)
-        .size(11)
-        .weight(.medium)
-        .foreground(tone.text(tokens))
+        .font(.system(11))
+        .fontWeight(.medium)
+        .foregroundStyle(tone.text(tokens))
         .paddingInsets(.{ .top = 2, .leading = 6, .bottom = 2, .trailing = 6 })
         .background(tone.ground(tokens))
         .cornerRadius(4);
@@ -92,7 +92,7 @@ test "a badge takes its tone's ground and text, and hugs its text" {
     window.begin(renderer.MacosTheme.light);
     const tokens = mod.BuildScope.shared().tokens();
     const danger = Badge("failed", .danger);
-    const code = Badge("-32601", .neutral).mono();
+    const code = Badge("-32601", .neutral).monospaced();
     const row = mod.HStack(.{ Badge("ok", .success), mod.Spacer() });
     window.end();
     try std.testing.expectEqual(tokens.danger_soft, danger.modifiers.background.?.color);

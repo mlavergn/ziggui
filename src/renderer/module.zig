@@ -163,14 +163,18 @@ pub const PositionedGlyph = @import("text/module.zig").PositionedGlyph;
 pub const WrappedLine = @import("text/module.zig").WrappedLine;
 /// Measures, lays out and wraps text in one face.
 pub const TextShaper = @import("text/module.zig").TextShaper;
-/// A font face and its metrics.
-pub const Font = @import("text/module.zig").Font;
+/// A font file's face and its metrics.
+pub const FontFile = @import("text/module.zig").FontFile;
 /// Paints text and icon glyphs into a display list (`TextPainter.shared()`).
 pub const TextPainter = @import("text/module.zig").TextPainter;
 /// A text style's face selection (weight, italic, monospace).
 pub const FontStyle = @import("text/module.zig").FontStyle;
 /// The bundled faces and a glyph cache for each.
 pub const FontSet = @import("text/module.zig").FontSet;
+/// A font family an app registers: a TrueType face per style.
+pub const FontFamily = @import("text/module.zig").FontFamily;
+/// The process's registered font families, by name.
+pub const FontRegistry = @import("text/module.zig").FontRegistry;
 /// A Lucide icon, valued by its codepoint in the icon font.
 pub const Icon = @import("text/module.zig").Icon;
 

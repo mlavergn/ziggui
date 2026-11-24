@@ -43,7 +43,7 @@ test "a checkbox style draws its box: square and circular filled while on, round
     };
     for (cases) |case| {
         window.begin(renderer.MacosTheme.light);
-        const view = Toggle("", on.binding()).foreground(red).toggleStyle(.checkbox).checkboxStyle(case.style);
+        const view = Toggle("", on.binding()).foregroundStyle(red).toggleStyle(.checkbox).checkboxStyle(case.style);
         window.end();
         var frame = try window.render(view, side, side);
         defer frame.deinit();

@@ -27,12 +27,12 @@ const SettingsToolbar = struct {
         const color = if (selected) tokens.accent else tokens.secondary_label;
         var button = mod.VStack(.{
             if (tab.icon) |icon| mod.Icon(icon, 22, color) else mod.Empty(),
-            mod.Text(tab.label).font(.subheadline).foreground(color),
+            mod.Text(tab.label).font(.subheadline).foregroundStyle(color),
         }).spacing(3)
             .paddingInsets(.{ .top = 5, .leading = 9, .bottom = 4, .trailing = 9 })
             .frameMinWidth(64)
             .cornerRadius(7)
-            .onTap(mod.Callback.select(selection, @intCast(index)))
+            .onTapGesture(mod.Callback.select(selection, @intCast(index)))
             .help(tab.help);
         button = if (selected) button.background(tokens.quaternary_fill) else button.hoverFill(tokens.hover);
         return button;
@@ -57,7 +57,7 @@ pub fn Settings(selection: mod.Binding(i64), tabs: []const mod.Tab) mod.View {
     const buttons = scope.allocator().alloc(mod.View, tabs.len) catch @panic("oom");
     for (tabs, buttons, 0..) |tab, *button, index| button.* = SettingsToolbar.tabButton(tab, index, index == shown, selection);
     const toolbar = mod.VStack(.{
-        mod.Text(tabs[shown].label).font(.headline).foreground(tokens.secondary_label),
+        mod.Text(tabs[shown].label).font(.headline).foregroundStyle(tokens.secondary_label),
         mod.StackBuilder.fromSlice(.horizontal, 2, .center, buttons),
     }).spacing(8)
         .paddingInsets(.{ .top = 10, .bottom = 8 })

@@ -52,7 +52,7 @@ const FileRows = struct {
     /// - Returns: the row.
     fn row(self: *const Self, position: usize) mod.View {
         if (self.parent and position == 0) return self.parentRow();
-        if (self.shown.len == 0) return mod.Text("This folder is empty.").size(12).foreground(self.tokens.tertiary_label).paddingInsets(.{ .leading = 8 }).frameMaxWidth().frameHeight(mod.FileBrowserState.row_height).frameAlign(.leading);
+        if (self.shown.len == 0) return mod.Text("This folder is empty.").font(.system(12)).foregroundStyle(self.tokens.tertiary_label).paddingInsets(.{ .leading = 8 }).frameMaxWidth().frameHeight(mod.FileBrowserState.row_height).frameAlign(.leading);
         const index = self.shown[position - @intFromBool(self.parent)];
         const node = self.state.nodes[index];
         const selected = self.state.selection == index;
@@ -61,9 +61,9 @@ const FileRows = struct {
         const detail: []const u8 = if (node.kind == .directory) "" else FileBrowserActions.size(node.size);
         const content = mod.StackBuilder.make(.horizontal, 8, .center, .{
             mod.Icon(glyph, 14, if (selected and self.focused) text else self.tokens.secondary_label),
-            mod.Text(node.name).size(13).foreground(text).truncated(),
+            mod.Text(node.name).font(.system(13)).foregroundStyle(text).truncated(),
             mod.Spacer(),
-            mod.Text(detail).size(11).foreground(if (selected and self.focused) text else self.tokens.tertiary_label),
+            mod.Text(detail).font(.system(11)).foregroundStyle(if (selected and self.focused) text else self.tokens.tertiary_label),
         }).paddingInsets(.{ .trailing = self.barGap() });
         // Its path is what the row is: a double click never opens what the
         // previous one's folder put under the pointer.
@@ -98,7 +98,7 @@ const FileRows = struct {
         const text = mod.SelectableRowStyle.selectionText(selected, self.focused);
         const content = mod.StackBuilder.make(.horizontal, 8, .center, .{
             mod.Icon(.folderUp, 14, if (selected and self.focused) text else self.tokens.secondary_label),
-            mod.Text("..").size(13).foreground(text),
+            mod.Text("..").font(.system(13)).foregroundStyle(text),
             mod.Spacer(),
         });
         var identity = std.hash.Wyhash.init(0);
@@ -166,9 +166,9 @@ const FilePathBar = struct {
     fn view(state: *mod.FileBrowserState, tokens: mod.BuildTokens) mod.View {
         if (state.editing_path) {
             return mod.TextField("Type a folder's path", &state.path_field)
-                .chromeless(mod.ControlMetrics.inline_field_inset)
-                .size(12)
-                .foreground(tokens.label)
+                .textFieldStyle(.plain)
+                .font(.system(12))
+                .foregroundStyle(tokens.label)
                 .background(tokens.raised)
                 .cornerRadius(mod.ControlMetrics.inline_field_radius)
                 .border(tokens.focus_ring, mod.ControlMetrics.inline_field_ring)
@@ -176,10 +176,10 @@ const FilePathBar = struct {
                 .frameMaxWidth();
         }
         return mod.Text(state.path.items)
-            .size(12)
-            .foreground(tokens.secondary_label)
+            .font(.system(12))
+            .foregroundStyle(tokens.secondary_label)
             .truncated()
-            .onTap(mod.Callback.attempt(mod.FileBrowserState, state, mod.FileBrowserState.beginPathEntry, "path bar not edited"))
+            .onTapGesture(mod.Callback.attempt(mod.FileBrowserState, state, mod.FileBrowserState.beginPathEntry, "path bar not edited"))
             .pointerStyle(.horizontalText)
             .help("Click to type a folder's path");
     }
@@ -230,7 +230,7 @@ pub fn FileBrowser(state: *mod.FileBrowserState, focused: bool) mod.View {
         mod.StackBuilder.make(.horizontal, 6, .center, .{ FilePathBar.view(state, tokens), mod.Spacer(), hidden })).paddingInsets(.{ .top = 4, .leading = 8, .bottom = 4, .trailing = 8 });
 
     const failure: mod.View = if (state.failure) |err|
-        mod.Text(allocator.print("That folder cannot be read ({t}).", .{err}) catch @panic("oom")).size(11).foreground(tokens.removed).paddingInsets(.{ .leading = 8, .bottom = 4 })
+        mod.Text(allocator.print("That folder cannot be read ({t}).", .{err}) catch @panic("oom")).font(.system(11)).foregroundStyle(tokens.removed).paddingInsets(.{ .leading = 8, .bottom = 4 })
     else
         mod.Empty();
 

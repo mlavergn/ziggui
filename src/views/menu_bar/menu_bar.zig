@@ -124,7 +124,7 @@ const Entries = struct {
                 continue;
             }
             if (item.heading) {
-                row.* = mod.Text(item.title).font(.footnote).weight(.semibold).foreground(tokens.secondary_label)
+                row.* = mod.Text(item.title).font(.footnote).fontWeight(.semibold).foregroundStyle(tokens.secondary_label)
                     .paddingInsets(.{ .top = 4, .leading = 10, .bottom = 2, .trailing = 10 });
                 continue;
             }
@@ -132,14 +132,14 @@ const Entries = struct {
             spot.* = .{ .state = state, .menus = menus, .menu = index, .item = at };
             const color = if (item.enabled) tokens.label else tokens.secondary_label;
             const line = mod.HStack(.{
-                mod.Text(item.title).font(.callout).foreground(color),
+                mod.Text(item.title).font(.callout).foregroundStyle(color),
                 mod.Spacer(),
-                mod.Text(item.key_text).font(.footnote).mono().foreground(tokens.secondary_label),
+                mod.Text(item.key_text).font(.footnote).monospaced().foregroundStyle(tokens.secondary_label),
             }).spacing(12).paddingInsets(.{ .top = 4, .leading = 10, .bottom = 4, .trailing = 10 }).frameMaxWidth();
             const lit = item.enabled and state.item == at;
             const styled = if (lit) line.background(tokens.hover) else if (item.enabled) line.hoverFill(tokens.hover) else line;
             row.* = styled
-                .onTap(mod.Callback.init(Spot, spot, Spot.choose))
+                .onTapGesture(mod.Callback.init(Spot, spot, Spot.choose))
                 .onHover(.{ .context = spot, .function = Spot.hoverItem })
                 .disabled(!item.enabled);
         }
@@ -173,11 +173,11 @@ pub fn MenuBar(state: *mod.MenuBarState, menus: []const mod.MenuBarMenu, options
         const spot = allocator.create(Spot) catch @panic("oom");
         spot.* = .{ .state = state, .menus = menus, .menu = index };
         const open = state.menu == index;
-        const face = if (menu.icon) |icon| mod.Icon(icon, 16, foreground).accessibilityLabel(menu.title) else mod.Text(menu.title).font(.callout).foreground(foreground);
+        const face = if (menu.icon) |icon| mod.Icon(icon, 16, foreground).accessibilityLabel(menu.title) else mod.Text(menu.title).font(.callout).foregroundStyle(foreground);
         const label = face.paddingInsets(.{ .top = 3, .leading = 9, .bottom = 3, .trailing = 9 });
         const styled = if (open) label.background(wash).cornerRadius(5) else label.hoverFill(wash).cornerRadius(5);
         const title = styled
-            .onTap(mod.Callback.init(Spot, spot, Spot.toggle))
+            .onTapGesture(mod.Callback.init(Spot, spot, Spot.toggle))
             .onHover(.{ .context = spot, .function = Spot.hoverTitle })
             .popoverPassthrough();
         titles[index] = if (open) title.popover(Shown.binding(state), Entries.view(state, menus, index)) else title;

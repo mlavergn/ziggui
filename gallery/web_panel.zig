@@ -152,9 +152,9 @@ pub const WebPanel = struct {
         return ziggui.VStack(.{
             ziggui.HStack(.{ ziggui.Text(title).font(.largeTitle), ziggui.Spacer() }).frameMaxWidth(),
             toolbar,
-            if (failure.len > 0) ziggui.Text(failure).foreground(tokens.removed).truncated().frameMaxWidth().frameAlign(.leading) else ziggui.Empty(),
+            if (failure.len > 0) ziggui.Text(failure).foregroundStyle(tokens.removed).truncated().frameMaxWidth().frameAlign(.leading) else ziggui.Empty(),
             ziggui.WebView(&self.page).cornerRadius(theme.metrics.corner_radius).border(theme.colors.separator, theme.metrics.hairline).frameMaxWidth().frameMaxHeight(),
-            ziggui.Text(status).font(.footnote).foreground(tokens.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
+            ziggui.Text(status).font(.footnote).foregroundStyle(tokens.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
             gallery.CardName.shared().view("ziggui.WebView · ziggui.WebPage · ziggui.WebPageMessageCallback", tokens.secondary_label),
         }).spacing(10).padding(20).frameMaxWidth().frameMaxHeight();
     }
@@ -270,7 +270,7 @@ pub const WebPanel = struct {
         const saved = self.bookmarks.list();
         if (saved.len == 0) {
             const empty = arena.alloc(ziggui.View, 1) catch @panic("oom");
-            empty[0] = ziggui.Text("No bookmarks yet").foreground(tokens.secondary_label).padding(6);
+            empty[0] = ziggui.Text("No bookmarks yet").foregroundStyle(tokens.secondary_label).padding(6);
             return empty;
         }
         const items = arena.alloc(ziggui.View, saved.len) catch @panic("oom");

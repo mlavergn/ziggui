@@ -1,5 +1,6 @@
 //! A find bar: a search field, where the find stands, and Previous, Next
-//! and Done, as an editor or a table shows under ⌘F.
+//! and Done, as an editor or a table shows under ⌘F; optionally match-case
+//! and whole-word toggles and a replace row.
 
 // View constructors are PascalCase functions, as in SwiftUI (see CLAUDE.md).
 // zlint-disable case-convention
@@ -9,6 +10,36 @@ const log = std.log.scoped(.ziggui_find_bar);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 
+/// A toggle of the bar's search options, made in the build arena.
+const FindOptionToggle = struct {
+    const Self = @This();
+
+    /// The option flipped.
+    flag: *bool,
+
+    /// Flips the option.
+    ///
+    /// - `self`: the toggle.
+    fn flip(self: *Self) void {
+        self.flag.* = !self.flag.*;
+    }
+
+    /// A toggle button: its label in a plain button while off, a prominent one while on.
+    ///
+    /// - `label`: the button's label ("Aa").
+    /// - `help`: its hover hint.
+    /// - `flag`: the option it flips.
+    /// - Returns: the button.
+    fn button(label: []const u8, help: []const u8, flag: *bool) mod.View {
+        const toggle = mod.BuildScope.shared().allocator().create(Self) catch @panic("oom");
+        toggle.* = .{ .flag = flag };
+        const role: mod.ButtonRole = if (flag.*) .prominent else .plain;
+        return mod.ButtonRoled(label, role, mod.Callback.init(Self, toggle, Self.flip))
+            .help(help)
+            .accessibilityAddTraits(.{ .is_button = true, .is_selected = flag.* });
+    }
+};
+
 /// A find bar: a `SearchField` 300pt wide, the count ("3 of 40"), then
 /// Previous, Next and Done at the trailing edge, on the bar ground. Pass the
 /// app's keys through `actions.handleKey(key, field)` while it shows.
@@ -16,20 +47,50 @@ const renderer = @import("renderer");
 /// - `placeholder`: the field's hint while it is empty.
 /// - `field`: the field's text; app-owned.
 /// - `count`: where the find stands, or null before one has run.
-/// - `actions`: what Enter, the buttons and the keys do.
+/// - `actions`: what Enter, the buttons and the keys do; with
+///   `search_options`, Aa and ab| toggles follow the field, and with
+///   `replace`, a second row holds the replacement field (Enter replaces),
+///   Replace and Replace All.
 /// - Returns: the bar, as wide as it is given.
 pub fn FindBar(placeholder: []const u8, field: *mod.TextFieldState, count: ?mod.FindCount, actions: mod.FindActions) mod.View {
     const scope = mod.BuildScope.shared();
     const tokens = scope.tokens();
     const status: []const u8 = if (count) |found| found.textAlloc(scope.allocator()) catch @panic("oom") else "";
-    return mod.StackBuilder.make(.horizontal, 8, .center, .{
-        mod.SearchField(placeholder, field, actions.on_submit, null).frameWidth(300),
-        mod.Text(status).font(.footnote).foreground(tokens.secondary_label),
+    const search = mod.SearchField(placeholder, field, actions.on_submit, null).frameWidth(300);
+    const words = mod.Text(status).font(.footnote).foregroundStyle(tokens.secondary_label);
+    const find_row = if (actions.search_options) |options| mod.StackBuilder.make(.horizontal, 8, .center, .{
+        search,
+        mod.StackBuilder.make(.horizontal, 2, .center, .{
+            FindOptionToggle.button("Aa", "Match Case", &options.case_sensitive),
+            FindOptionToggle.button("ab|", "Whole Words", &options.whole_word),
+        }),
+        words,
         mod.Spacer(),
         mod.ButtonRoled("Previous", .normal, actions.on_previous),
         mod.ButtonRoled("Next", .normal, actions.on_next),
         mod.ButtonRoled("Done", .normal, actions.on_done),
-    }).paddingInsets(.{ .top = 6, .leading = 10, .bottom = 6, .trailing = 10 }).frameMaxWidth().background(tokens.bar_background);
+    }) else mod.StackBuilder.make(.horizontal, 8, .center, .{
+        search,
+        words,
+        mod.Spacer(),
+        mod.ButtonRoled("Previous", .normal, actions.on_previous),
+        mod.ButtonRoled("Next", .normal, actions.on_next),
+        mod.ButtonRoled("Done", .normal, actions.on_done),
+    });
+    const rows: mod.View = if (actions.replace) |replace| mod.StackBuilder.make(.vertical, 6, .leading, .{
+        find_row,
+        mod.StackBuilder.make(.horizontal, 8, .center, .{
+            mod.FieldChrome(mod.TextField("Replace", replace.field)
+                .textFieldStyle(.plain)
+                .onSubmit(replace.on_replace)
+                .frameMaxWidth()
+                .paddingInsets(.{ .top = 2, .leading = 8, .bottom = 2, .trailing = 8 })).frameWidth(300),
+            mod.Spacer(),
+            mod.ButtonRoled("Replace", .normal, replace.on_replace),
+            mod.ButtonRoled("Replace All", .normal, replace.on_replace_all),
+        }),
+    }) else find_row;
+    return rows.paddingInsets(.{ .top = 6, .leading = 10, .bottom = 6, .trailing = 10 }).frameMaxWidth().background(tokens.bar_background);
 }
 
 // -----------------------------------------------------------------------------

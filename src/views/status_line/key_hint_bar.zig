@@ -26,7 +26,7 @@ pub fn KeyHintBar(hints: []const mod.KeyHint) mod.View {
     for (shown, 0..) |hint, index| {
         items[index] = mod.StackBuilder.make(.horizontal, 5, .center, .{
             mod.KeyCap(hint.key),
-            mod.Text(hint.action).size(11).weight(.medium).foreground(tokens.secondary_label),
+            mod.Text(hint.action).font(.system(11)).fontWeight(.medium).foregroundStyle(tokens.secondary_label),
         });
     }
     items[shown.len] = mod.Spacer();

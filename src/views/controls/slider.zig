@@ -7,7 +7,7 @@ const std = @import("std");
 const log = std.log.scoped(.ziggui_slider);
 const mod = @import("module.zig");
 
-/// A horizontal slider over a range, drawn by the theme; `.foreground(color)`
+/// A horizontal slider over a range, drawn by the theme; `.foregroundStyle(color)`
 /// draws it flat in that color instead (SwiftUI's `.tint`), for a slider over
 /// a picture or a dark ground, as `VideoPlayerControls` does.
 ///

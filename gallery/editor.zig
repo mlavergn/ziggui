@@ -13,26 +13,346 @@ const sample_document =
     \\    std.debug.print("{s}\n", .{greeting});
     \\
     \\    // Click to place the caret, drag to select (or Shift+arrows),
-    \\    // ⌘F to find, ⌘S to save.
+    \\    // ⌘F to find, ⌥⌘F to replace, ⌘Z to undo, ⌘S to save.
     \\    var total: usize = 0;
     \\    for (0..10) |i| total += i;
     \\}
 ;
 
-/// The zoom ladder's step that draws the body size.
-const zoom_body: i64 = 3;
+/// A second document Open offers, as a Windows tool saves it: CRLF line
+/// endings and tab indentation, which `loadDocument` finds as it loads.
+const legacy_document = "/* legacy.c: saved on Windows, CRLF line endings and tab indentation */\r\n" ++
+    "#include <stdio.h>\r\n" ++
+    "\r\n" ++
+    "int main(void)\r\n" ++
+    "{\r\n" ++
+    "\tint total = 0;\r\n" ++
+    "\tfor (int i = 0; i < 10; i++) {\r\n" ++
+    "\t\ttotal += i;\r\n" ++
+    "\t}\r\n" ++
+    "\tprintf(\"%d\\n\", total);\r\n" ++
+    "\treturn 0;\r\n" ++
+    "}\r\n";
 
-/// The zoom ladder's largest step.
-const zoom_largest: i64 = 6;
+/// The documents Open loads, by the dialog's sample menu.
+const samples = [_]struct { name: []const u8, text: []const u8 }{
+    .{ .name = "edit.zig", .text = sample_document },
+    .{ .name = "legacy.c", .text = legacy_document },
+};
+
+/// The dialog's sample menu, in `samples`' order.
+const sample_options = [_][]const u8{ "edit.zig (LF, spaces)", "legacy.c (CRLF, tabs)" };
 
 /// The longest status message kept, in bytes.
 const status_capacity: usize = 256;
 
-/// A small plain-text editor in the spirit of TextEdit, gedit or Notepad,
-/// folded in from zigui's edit example: a toolbar, a multi-line
-/// `TextEditor` with line numbers, a `FindBar` (⌘F) with wrap-around and
-/// its match count, zoom
-/// (⌘+, ⌘-, ⌘0), a status bar, and a path dialog for Open and Save As.
+/// The indentation menu's choices, in `indentation_choices`' order.
+const indentation_options = [_][]const u8{ "Spaces: 2", "Spaces: 4", "Spaces: 8", "Tabs: 4" };
+
+/// What each indentation choice is.
+const indentation_choices = [_]ziggui.TextIndentation{
+    .{ .style = .spaces, .width = 2 },
+    .{ .style = .spaces, .width = 4 },
+    .{ .style = .spaces, .width = 8 },
+    .{ .style = .tabs, .width = 4 },
+};
+
+/// The line-ending picker's choices, in `ziggui.LineEnding`'s order.
+const line_ending_options = [_][]const u8{ "LF", "CRLF" };
+
+/// The size ⌘0 puts the face in use back to, in points.
+const default_size: f32 = 13;
+
+/// The names line under the status bar, the find bar hidden.
+const editor_names = "ziggui.TextEditor · ziggui.TextEditorSettings · ziggui.TextEditorColors · .font(.custom)";
+
+/// The names line under the status bar while the find bar shows.
+const find_names = "ziggui.TextEditor · .findNavigator · ziggui.TextFindState · ziggui.FindBar · ziggui.FindActions";
+
+/// A toggle's binding to one of the editor's boolean settings.
+const SettingBinding = struct {
+    const Self = @This();
+
+    /// A binding to `settings.<field>`.
+    ///
+    /// - `editor`: the editor.
+    /// - `field`: the setting's name.
+    /// - Returns: the binding.
+    fn of(editor: *Editor, comptime field: []const u8) ziggui.Binding(bool) {
+        const Access = struct {
+            const Self = @This();
+
+            /// Reads the setting.
+            ///
+            /// - `context`: the editor.
+            /// - Returns: its value.
+            fn get(context: *anyopaque) bool {
+                const target: *Editor = @ptrCast(@alignCast(context));
+                return @field(target.settings, field);
+            }
+
+            /// Writes the setting.
+            ///
+            /// - `context`: the editor.
+            /// - `value`: the new value.
+            fn set(context: *anyopaque, value: bool) void {
+                const target: *Editor = @ptrCast(@alignCast(context));
+                @field(target.settings, field) = value;
+            }
+        };
+        return .{ .context = editor, .get_fn = Access.get, .set_fn = Access.set };
+    }
+};
+
+/// A font menu's binding: a face's family as its place among the registry's.
+const FontBinding = struct {
+    const Self = @This();
+
+    /// A binding to the proportional or the monospaced face's family.
+    ///
+    /// - `editor`: the editor.
+    /// - `mono`: true for the monospaced face.
+    /// - Returns: the binding.
+    fn of(editor: *Editor, comptime mono: bool) ziggui.Binding(i64) {
+        const Access = struct {
+            const Self = @This();
+
+            /// The face's place among the families, 0 when it is none of them.
+            ///
+            /// - `context`: the editor.
+            /// - Returns: the index.
+            fn get(context: *anyopaque) i64 {
+                const target: *Editor = @ptrCast(@alignCast(context));
+                const wanted = if (mono) target.settings.mono_font else target.settings.proportional_font;
+                return @intCast(ziggui.FontRegistry.shared().familyIndex(wanted) orelse 0);
+            }
+
+            /// Chooses the family at a place.
+            ///
+            /// - `context`: the editor.
+            /// - `value`: the index.
+            fn set(context: *anyopaque, value: i64) void {
+                const target: *Editor = @ptrCast(@alignCast(context));
+                const family = ziggui.FontRegistry.shared().familyName(@intCast(@max(value, 0))) orelse return;
+                if (mono) target.settings.mono_font = family else target.settings.proportional_font = family;
+            }
+        };
+        return .{ .context = editor, .get_fn = Access.get, .set_fn = Access.set };
+    }
+};
+
+/// The size stepper's binding: the face in use's size, in whole points.
+const SizeBinding = struct {
+    const Self = @This();
+
+    /// A binding to the face in use's size.
+    ///
+    /// - `editor`: the editor.
+    /// - Returns: the binding.
+    fn of(editor: *Editor) ziggui.Binding(i64) {
+        return .{ .context = editor, .get_fn = Self.get, .set_fn = Self.set };
+    }
+
+    /// Reads the size.
+    ///
+    /// - `context`: the editor.
+    /// - Returns: the size, rounded.
+    fn get(context: *anyopaque) i64 {
+        const target: *Editor = @ptrCast(@alignCast(context));
+        return @intFromFloat(@round(target.settings.face().size));
+    }
+
+    /// Sets the size.
+    ///
+    /// - `context`: the editor.
+    /// - `value`: the new size.
+    fn set(context: *anyopaque, value: i64) void {
+        const target: *Editor = @ptrCast(@alignCast(context));
+        target.settings.resize(@as(f32, @floatFromInt(value)) - target.settings.face().size);
+    }
+};
+
+/// The indentation menu's binding: the settings' and the document's indentation.
+const IndentationBinding = struct {
+    const Self = @This();
+
+    /// A binding to the indentation, as a place in `indentation_choices`.
+    ///
+    /// - `editor`: the editor.
+    /// - Returns: the binding.
+    fn of(editor: *Editor) ziggui.Binding(i64) {
+        return .{ .context = editor, .get_fn = Self.get, .set_fn = Self.set };
+    }
+
+    /// The choice the settings' indentation is.
+    ///
+    /// - `context`: the editor.
+    /// - Returns: its index, 1 (four spaces) when it is none of them.
+    fn get(context: *anyopaque) i64 {
+        const target: *Editor = @ptrCast(@alignCast(context));
+        for (indentation_choices, 0..) |choice, index| {
+            if (std.meta.eql(choice, target.settings.indentation)) return @intCast(index);
+        }
+        return 1;
+    }
+
+    /// Indents the settings and the document as chosen.
+    ///
+    /// - `context`: the editor.
+    /// - `value`: the choice's index.
+    fn set(context: *anyopaque, value: i64) void {
+        const target: *Editor = @ptrCast(@alignCast(context));
+        const choice = indentation_choices[@intCast(std.math.clamp(value, 0, indentation_choices.len - 1))];
+        target.settings.indentation = choice;
+        target.document.indentation = choice;
+    }
+};
+
+/// The line-ending picker's binding: the document's ending, and the one new documents get.
+const LineEndingBinding = struct {
+    const Self = @This();
+
+    /// A binding to the line ending, as its `ziggui.LineEnding` index.
+    ///
+    /// - `editor`: the editor.
+    /// - Returns: the binding.
+    fn of(editor: *Editor) ziggui.Binding(i64) {
+        return .{ .context = editor, .get_fn = Self.get, .set_fn = Self.set };
+    }
+
+    /// The document's ending.
+    ///
+    /// - `context`: the editor.
+    /// - Returns: its index.
+    fn get(context: *anyopaque) i64 {
+        const target: *Editor = @ptrCast(@alignCast(context));
+        return @backingInt(target.document.line_ending);
+    }
+
+    /// Sets the document's ending, and the settings'.
+    ///
+    /// - `context`: the editor.
+    /// - `value`: the ending's index.
+    fn set(context: *anyopaque, value: i64) void {
+        const target: *Editor = @ptrCast(@alignCast(context));
+        const ending: ziggui.LineEnding = if (value == 1) .crlf else .lf;
+        target.document.setLineEnding(ending);
+        target.settings.line_ending = ending;
+    }
+};
+
+/// What the colors bar's picker colors: the text, the ground, or one of
+/// the `TextEditorColors`'s colors.
+const ColorTarget = enum {
+    const Self = @This();
+
+    /// `TextEditorSettings.foreground`.
+    text,
+    /// `TextEditorSettings.background`.
+    ground,
+    /// `TextEditorColors.caret`.
+    caret,
+    /// `TextEditorColors.selection`.
+    selection,
+    /// `TextEditorColors.gutter_background`.
+    gutter,
+    /// `TextEditorColors.gutter_text`.
+    lineNumbers,
+    /// `TextEditorColors.current_line`.
+    currentLine,
+    /// `TextEditorColors.find_match`.
+    matches,
+    /// `TextEditorColors.find_current`.
+    currentMatch,
+
+    /// The menu's titles, in the enum's order.
+    const labels = [_][]const u8{ "Text", "Ground", "Caret", "Selection", "Gutter", "Line numbers", "Current line", "Matches", "Current match" };
+
+    /// The target at a menu index.
+    ///
+    /// - `index`: the index, clamped to the menu.
+    /// - Returns: the target.
+    fn at(index: i64) Self {
+        return @fromBackingInt(@intCast(std.math.clamp(index, 0, labels.len - 1)));
+    }
+
+    /// Where the settings keep the target's color.
+    ///
+    /// - `self`: the target.
+    /// - `settings`: the editor's settings.
+    /// - Returns: the color, null while it is the theme's.
+    fn slot(self: *const Self, settings: *ziggui.TextEditorSettings) *?ziggui.Color {
+        return switch (self.*) {
+            .text => &settings.foreground,
+            .ground => &settings.background,
+            .caret => &settings.colors.caret,
+            .selection => &settings.colors.selection,
+            .gutter => &settings.colors.gutter_background,
+            .lineNumbers => &settings.colors.gutter_text,
+            .currentLine => &settings.colors.current_line,
+            .matches => &settings.colors.find_match,
+            .currentMatch => &settings.colors.find_current,
+        };
+    }
+
+    /// The color the editor draws the target in while the settings leave it
+    /// to the theme, so the picker shows it (as a swatch of its own).
+    ///
+    /// - `self`: the target.
+    /// - Returns: the theme's color for it.
+    fn themeColor(self: *const Self) ziggui.Color {
+        const scope = ziggui.BuildScope.shared();
+        const colors = scope.theme().colors;
+        return switch (self.*) {
+            .text => colors.label,
+            .ground, .gutter, .currentLine => colors.control_background,
+            .caret, .currentMatch => colors.accent,
+            .selection => colors.selection,
+            .lineNumbers => colors.tertiary_label,
+            .matches => scope.tokens().accent_soft,
+        };
+    }
+};
+
+/// The colors bar's picker binding: the color of what its menu names.
+const ColorBinding = struct {
+    const Self = @This();
+
+    /// A binding to the color the menu names, the theme's while unset.
+    ///
+    /// - `editor`: the editor.
+    /// - Returns: the binding.
+    fn of(editor: *Editor) ziggui.Binding(ziggui.Color) {
+        return .{ .context = editor, .get_fn = Self.get, .set_fn = Self.set };
+    }
+
+    /// Reads the color.
+    ///
+    /// - `context`: the editor.
+    /// - Returns: the color.
+    fn get(context: *anyopaque) ziggui.Color {
+        const target: *Editor = @ptrCast(@alignCast(context));
+        const chosen = ColorTarget.at(target.color_target.get());
+        return chosen.slot(&target.settings).* orelse chosen.themeColor();
+    }
+
+    /// Picks the color.
+    ///
+    /// - `context`: the editor.
+    /// - `value`: the color.
+    fn set(context: *anyopaque, value: ziggui.Color) void {
+        const target: *Editor = @ptrCast(@alignCast(context));
+        ColorTarget.at(target.color_target.get()).slot(&target.settings).* = value;
+    }
+};
+
+/// A plain-text editor in the spirit of TextEdit, gedit or Notepad, folded
+/// in from zigui's edit example, grown toward a code editor: a toolbar, a
+/// format bar (each face's family and the size, the indentation, the line
+/// ending, undo and redo, colors), a `TextEditor` whose `.findNavigator`
+/// finds and replaces (⌘F, ⌥⌘F), a status bar, and a path dialog for Open
+/// and Save As. Its settings are one `ziggui.TextEditorSettings`, which the
+/// gallery's window saves.
 ///
 /// It edits text in memory: Open loads the sample document under the name
 /// given, and Save keeps the text where it is and marks it saved.
@@ -42,7 +362,7 @@ pub const Editor = struct {
     /// Allocates the editor's buffers.
     allocator: std.mem.Allocator,
 
-    /// The document's buffer, caret and selection.
+    /// The document's buffer, caret, selection and undo history.
     document: ziggui.TextFieldState,
 
     /// The document's scroll position.
@@ -54,14 +374,17 @@ pub const Editor = struct {
     /// The document's revision when it was last saved or opened.
     saved_revision: u64 = 0,
 
-    /// Whether the editor shows line numbers.
-    line_numbers: ziggui.State(bool),
+    /// The faces, sizes, indentation, gutter, wrapping and colors.
+    settings: ziggui.TextEditorSettings = .{},
 
-    /// Whether the editor draws in the fixed-width face (`TextEditor.mono()`).
-    monospaced: ziggui.State(bool),
+    /// Whether the colors bar shows.
+    show_colors: ziggui.State(bool),
 
-    /// The zoom, a step of the font-size ladder (`zoom_body` is the body size).
-    zoom: ziggui.State(i64),
+    /// What the colors bar's picker colors, a `ColorTarget` index.
+    color_target: ziggui.State(i64),
+
+    /// Which sample Open loads, an index into `samples`.
+    sample: ziggui.State(i64),
 
     /// Whether the path dialog is presented.
     show_dialog: ziggui.State(bool),
@@ -75,10 +398,10 @@ pub const Editor = struct {
     /// Whether the find bar shows.
     show_find: ziggui.State(bool),
 
-    /// The find bar's field.
-    find_field: ziggui.TextFieldState,
+    /// The find and replace.
+    find: ziggui.TextFindState,
 
-    /// The status message's bytes ("Saved", "Not found").
+    /// The status message's bytes ("Saved", "Replaced 2").
     status_buffer: [status_capacity]u8 = undefined,
 
     /// How many of `status_buffer`'s bytes are the message.
@@ -94,13 +417,13 @@ pub const Editor = struct {
         var self = Self{
             .allocator = allocator,
             .document = ziggui.TextFieldState.init(allocator),
-            .line_numbers = ziggui.State(bool).init(allocator, true),
-            .monospaced = ziggui.State(bool).init(allocator, false),
-            .zoom = ziggui.State(i64).init(allocator, zoom_body),
+            .show_colors = ziggui.State(bool).init(allocator, false),
+            .color_target = ziggui.State(i64).init(allocator, 0),
+            .sample = ziggui.State(i64).init(allocator, 0),
             .show_dialog = ziggui.State(bool).init(allocator, false),
             .path_field = ziggui.TextFieldState.init(allocator),
             .show_find = ziggui.State(bool).init(allocator, false),
-            .find_field = ziggui.TextFieldState.init(allocator),
+            .find = ziggui.TextFindState.init(allocator),
         };
         errdefer self.deinit();
         self.document.multiline = true;
@@ -114,48 +437,46 @@ pub const Editor = struct {
     /// - `self`: the editor to tear down.
     pub fn deinit(self: *Self) void {
         self.releaseFocus();
-        self.find_field.deinit();
+        self.find.deinit();
         self.show_find.deinit();
         self.path_field.deinit();
         self.show_dialog.deinit();
-        self.zoom.deinit();
-        self.monospaced.deinit();
-        self.line_numbers.deinit();
+        self.sample.deinit();
+        self.color_target.deinit();
+        self.show_colors.deinit();
         self.path.deinit(self.allocator);
         self.document.deinit();
     }
 
-    /// Builds the editor: the toolbar, the document, the find bar while it
-    /// shows, and the status bar, with the path dialog presented over them.
+    /// Builds the editor: the toolbar, the format bar, the colors while they
+    /// show, the document with its find bar, and the status bar, with the
+    /// path dialog presented over them.
     ///
     /// - `self`: the editor.
     /// - `theme`: the theme this frame draws with.
     /// - Returns: the editor's view, filling the space it is given.
     pub fn body(self: *Self, theme: ziggui.Theme) ziggui.View {
-        const document = ziggui.TextEditor(&self.document, &self.document_scroll, self.line_numbers.get());
-        const editor = Self.zoomed(if (self.monospaced.get()) document.mono() else document, self.zoom.get())
+        const document = self.settings.apply(ziggui.TextEditor(&self.document, &self.document_scroll, self.settings.line_numbers))
+            .findNavigator(self.show_find.binding(), &self.find)
             .frameMaxWidth()
             .frameMaxHeight()
             .paddingInsets(.{ .top = 8, .leading = 10, .bottom = 8, .trailing = 10 });
 
-        // The column, with the find bar spliced in only while it shows.
-        var rows: [6]ziggui.View = undefined;
+        // The column, with the colors spliced in only while they show.
+        var rows: [9]ziggui.View = undefined;
         var count: usize = 0;
-        rows[count] = self.toolbar();
-        count += 1;
-        rows[count] = ziggui.Divider();
-        count += 1;
-        rows[count] = editor;
-        count += 1;
-        if (self.show_find.get()) {
-            rows[count] = ziggui.FindBar("Find", &self.find_field, self.findCount(), self.findActions());
+        for ([_]ziggui.View{ self.toolbar(), ziggui.Divider(), self.formatBar(), self.layoutBar() }) |row| {
+            rows[count] = row;
             count += 1;
         }
-        rows[count] = ziggui.Divider();
-        count += 1;
-        rows[count] = self.statusBar(theme);
-        count += 1;
-
+        if (self.show_colors.get()) {
+            rows[count] = self.colorBar();
+            count += 1;
+        }
+        for ([_]ziggui.View{ ziggui.Divider(), document, ziggui.Divider(), self.statusBar(theme) }) |row| {
+            rows[count] = row;
+            count += 1;
+        }
         return ziggui.VStack(rows[0..count])
             .spacing(0)
             .frameMaxWidth()
@@ -163,33 +484,32 @@ pub const Editor = struct {
             .alert(self.show_dialog.binding(), self.dialogView(theme));
     }
 
-    /// A key went down while the editor shows: the find bar's keys while it
-    /// shows (`ziggui.FindActions.handleKey`: Esc, Shift-Enter, ⌘G), then
-    /// the ⌘ (Ctrl off macOS) shortcuts. Copy, cut, paste and select all are
-    /// left to the loop, which does them for the focused field.
+    /// A key went down while the editor shows: the find's keys (⌘F, ⌥⌘F,
+    /// ⌘E, and while it shows ⌘G, Shift-Enter, Esc; `ziggui.TextFindState.handleKey`),
+    /// then the ⌘ (Ctrl off macOS) shortcuts. Copy, cut, paste, select all,
+    /// undo and redo are left to the loop, which does them for the focused field.
     ///
     /// - `self`: the editor.
     /// - `keycode`: the key's `SDL_Keycode`.
     /// - `modifiers`: its `SDL_Keymod` mask.
-    /// - Returns: true when the key was the find bar's or a shortcut, so no
+    /// - Returns: true when the key was the find's or a shortcut, so no
     ///   field takes it; false for every key while the path dialog is up,
     ///   which is modal.
     pub fn keyDown(self: *Self, keycode: u32, modifiers: u16) bool {
         if (self.show_dialog.get()) return false;
-        if (self.show_find.get()) {
-            if (ziggui.Key.fromSdl(keycode, modifiers, gallery.is_macos)) |key| {
-                if (self.findActions().handleKey(key, &self.find_field)) return true;
-            }
+        if (ziggui.Key.fromSdl(keycode, modifiers, gallery.is_macos)) |key| {
+            // The find opens from anywhere in the section, not only the document.
+            self.attachFind();
+            if (self.find.handleKey(key, gallery.is_macos)) return true;
         }
         if (modifiers & (ziggui.SdlKey.gui_mask | ziggui.SdlKey.ctrl_mask) == 0) return false;
         switch (keycode) {
             's' => self.save(),
             'o' => self.openDialog(),
             'n' => self.newDocument(),
-            'f' => self.toggleFind(),
-            '=', '+' => self.zoomBy(1),
-            '-' => self.zoomBy(-1),
-            '0' => self.zoom.set(zoom_body),
+            '=', '+' => self.settings.resize(1),
+            '-' => self.settings.resize(-1),
+            '0' => self.settings.resize(default_size - self.settings.face().size),
             else => return false,
         }
         return true;
@@ -209,10 +529,11 @@ pub const Editor = struct {
     /// - `self`: the editor.
     pub fn releaseFocus(self: *Self) void {
         const field = ziggui.Focus.shared().focused() orelse return;
-        if (field == &self.document or field == &self.path_field or field == &self.find_field) ziggui.Focus.shared().clear();
+        if (field == &self.document or field == &self.path_field or field == &self.find.query or field == &self.find.replacement) ziggui.Focus.shared().clear();
     }
 
-    /// Reports whether the document changed since it was last saved or opened.
+    /// Reports whether the document changed since it was last saved or
+    /// opened (an undo back to that point reads unchanged).
     ///
     /// - `self`: the editor.
     /// - Returns: true when it has unsaved changes.
@@ -239,7 +560,21 @@ pub const Editor = struct {
         return self.status_buffer[0..self.status_length];
     }
 
-    /// Starts an empty, untitled document.
+    /// Takes saved settings: each face's family as the registry names it
+    /// (a family no longer registered keeps the bundled one), and the rest
+    /// as they were; the document takes the indentation.
+    ///
+    /// - `self`: the editor.
+    /// - `saved`: the settings read back; its strings may be freed after.
+    pub fn restoreSettings(self: *Self, saved: ziggui.TextEditorSettings) void {
+        var restored = saved.validated();
+        restored.proportional_font = Self.registeredName(saved.proportional_font) orelse ziggui.FontRegistry.bundled_sans;
+        restored.mono_font = Self.registeredName(saved.mono_font) orelse ziggui.FontRegistry.bundled_mono;
+        self.settings = restored;
+        self.document.indentation = restored.indentation;
+    }
+
+    /// Starts an empty, untitled document in the settings' indentation and line ending.
     ///
     /// - `self`: the editor.
     pub fn newDocument(self: *Self) void {
@@ -247,6 +582,8 @@ pub const Editor = struct {
             self.setStatus("No new document [{t}]", .{err});
             return;
         };
+        self.settings.applyTo(&self.document);
+        self.saved_revision = self.document.revision;
         self.path.clearRetainingCapacity();
         ziggui.Focus.shared().set(&self.document);
         self.setStatus("New document", .{});
@@ -273,7 +610,7 @@ pub const Editor = struct {
     pub fn save(self: *Self) void {
         if (self.path.items.len == 0) return self.saveAsDialog();
         self.saved_revision = self.document.revision;
-        self.setStatus("Saved {s} (in memory)", .{self.name()});
+        self.setStatus("Saved {s} (in memory, {s})", .{ self.name(), self.document.line_ending.label() });
     }
 
     /// The path dialog's confirm button (and Enter in its field): opens or
@@ -292,77 +629,74 @@ pub const Editor = struct {
         ziggui.Focus.shared().set(&self.document);
     }
 
-    /// Shows or hides the find bar, focusing its field or the document.
+    /// Takes back the document's last edit.
     ///
     /// - `self`: the editor.
-    pub fn toggleFind(self: *Self) void {
-        const showing = !self.show_find.get();
-        self.show_find.set(showing);
-        ziggui.Focus.shared().set(if (showing) &self.find_field else &self.document);
+    pub fn undo(self: *Self) void {
+        _ = self.document.undo() catch |err| self.setStatus("Not undone [{t}]", .{err});
+        ziggui.Focus.shared().set(&self.document);
     }
 
-    /// Selects the next match of the find field's text after the caret,
-    /// wrapping to the top.
+    /// Puts back the document's last edit undone.
     ///
     /// - `self`: the editor.
-    pub fn findNext(self: *Self) void {
-        const needle = self.find_field.text();
-        if (needle.len == 0) return;
-        const haystack = self.document.text();
-        const from = @min(self.document.caret, haystack.len);
-        const hit = std.mem.findPos(u8, haystack, from, needle) orelse std.mem.find(u8, haystack, needle);
-        if (hit) |index| self.selectMatch(index, needle.len) else self.setStatus("Not found", .{});
+    pub fn redo(self: *Self) void {
+        _ = self.document.redo() catch |err| self.setStatus("Not redone [{t}]", .{err});
+        ziggui.Focus.shared().set(&self.document);
     }
 
-    /// Selects the previous match of the find field's text before the
-    /// selection, wrapping to the bottom.
+    /// Re-indents the document's lines in the chosen indentation, as one
+    /// undo step, from what its lines show now.
     ///
     /// - `self`: the editor.
-    pub fn findPrevious(self: *Self) void {
-        const needle = self.find_field.text();
-        if (needle.len == 0) return;
-        const haystack = self.document.text();
-        const before = if (self.document.selectionRange()) |selection| selection.start else self.document.caret;
-        const earlier = if (before > 0) std.mem.findLast(u8, haystack[0..before], needle) else null;
-        const hit = earlier orelse std.mem.findLast(u8, haystack, needle);
-        if (hit) |index| self.selectMatch(index, needle.len) else self.setStatus("Not found", .{});
-    }
-
-    /// What the find bar's field, buttons and keys do: Enter and Next find
-    /// the next match, Previous the one before, Done closes the bar.
-    ///
-    /// - `self`: the editor.
-    /// - Returns: the actions, pointing at the editor.
-    pub fn findActions(self: *Self) ziggui.FindActions {
-        return .{
-            .on_submit = ziggui.Callback.init(Self, self, Self.findNext),
-            .on_next = ziggui.Callback.init(Self, self, Self.findNext),
-            .on_previous = ziggui.Callback.init(Self, self, Self.findPrevious),
-            .on_done = ziggui.Callback.init(Self, self, Self.toggleFind),
+    pub fn convertIndentation(self: *Self) void {
+        if (ziggui.TextIndentation.detect(self.document.text())) |found| self.document.indentation = found;
+        self.document.convertIndentation(self.settings.indentation) catch |err| {
+            self.setStatus("Not converted [{t}]", .{err});
+            return;
         };
+        self.setStatus("Indentation converted", .{});
     }
 
-    /// Where the find stands: the find field's matches in the document
-    /// (each found past the one before it, as Next steps), and which is
-    /// selected.
+    /// Puts the editor back on the theme's colors: text, ground and style.
     ///
     /// - `self`: the editor.
-    /// - Returns: the count, or null while the field is empty.
-    pub fn findCount(self: *const Self) ?ziggui.FindCount {
-        const needle = self.find_field.text();
-        if (needle.len == 0) return null;
-        const haystack = self.document.text();
-        const selected = self.document.selectionRange();
-        var count: ziggui.FindCount = .{ .total = 0 };
-        var from: usize = 0;
-        while (std.mem.findPos(u8, haystack, from, needle)) |index| {
-            if (selected) |range| {
-                if (range.start == index and range.end == index + needle.len) count.current = count.total;
-            }
-            count.total += 1;
-            from = index + needle.len;
-        }
-        return count;
+    pub fn themeColors(self: *Self) void {
+        self.settings.foreground = null;
+        self.settings.background = null;
+        self.settings.colors = .{};
+    }
+
+    /// Dresses the editor in a dark style of its own: Noto Serif, light text
+    /// on a dark ground, a gutter, a current-line band, a white caret and
+    /// colored matches, with the colors bar open and `total` found (the
+    /// `--editor-style` demo).
+    ///
+    /// - `self`: the editor.
+    pub fn showStyle(self: *Self) void {
+        self.settings.proportional_font = Self.registeredName("Noto Serif") orelse ziggui.FontRegistry.bundled_sans;
+        self.settings.proportional_size = 15;
+        self.settings.foreground = ziggui.Color.fromRgb8(0xE5, 0xE5, 0xEA);
+        self.settings.background = ziggui.Color.fromRgb8(0x1C, 0x1C, 0x1E);
+        self.settings.colors = .{
+            .caret = ziggui.Color.fromRgb8(0xFF, 0xD6, 0x0A),
+            .selection = ziggui.Color.fromRgb8(0x3A, 0x3A, 0x3C),
+            .gutter_background = ziggui.Color.fromRgb8(0x2C, 0x2C, 0x2E),
+            .gutter_text = ziggui.Color.fromRgb8(0x8E, 0x8E, 0x93),
+            .current_line = ziggui.Color.fromRgb8(0x26, 0x26, 0x28),
+            .find_match = ziggui.Color.fromRgb8(0x5E, 0x4B, 0x1A),
+            .find_current = ziggui.Color.fromRgb8(0xFF, 0x9F, 0x0A),
+        };
+        self.show_colors.set(true);
+        self.color_target.set(@backingInt(ColorTarget.caret));
+        self.showMatch("total");
+    }
+
+    /// Shows or hides the color pickers.
+    ///
+    /// - `self`: the editor.
+    pub fn toggleColors(self: *Self) void {
+        self.show_colors.set(!self.show_colors.get());
     }
 
     /// Shows the find bar searching for `needle`, its first match after the
@@ -371,12 +705,26 @@ pub const Editor = struct {
     /// - `self`: the editor.
     /// - `needle`: the text to find.
     pub fn showMatch(self: *Self, needle: []const u8) void {
+        self.attachFind();
         self.show_find.set(true);
-        self.find_field.setText(needle) catch |err| {
+        self.find.query.setText(needle) catch |err| {
             log.warn("the find field was not filled [{t}]", .{err});
             return;
         };
-        self.findNext();
+        self.find.followed_query = self.find.query.revision;
+        self.find.findNext();
+    }
+
+    /// Shows the find bar with its replace row, `needle`'s first match
+    /// selected and `replacement` typed (the `--replace` demo).
+    ///
+    /// - `self`: the editor.
+    /// - `needle`: the text to find.
+    /// - `replacement`: the text to replace it with.
+    pub fn showReplace(self: *Self, needle: []const u8, replacement: []const u8) void {
+        self.find.shows_replace = true;
+        self.find.replacement.setText(replacement) catch |err| log.warn("the replace field was not filled [{t}]", .{err});
+        self.showMatch(needle);
     }
 
     /// Selects from the first `from` to the first `to` after it (the `--select` demo).
@@ -391,25 +739,33 @@ pub const Editor = struct {
         self.document.caret = std.mem.findPos(u8, text, start, to) orelse text.len;
     }
 
-    /// Moves the zoom `delta` steps along the font-size ladder, within it.
+    /// Points the find at the document and the bar's flag, as a frame's
+    /// `findNavigator` does, for a key or a demo before the next frame.
     ///
-    /// - `self`: the editor.
-    /// - `delta`: the steps; negative zooms out.
-    pub fn zoomBy(self: *Self, delta: i64) void {
-        self.zoom.set(std.math.clamp(self.zoom.get() + delta, 0, zoom_largest));
+    /// - `self`: the editor, in its final place (the find keeps its addresses).
+    fn attachFind(self: *Self) void {
+        self.find.document = &self.document;
+        self.find.is_presented = self.show_find.binding();
+    }
+
+    /// The registry's own copy of a family's name.
+    ///
+    /// - `wanted`: the name looked for.
+    /// - Returns: the registry's name, or null when no family has it.
+    fn registeredName(wanted: []const u8) ?[]const u8 {
+        const registry = ziggui.FontRegistry.shared();
+        return registry.familyName(registry.familyIndex(wanted) orelse return null);
     }
 
     /// Replaces the document with `text`, caret at the top, scrolled to the
-    /// top, and unmodified.
+    /// top, unmodified, with no undo history; its line ending and
+    /// indentation are what the text shows (`loadDocument`).
     ///
     /// - `self`: the editor.
     /// - `text`: the new text.
     /// - Returns: nothing; propagates allocation failure.
     fn load(self: *Self, text: []const u8) !void {
-        try self.document.setText(text);
-        // `setText` leaves the caret at the end; a document opens at the top.
-        self.document.caret = 0;
-        self.document.last_caret = 0;
+        try self.document.loadDocument(text);
         self.document_scroll.offset = 0;
         self.saved_revision = self.document.revision;
     }
@@ -427,19 +783,29 @@ pub const Editor = struct {
         ziggui.Focus.shared().set(&self.path_field);
     }
 
-    /// Opens the dialog's path: loads the sample document under its name.
+    /// Opens the sample the dialog's menu names, under the path typed (its
+    /// own name when none is), its line ending and indentation found as it
+    /// loads.
     ///
     /// - `self`: the editor.
     fn open(self: *Self) void {
-        if (self.path_field.text().len == 0) return;
-        self.setPath(self.path_field.text());
+        const chosen = samples[@intCast(std.math.clamp(self.sample.get(), 0, samples.len - 1))];
+        const typed = self.path_field.text();
+        self.setPath(if (typed.len > 0) typed else chosen.name);
         self.show_dialog.set(false);
-        self.load(sample_document) catch |err| {
+        self.load(chosen.text) catch |err| {
             self.setStatus("Could not open {s} [{t}]", .{ self.name(), err });
             return;
         };
         ziggui.Focus.shared().set(&self.document);
-        self.setStatus("Opened {s} ({d} bytes)", .{ self.name(), sample_document.len });
+        const indentation = self.document.indentation;
+        self.setStatus("Opened {s}: {d} bytes, {s}, {s} {d}", .{
+            self.name(),
+            chosen.text.len,
+            self.document.line_ending.label(),
+            if (indentation.style == .tabs) "tabs of" else "spaces,",
+            indentation.columns(),
+        });
     }
 
     /// Saves the document under the dialog's path.
@@ -451,18 +817,7 @@ pub const Editor = struct {
         self.show_dialog.set(false);
         self.saved_revision = self.document.revision;
         ziggui.Focus.shared().set(&self.document);
-        self.setStatus("Saved {s} (in memory)", .{self.name()});
-    }
-
-    /// Selects a match, which scrolls it into view (the editor follows the caret).
-    ///
-    /// - `self`: the editor.
-    /// - `index`: the match's first byte.
-    /// - `length`: the match's length, in bytes.
-    fn selectMatch(self: *Self, index: usize, length: usize) void {
-        self.document.selection_anchor = index;
-        self.document.caret = index + length;
-        self.setStatus("Match at byte {d}", .{index});
+        self.setStatus("Saved {s} (in memory, {s})", .{ self.name(), self.document.line_ending.label() });
     }
 
     /// Sets the document's path.
@@ -488,18 +843,15 @@ pub const Editor = struct {
         self.status_length = writer.end;
     }
 
-    /// The toolbar: the document's name, a dot while modified, and the
-    /// monospaced and line-number toggles and the file buttons.
+    /// The toolbar: the document's name, a dot while modified, and the file buttons.
     ///
     /// - `self`: the editor.
     /// - Returns: the toolbar.
     fn toolbar(self: *Self) ziggui.View {
         const title = ziggui.BuildScope.shared().allocator().print("{s}{s}", .{ self.name(), if (self.isDirty()) " •" else "" }) catch @panic("oom");
         return ziggui.HStack(.{
-            ziggui.Text(title).font(.headline),
+            ziggui.Text(title).font(.headline).truncated(),
             ziggui.Spacer(),
-            ziggui.Toggle("Monospaced", self.monospaced.binding()),
-            ziggui.Toggle("Line numbers", self.line_numbers.binding()),
             ziggui.ButtonRoled("New", .plain, ziggui.Callback.init(Self, self, Self.newDocument)),
             ziggui.ButtonRoled("Open", .plain, ziggui.Callback.init(Self, self, Self.openDialog)),
             ziggui.ButtonRoled("Save As", .plain, ziggui.Callback.init(Self, self, Self.saveAsDialog)),
@@ -509,8 +861,72 @@ pub const Editor = struct {
             .frameMaxWidth();
     }
 
+    /// The format bar: each face's family (the registered ones), the size
+    /// of the face in use, undo and redo, and the colors' toggle.
+    ///
+    /// - `self`: the editor.
+    /// - Returns: the bar.
+    fn formatBar(self: *Self) ziggui.View {
+        const scope = ziggui.BuildScope.shared();
+        const families = ziggui.FontRegistry.shared().namesAlloc(scope.allocator()) catch @panic("oom");
+        const tokens = scope.tokens();
+        return ziggui.HStack(.{
+            ziggui.Text("Font").font(.footnote).foregroundStyle(tokens.secondary_label),
+            ziggui.Picker(FontBinding.of(self, false), families).pickerStyle(.menu).help("The proportional face"),
+            ziggui.Text("Mono").font(.footnote).foregroundStyle(tokens.secondary_label),
+            ziggui.Picker(FontBinding.of(self, true), families).pickerStyle(.menu).help("The monospaced face"),
+            ziggui.Stepper(scope.allocator().print("Size {d}", .{SizeBinding.get(self)}) catch @panic("oom"), SizeBinding.of(self), @intFromFloat(ziggui.TextEditorSettings.min_size), @intFromFloat(ziggui.TextEditorSettings.max_size), 1),
+            ziggui.Spacer(),
+            ziggui.ButtonRoled("Undo", .plain, ziggui.Callback.init(Self, self, Self.undo)).disabled(!self.document.canUndo()),
+            ziggui.ButtonRoled("Redo", .plain, ziggui.Callback.init(Self, self, Self.redo)).disabled(!self.document.canRedo()),
+            ziggui.ButtonRoled("Colors", if (self.show_colors.get()) .prominent else .plain, ziggui.Callback.init(Self, self, Self.toggleColors)),
+        }).spacing(8)
+            .paddingInsets(.{ .top = 0, .leading = 14, .bottom = 6, .trailing = 14 })
+            .frameMaxWidth();
+    }
+
+    /// The layout bar: the monospaced, line-number and wrap checkboxes, the
+    /// indentation and its conversion, and the line ending.
+    ///
+    /// - `self`: the editor.
+    /// - Returns: the bar.
+    fn layoutBar(self: *Self) ziggui.View {
+        return ziggui.HStack(.{
+            ziggui.Toggle("Monospaced", SettingBinding.of(self, "mono")),
+            ziggui.Toggle("Line numbers", SettingBinding.of(self, "line_numbers")),
+            ziggui.Toggle("Wrap", SettingBinding.of(self, "soft_wrap")),
+            ziggui.Spacer(),
+            ziggui.Picker(IndentationBinding.of(self), &indentation_options).pickerStyle(.menu).help("What Tab inserts"),
+            ziggui.ButtonRoled("Convert", .plain, ziggui.Callback.init(Self, self, Self.convertIndentation)).help("Re-indent every line this way"),
+            ziggui.Picker(LineEndingBinding.of(self), &line_ending_options).pickerStyle(.segmented).help("How lines end on disk"),
+        }).spacing(8)
+            .toggleStyle(.checkbox)
+            .paddingInsets(.{ .top = 0, .leading = 14, .bottom = 8, .trailing = 14 })
+            .frameMaxWidth();
+    }
+
+    /// The colors bar: a menu of what to color (the text, the ground and
+    /// each of the `TextEditorColors`'s colors), a `ColorPicker` for it, and
+    /// a return to the theme's colors.
+    ///
+    /// - `self`: the editor.
+    /// - Returns: the bar.
+    fn colorBar(self: *Self) ziggui.View {
+        const tokens = ziggui.BuildScope.shared().tokens();
+        return ziggui.HStack(.{
+            ziggui.Text("Color").font(.footnote).foregroundStyle(tokens.secondary_label),
+            ziggui.Picker(self.color_target.binding(), &ColorTarget.labels).pickerStyle(.menu).help("What the swatches color"),
+            ziggui.ColorPicker("", ColorBinding.of(self)),
+            ziggui.Spacer(),
+            ziggui.ButtonRoled("Theme Colors", .plain, ziggui.Callback.init(Self, self, Self.themeColors)),
+        }).spacing(12)
+            .paddingInsets(.{ .top = 0, .leading = 14, .bottom = 8, .trailing = 14 })
+            .frameMaxWidth();
+    }
+
     /// The status bar: the caret's line and column, the document's
-    /// characters and lines, the code name it shows, and the status message.
+    /// characters and lines, its indentation and line ending, and the
+    /// status message, over the code names the section shows.
     ///
     /// - `self`: the editor.
     /// - `theme`: the theme this frame draws with.
@@ -520,13 +936,24 @@ pub const Editor = struct {
         const caret = self.document.lineColumn();
         const characters = std.unicode.utf8CountCodepoints(text) catch text.len;
         const lines = std.mem.count(u8, text, "\n") + 1;
-        const counts = ziggui.BuildScope.shared().allocator().print("Ln {d}, Col {d}    {d} chars    {d} lines", .{ caret.line, caret.column, characters, lines }) catch @panic("oom");
-        return ziggui.HStack(.{
-            ziggui.Text(counts).font(.footnote).foreground(theme.colors.secondary_label),
-            ziggui.Spacer(),
-            gallery.CardName.shared().view(if (self.show_find.get()) "ziggui.TextEditor · ziggui.FindBar · ziggui.FindCount · ziggui.FindActions" else "ziggui.TextEditor", theme.colors.tertiary_label),
-            ziggui.Text(self.status()).font(.footnote).foreground(theme.colors.tertiary_label),
-        }).spacing(14)
+        const indentation = self.document.indentation;
+        const counts = ziggui.BuildScope.shared().allocator().print("Ln {d}, Col {d}    {d} chars    {d} lines    {s}: {d}    {s}    UTF-8", .{
+            caret.line,
+            caret.column,
+            characters,
+            lines,
+            if (indentation.style == .tabs) "Tab Size" else "Spaces",
+            indentation.columns(),
+            self.document.line_ending.label(),
+        }) catch @panic("oom");
+        return ziggui.VStack(.{
+            ziggui.HStack(.{
+                ziggui.Text(counts).font(.footnote).foregroundStyle(theme.colors.secondary_label),
+                ziggui.Spacer(),
+                ziggui.Text(self.status()).font(.footnote).foregroundStyle(theme.colors.tertiary_label),
+            }).spacing(14).frameMaxWidth(),
+            gallery.CardName.shared().view(if (self.show_find.get()) find_names else editor_names, theme.colors.tertiary_label),
+        }).spacing(4)
             .paddingInsets(.{ .top = 6, .leading = 14, .bottom = 6, .trailing = 14 })
             .frameMaxWidth();
     }
@@ -540,33 +967,21 @@ pub const Editor = struct {
         const confirm = ziggui.Callback.init(Self, self, Self.confirmDialog);
         return ziggui.VStack(.{
             ziggui.Text(if (self.dialog_save) "Save As" else "Open").font(.title3).frameMaxWidth().frameAlign(.leading),
-            ziggui.Text("File path:").font(.subheadline).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("File path:").font(.subheadline).foregroundStyle(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
             ziggui.TextField("/path/to/file.txt", &self.path_field)
                 .frameMaxWidth()
                 .onSubmit(confirm),
+            if (self.dialog_save) ziggui.Empty() else ziggui.HStack(.{
+                ziggui.Text("Sample:").font(.subheadline).foregroundStyle(theme.colors.secondary_label),
+                ziggui.Picker(self.sample.binding(), &sample_options).pickerStyle(.menu),
+                ziggui.Spacer(),
+            }).spacing(8).frameMaxWidth(),
             ziggui.HStack(.{
                 ziggui.Spacer(),
                 ziggui.ButtonRoled("Cancel", .plain, ziggui.Callback.init(Self, self, Self.cancelDialog)),
                 ziggui.Button(if (self.dialog_save) "Save" else "Open", confirm),
             }).frameMaxWidth(),
         }).spacing(14).padding(20).frameWidth(460);
-    }
-
-    /// Draws `content` at the zoom's step of the font-size ladder.
-    ///
-    /// - `content`: the view to size.
-    /// - `zoom`: the step, 0 (smallest) to `zoom_largest`.
-    /// - Returns: the sized view.
-    fn zoomed(content: ziggui.View, zoom: i64) ziggui.View {
-        return switch (zoom) {
-            0 => content.font(.caption2),
-            1 => content.font(.footnote),
-            2 => content.font(.callout),
-            4 => content.font(.headline),
-            5 => content.font(.title3),
-            6 => content.font(.title2),
-            else => content.font(.body),
-        };
     }
 };
 
@@ -589,70 +1004,44 @@ test "the editor opens on the sample document, unmodified and untitled" {
     try std.testing.expectEqualStrings("Untitled", editor.name());
     try std.testing.expectEqualStrings("Ready", editor.status());
     try std.testing.expectEqual(@as(usize, 0), editor.document.caret);
+    try std.testing.expectEqual(@as(u8, 4), editor.document.indentation.width);
 }
 
-test "find selects the next match, wraps, and says when there is none" {
+test "⌘F opens the find from the section, ⌘G finds on, and Esc closes it back to the document" {
     const allocator = std.testing.allocator;
 
     var editor = try Editor.init(allocator);
     defer editor.deinit();
+    defer ziggui.Focus.shared().clear();
 
-    try editor.find_field.setText("greeting");
-    editor.findNext();
+    try std.testing.expect(!editor.keyDown('f', 0));
+    try std.testing.expect(editor.keyDown('f', ziggui.SdlKey.left_gui_mask));
+    try std.testing.expect(editor.show_find.get());
+    try std.testing.expectEqual(@as(?*ziggui.TextFieldState, &editor.find.query), ziggui.Focus.shared().focused());
+    try editor.find.query.setText("greeting");
+    editor.find.findNext();
     const first = std.mem.find(u8, sample_document, "greeting").?;
     try std.testing.expectEqual(@as(?usize, first), editor.document.selection_anchor);
-    editor.findNext();
-    const second = std.mem.findPos(u8, sample_document, first + 1, "greeting").?;
-    try std.testing.expectEqual(@as(?usize, second), editor.document.selection_anchor);
-    // Past the last, the next wraps to the first; before the first, the previous wraps to the last.
-    editor.findNext();
-    try std.testing.expectEqual(@as(?usize, first), editor.document.selection_anchor);
-    editor.findPrevious();
-    try std.testing.expectEqual(@as(?usize, second), editor.document.selection_anchor);
-
-    try editor.find_field.setText("absent");
-    editor.findNext();
-    try std.testing.expectEqualStrings("Not found", editor.status());
-}
-
-test "the find count says which match is selected, of how many" {
-    const allocator = std.testing.allocator;
-
-    var editor = try Editor.init(allocator);
-    defer editor.deinit();
-
-    try std.testing.expectEqual(@as(?ziggui.FindCount, null), editor.findCount());
-    try editor.find_field.setText("greeting");
-    try std.testing.expectEqual(@as(?ziggui.FindCount, .{ .total = 2 }), editor.findCount());
-    editor.findNext();
-    try std.testing.expectEqual(@as(?ziggui.FindCount, .{ .current = 0, .total = 2 }), editor.findCount());
-    editor.findNext();
-    try std.testing.expectEqual(@as(?ziggui.FindCount, .{ .current = 1, .total = 2 }), editor.findCount());
-    try editor.find_field.setText("absent");
-    try std.testing.expectEqual(@as(?ziggui.FindCount, .{ .total = 0 }), editor.findCount());
-}
-
-test "the find bar takes Shift-Enter in its field and Esc, and leaves Shift-Enter to the document" {
-    const allocator = std.testing.allocator;
-
-    var editor = try Editor.init(allocator);
-    defer editor.deinit();
-
-    editor.showMatch("greeting");
-    editor.findNext();
-    const second = editor.document.selection_anchor;
-    // In the document, Shift-Enter is the document's newline.
-    ziggui.Focus.shared().set(&editor.document);
-    try std.testing.expect(!editor.keyDown(ziggui.SdlKey.enter, ziggui.SdlKey.left_shift_mask));
-    try std.testing.expectEqual(second, editor.document.selection_anchor);
-    // In the find field, it goes to the previous match.
-    ziggui.Focus.shared().set(&editor.find_field);
-    try std.testing.expect(editor.keyDown(ziggui.SdlKey.enter, ziggui.SdlKey.left_shift_mask));
-    try std.testing.expect(editor.document.selection_anchor != second);
-    // Esc closes the bar, back to the document.
+    try std.testing.expect(editor.keyDown('g', ziggui.SdlKey.left_gui_mask));
+    try std.testing.expectEqual(@as(?ziggui.FindCount, .{ .current = 1, .total = 2 }), editor.find.count());
     try std.testing.expect(editor.keyDown(ziggui.SdlKey.escape, 0));
     try std.testing.expect(!editor.show_find.get());
     try std.testing.expectEqual(@as(?*ziggui.TextFieldState, &editor.document), ziggui.Focus.shared().focused());
+}
+
+test "replace all is one undo step, and undoing it reads unmodified" {
+    const allocator = std.testing.allocator;
+
+    var editor = try Editor.init(allocator);
+    defer editor.deinit();
+
+    editor.showReplace("greeting", "salutation");
+    try std.testing.expectEqual(@as(usize, 2), editor.find.replaceAll());
+    try std.testing.expect(std.mem.find(u8, editor.document.text(), "salutation") != null);
+    try std.testing.expect(editor.isDirty());
+    editor.undo();
+    try std.testing.expectEqualStrings(sample_document, editor.document.text());
+    try std.testing.expect(!editor.isDirty());
 }
 
 test "Save As names the document and marks it saved; New empties it" {
@@ -672,26 +1061,24 @@ test "Save As names the document and marks it saved; New empties it" {
     try std.testing.expectEqualStrings("notes.txt", editor.name());
     try std.testing.expect(!editor.isDirty());
 
+    editor.settings.line_ending = .crlf;
     editor.newDocument();
     try std.testing.expectEqualStrings("", editor.document.text());
     try std.testing.expectEqualStrings("Untitled", editor.name());
+    try std.testing.expectEqual(ziggui.LineEnding.crlf, editor.document.line_ending);
+    try std.testing.expect(!editor.isDirty());
 }
 
-test "the shortcuts take ⌘ or Ctrl, and zoom stays on its ladder" {
+test "the size shortcuts take ⌘ or Ctrl and stay in range" {
     const allocator = std.testing.allocator;
 
     var editor = try Editor.init(allocator);
     defer editor.deinit();
 
-    try std.testing.expect(!editor.keyDown('f', 0));
-    try std.testing.expect(editor.keyDown('f', ziggui.SdlKey.left_gui_mask));
-    try std.testing.expect(editor.show_find.get());
-    try std.testing.expect(editor.keyDown('f', ziggui.SdlKey.left_ctrl_mask));
-    try std.testing.expect(!editor.show_find.get());
-    for (0..10) |_| _ = editor.keyDown('=', ziggui.SdlKey.left_ctrl_mask);
-    try std.testing.expectEqual(zoom_largest, editor.zoom.get());
+    for (0..100) |_| _ = editor.keyDown('=', ziggui.SdlKey.left_ctrl_mask);
+    try std.testing.expectEqual(ziggui.TextEditorSettings.max_size, editor.settings.face().size);
     _ = editor.keyDown('0', ziggui.SdlKey.left_ctrl_mask);
-    try std.testing.expectEqual(zoom_body, editor.zoom.get());
+    try std.testing.expectEqual(default_size, editor.settings.face().size);
     // Copy is the loop's to do.
     try std.testing.expect(!editor.keyDown('c', ziggui.SdlKey.left_ctrl_mask));
 }
@@ -709,14 +1096,59 @@ test "behind the path dialog the shortcuts do nothing" {
     try std.testing.expect(!editor.keyDown('=', ziggui.SdlKey.left_gui_mask));
     try std.testing.expect(!editor.show_find.get());
     try std.testing.expect(editor.isDirty());
-    try std.testing.expectEqual(zoom_body, editor.zoom.get());
     // Dismissed, they work again.
     editor.cancelDialog();
     try std.testing.expect(editor.keyDown('f', ziggui.SdlKey.left_gui_mask));
     try std.testing.expect(editor.show_find.get());
 }
 
-test "the editor draws with the find bar and the dialog" {
+test "the bindings change the settings and the document" {
+    const allocator = std.testing.allocator;
+
+    var editor = try Editor.init(allocator);
+    defer editor.deinit();
+
+    IndentationBinding.of(&editor).set(3);
+    try std.testing.expectEqual(ziggui.IndentationStyle.tabs, editor.document.indentation.style);
+    LineEndingBinding.of(&editor).set(1);
+    try std.testing.expectEqual(ziggui.LineEnding.crlf, editor.document.line_ending);
+    try std.testing.expect(editor.isDirty());
+    FontBinding.of(&editor, true).set(0);
+    try std.testing.expectEqualStrings(ziggui.FontRegistry.bundled_sans, editor.settings.mono_font);
+    ColorBinding.of(&editor).set(ziggui.Color.white);
+    try std.testing.expectEqual(@as(?ziggui.Color, ziggui.Color.white), editor.settings.foreground);
+    editor.color_target.set(@backingInt(ColorTarget.currentLine));
+    ColorBinding.of(&editor).set(ziggui.Color.black);
+    try std.testing.expectEqual(@as(?ziggui.Color, ziggui.Color.black), editor.settings.colors.current_line);
+    editor.themeColors();
+    try std.testing.expect(editor.settings.foreground == null and editor.settings.colors.current_line == null);
+    // Saved settings come back with their families mapped to the registry's.
+    editor.restoreSettings(.{ .proportional_font = "Gone", .mono = true, .indentation = .{ .width = 2 } });
+    try std.testing.expectEqualStrings(ziggui.FontRegistry.bundled_sans, editor.settings.proportional_font);
+    try std.testing.expectEqual(@as(u8, 2), editor.document.indentation.width);
+}
+
+test "Open's legacy sample loads with CRLF and tabs found, and saves as CRLF" {
+    const allocator = std.testing.allocator;
+
+    var editor = try Editor.init(allocator);
+    defer editor.deinit();
+
+    editor.openDialog();
+    editor.sample.set(1);
+    try editor.path_field.setText("");
+    editor.confirmDialog();
+    try std.testing.expectEqualStrings("legacy.c", editor.name());
+    try std.testing.expectEqual(ziggui.LineEnding.crlf, editor.document.line_ending);
+    try std.testing.expectEqual(ziggui.IndentationStyle.tabs, editor.document.indentation.style);
+    try std.testing.expect(std.mem.findScalar(u8, editor.document.text(), '\r') == null);
+    try std.testing.expect(!editor.isDirty());
+    const saved = try editor.document.encodedAlloc(allocator);
+    defer allocator.free(saved);
+    try std.testing.expectEqualStrings(legacy_document, saved);
+}
+
+test "the style demo draws its colors, font and find" {
     const allocator = std.testing.allocator;
 
     var editor = try Editor.init(allocator);
@@ -724,7 +1156,27 @@ test "the editor draws with the find bar and the dialog" {
     const window = try ziggui.TestWindow.create(allocator);
     defer window.destroy();
 
-    editor.toggleFind();
+    editor.showStyle();
+    try std.testing.expect(editor.show_find.get() and editor.show_colors.get());
+    try std.testing.expect(editor.settings.colors.current_line != null);
+    const theme = ziggui.ThemeFamily.all[0].forScheme(.light);
+    window.begin(theme);
+    const root = editor.body(theme);
+    window.end();
+    var framebuffer = try window.render(root, gallery.test_width, gallery.test_height);
+    defer framebuffer.deinit();
+}
+
+test "the editor draws with the find bar, its replace row, the colors and the dialog" {
+    const allocator = std.testing.allocator;
+
+    var editor = try Editor.init(allocator);
+    defer editor.deinit();
+    const window = try ziggui.TestWindow.create(allocator);
+    defer window.destroy();
+
+    editor.showReplace("greeting", "salutation");
+    editor.toggleColors();
     editor.openDialog();
     const theme = ziggui.ThemeFamily.all[0].forScheme(.dark);
     window.begin(theme);

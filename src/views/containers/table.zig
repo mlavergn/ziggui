@@ -242,7 +242,7 @@ fn TableModel(comptime T: type, comptime cellFn: fn (*const T, usize, usize) mod
             // A table given no state sorts nothing: there is no `sort` to keep.
             const sortable = column.sortable and self.kept;
             const active = sortable and self.state.sort.index == @as(i64, @intCast(index));
-            const label = mod.Text(column.title).font(.subheadline).truncated().foreground(if (active) tokens.accent else tokens.label);
+            const label = mod.Text(column.title).font(.subheadline).truncated().foregroundStyle(if (active) tokens.accent else tokens.label);
             // `StackBuilder.fromSlice` keeps the slice, so it lives in the build arena.
             const parts = mod.BuildScope.shared().allocator().alloc(mod.View, if (active) 2 else 1) catch @panic("oom");
             parts[0] = label;
@@ -250,7 +250,7 @@ fn TableModel(comptime T: type, comptime cellFn: fn (*const T, usize, usize) mod
             var title = TableLook.framed(mod.StackBuilder.fromSlice(.horizontal, 4, .center, parts), width, column.trailing, edges);
             if (sortable) {
                 const tag = index * 2 + @intFromBool(column.first_order == .reverse);
-                title = title.cornerRadius(5).hoverFill(tokens.hover).onTap(mod.Callback.tagged(mod.TableState, self.state, mod.TableState.tapHeader, tag));
+                title = title.cornerRadius(5).hoverFill(tokens.hover).onTapGesture(mod.Callback.tagged(mod.TableState, self.state, mod.TableState.tapHeader, tag));
             }
             if (column.help) |hint| title = title.help(hint);
             // The edge a press drags lies over the title's trailing side, its
@@ -264,7 +264,7 @@ fn TableModel(comptime T: type, comptime cellFn: fn (*const T, usize, usize) mod
                     if (last) mod.Empty() else mod.Rectangle(tokens.tertiary_label).frame(1, TableLook.edge_height),
                 }).spacing(0)
                     .frame(TableLook.edge_grab, TableLook.edge_height)
-                    .onTap(mod.Callback.tagged(mod.TableState, self.state, mod.TableState.pressEdge, index))
+                    .onTapGesture(mod.Callback.tagged(mod.TableState, self.state, mod.TableState.pressEdge, index))
                     .pointerStyle(.columnResize),
             }).alignment(.trailing).frameWidth(width) else title;
             const accessory = self.options.header_accessory orelse return titled;
@@ -290,7 +290,7 @@ fn TableModel(comptime T: type, comptime cellFn: fn (*const T, usize, usize) mod
                 .frameMaxHeight();
             const highlighted = if (self.options.highlighted) |marks| marks(self.context, index) else false;
             if (self.state.isRowSelected(index)) {
-                view = view.background(tokens.selection).foreground(tokens.on_accent);
+                view = view.background(tokens.selection).foregroundStyle(tokens.on_accent);
             } else if (highlighted) {
                 view = view.background(tokens.selection.withAlpha(0.22));
             } else if (index % 2 == 1) {
@@ -317,7 +317,7 @@ fn TableModel(comptime T: type, comptime cellFn: fn (*const T, usize, usize) mod
             if (self.state.focused and self.state.isCursor(index, column)) framed = framed.background(tokens.accent_soft).border(tokens.focus_ring, 1);
             // A table given no state takes no taps: there is nothing to select into.
             if (!self.kept) return framed;
-            return framed.onTap(mod.Callback.tagged(mod.TableState, self.state, mod.TableState.tapCell, index * self.columns.len + column));
+            return framed.onTapGesture(mod.Callback.tagged(mod.TableState, self.state, mod.TableState.tapCell, index * self.columns.len + column));
         }
 
         /// A row's ID, for the state's handlers.

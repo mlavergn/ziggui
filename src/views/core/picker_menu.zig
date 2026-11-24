@@ -310,7 +310,7 @@ pub const PickerMenu = struct {
             view = view.hoverFill(tokens.hover);
         }
         view = view.cornerRadius(4);
-        return view.onTap(mod.Callback.tagged(Self, self, Self.choose, index));
+        return view.onTapGesture(mod.Callback.tagged(Self, self, Self.choose, index));
     }
 
     /// Sets the picker's selection to option `index` and closes the menu.

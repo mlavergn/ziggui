@@ -119,8 +119,8 @@ test "a plain button takes its own foreground, never an ancestor's" {
     };
     const red = renderer.Color.fromRgb8(255, 0, 0);
     window.begin(renderer.MacosTheme.light);
-    const own = mod.HStack(.{ ButtonRoled("Delete", .plain, mod.Callback.action(Idle.nothing)).foreground(red), mod.Spacer() });
-    const inherited = mod.HStack(.{ ButtonRoled("Delete", .plain, mod.Callback.action(Idle.nothing)), mod.Spacer() }).foreground(red);
+    const own = mod.HStack(.{ ButtonRoled("Delete", .plain, mod.Callback.action(Idle.nothing)).foregroundStyle(red), mod.Spacer() });
+    const inherited = mod.HStack(.{ ButtonRoled("Delete", .plain, mod.Callback.action(Idle.nothing)), mod.Spacer() }).foregroundStyle(red);
     window.end();
     var own_frame = try window.render(own, 200, 30);
     defer own_frame.deinit();

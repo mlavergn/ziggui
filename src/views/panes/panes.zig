@@ -213,9 +213,9 @@ const DiffModel = struct {
         const gutter_width = mod.DiffLayout.gutterWidth(self.digits);
         const body: mod.View = switch (line.kind) {
             .hunkHeader, .fileHeader, .note => blk: {
-                const text = mod.Text(Self.expandTabs(line.text)).mono().size(mod.DiffLayout.font_size)
-                    .foreground(if (line.kind == .fileHeader) tokens.label else tokens.secondary_label)
-                    .weight(if (line.kind == .fileHeader) .semibold else .regular);
+                const text = mod.Text(Self.expandTabs(line.text)).monospaced().font(.system(mod.DiffLayout.font_size))
+                    .foregroundStyle(if (line.kind == .fileHeader) tokens.label else tokens.secondary_label)
+                    .fontWeight(if (line.kind == .fileHeader) .semibold else .regular);
                 if (line.kind != .hunkHeader or line.continued or self.actions.len == 0) break :blk text;
                 break :blk self.withActions(text, hunk orelse break :blk text);
             },
@@ -227,8 +227,8 @@ const DiffModel = struct {
                     .added => "+",
                     .removed => "-",
                     else => " ",
-                }).mono().size(mod.DiffLayout.font_size).foreground(Self.lineColor(line.kind, tokens)).frameWidth(mod.DiffLayout.marker_width),
-                mod.Text(Self.expandTabs(line.text)).mono().size(mod.DiffLayout.font_size).foreground(Self.lineColor(line.kind, tokens)),
+                }).monospaced().font(.system(mod.DiffLayout.font_size)).foregroundStyle(Self.lineColor(line.kind, tokens)).frameWidth(mod.DiffLayout.marker_width),
+                mod.Text(Self.expandTabs(line.text)).monospaced().font(.system(mod.DiffLayout.font_size)).foregroundStyle(Self.lineColor(line.kind, tokens)),
             }).spacing(mod.DiffLayout.cell_spacing),
         };
         var row_view = mod.HStack(.{ bar, body.frameMaxWidth().frameAlign(.leading) }).spacing(mod.DiffLayout.bar_spacing).frameMaxWidth();
@@ -240,7 +240,7 @@ const DiffModel = struct {
             else => row_view,
         };
         if (self.on_hunk) |callback| if (hunk) |hunk_index| {
-            row_view = row_view.onTap(callback.bind(hunk_index));
+            row_view = row_view.onTapGesture(callback.bind(hunk_index));
         };
         const selection = self.selection orelse return row_view;
         if (selection.contains(index)) row_view = row_view.background(tokens.selection.withAlpha(0.28));
@@ -277,12 +277,12 @@ const DiffModel = struct {
     /// - `tokens`: the frame's colors.
     /// - Returns: the link.
     fn actionLink(action: mod.HunkAction, hunk: usize, tokens: mod.BuildTokens) mod.View {
-        const label = mod.Text(action.label).mono().size(mod.DiffLayout.font_size)
-            .foreground(if (action.disabled) tokens.secondary_label else tokens.accent)
+        const label = mod.Text(action.label).monospaced().font(.system(mod.DiffLayout.font_size))
+            .foregroundStyle(if (action.disabled) tokens.secondary_label else tokens.accent)
             .paddingInsets(.{ .leading = mod.HunkAction.padding, .trailing = mod.HunkAction.padding })
             .frameHeight(mod.diff_row_height);
         if (action.disabled) return label;
-        return mod.HStack(.{label.onTap(action.callback.bind(hunk))}).spacing(0).onDrag(Self.link_drag);
+        return mod.HStack(.{label.onTapGesture(action.callback.bind(hunk))}).spacing(0).onDrag(Self.link_drag);
     }
 
     /// A gutter cell: a line number, right-aligned, or blank.
@@ -293,7 +293,7 @@ const DiffModel = struct {
     /// - Returns: the cell.
     fn numberCell(line_number: ?u32, width: f32, color: renderer.Color) mod.View {
         const text = if (line_number) |number| mod.BuildScope.shared().allocator().print("{d}", .{number}) catch @panic("oom") else "";
-        return mod.Text(text).mono().size(mod.DiffLayout.number_size).foreground(color).frameWidth(width).frameAlign(.trailing);
+        return mod.Text(text).monospaced().font(.system(mod.DiffLayout.number_size)).foregroundStyle(color).frameWidth(width).frameAlign(.trailing);
     }
 
     /// The text color of a diff line.

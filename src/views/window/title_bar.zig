@@ -51,7 +51,7 @@ const Middle = struct {
     /// - Returns: the view.
     fn build(self: *const Self, size: renderer.Size) mod.View {
         if (size.width < Self.min_width) return mod.Empty();
-        return mod.Text(self.text).font(.footnote).mono().foreground(self.color).truncated()
+        return mod.Text(self.text).font(.footnote).monospaced().foregroundStyle(self.color).truncated()
             .frame(size.width, size.height);
     }
 };
@@ -217,7 +217,7 @@ pub fn WindowButtons(style: WindowButtonStyle, maximized: bool, actions: mod.Win
         const button = allocator.create(Button) catch @panic("oom");
         button.* = .{ .style = style, .kind = kind, .color = color };
         view.* = mod.Canvas(Button, button, Button.draw).frame(width, title_bar_height)
-            .onTap(call)
+            .onTapGesture(call)
             .popoverPassthrough()
             .modalPassthrough()
             .accessibilityLabel(@tagName(kind));

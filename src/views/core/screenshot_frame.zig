@@ -25,13 +25,13 @@ pub const ScreenshotFrame = struct {
     arena: std.heap.ArenaAllocator,
 
     /// The text face; falls back to `emoji_font`.
-    font: renderer.Font,
+    font: renderer.FontFile,
 
     /// The emoji face.
-    emoji_font: renderer.Font,
+    emoji_font: renderer.FontFile,
 
     /// The icon face.
-    icon_font: renderer.Font,
+    icon_font: renderer.FontFile,
 
     /// Glyphs of `font`.
     cache: renderer.GlyphCache,
@@ -60,9 +60,9 @@ pub const ScreenshotFrame = struct {
             .allocator = allocator,
             .options = options,
             .arena = .init(allocator),
-            .font = renderer.Font.default(),
-            .emoji_font = renderer.Font.emoji(),
-            .icon_font = renderer.Font.icons(),
+            .font = renderer.FontFile.default(),
+            .emoji_font = renderer.FontFile.emoji(),
+            .icon_font = renderer.FontFile.icons(),
             .cache = undefined,
             .icon_cache = undefined,
             .fonts = fonts,

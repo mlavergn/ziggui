@@ -64,7 +64,7 @@ pub const IndexCallback = struct {
     }
 
     /// A `mod.Callback` that calls this one with `index`, bound in the build
-    /// arena, so a row's `onTap` can say which row it was.
+    /// arena, so a row's `onTapGesture` can say which row it was.
     /// `mod.PointerInput.shared().isDoubleClick()` inside the handler tells a
     /// double click from a single one.
     ///

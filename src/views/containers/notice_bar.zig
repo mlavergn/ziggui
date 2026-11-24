@@ -25,7 +25,7 @@ pub fn NoticeBar(busy: bool, words: []const u8, problem: bool, action: ?mod.Call
     const allocator = mod.BuildScope.shared().allocator();
     return mod.HStack(.{
         if (busy) mod.Icon(.loader, 12, tokens.accent_mark) else mod.Empty().frameWidth(12),
-        mod.Text(mod.DisplayText.clean(allocator, words)).font(.footnote).foreground(if (problem) tokens.removed else tokens.secondary_label).truncated(),
+        mod.Text(mod.DisplayText.clean(allocator, words)).font(.footnote).foregroundStyle(if (problem) tokens.removed else tokens.secondary_label).truncated(),
         if (action) |on_tap| mod.Button(action_label, on_tap) else mod.Empty(),
         mod.Spacer(),
     }).spacing(8).paddingInsets(.{ .leading = 12, .trailing = 12 }).frameMaxWidth();

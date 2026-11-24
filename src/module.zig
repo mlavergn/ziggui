@@ -195,14 +195,18 @@ pub const PositionedGlyph = renderer.PositionedGlyph;
 pub const WrappedLine = renderer.WrappedLine;
 /// Measures, lays out and wraps text in one face.
 pub const TextShaper = renderer.TextShaper;
-/// A font face.
-pub const Font = renderer.Font;
+/// A font file's face and its metrics (the bundled faces, or bytes read), what a `FontFamily` and the text painter draw from.
+pub const FontFile = renderer.FontFile;
 /// Paints text and icon glyphs into a display list; `TextPainter.shared().setGamma` sets the coverage gamma.
 pub const TextPainter = renderer.TextPainter;
 /// A text style's face selection (weight, italic, monospace).
 pub const FontStyle = renderer.FontStyle;
 /// The fallback faces text draws with.
 pub const FontSet = renderer.FontSet;
+/// A font family an app registers: a TrueType face per style.
+pub const FontFamily = renderer.FontFamily;
+/// The process's registered font families, by name (`.font(.custom(name, size))`).
+pub const FontRegistry = renderer.FontRegistry;
 
 // -----------------------------------------------------------------------------
 // Themes
@@ -325,6 +329,8 @@ pub const Modifiers = views.Modifiers;
 pub const ToggleStyle = views.ToggleStyle;
 /// How a checkbox `Toggle` draws its box: rounded, square or circular (`.checkboxStyle()`).
 pub const CheckboxStyle = views.CheckboxStyle;
+/// The colors a `TextEditor` draws its caret, selection, gutter and matches in.
+pub const TextEditorColors = views.TextEditorColors;
 /// How a `Picker` draws: segmented or a pop-up menu (`.pickerStyle()`).
 pub const PickerStyle = views.PickerStyle;
 /// Whether scroll views draw their scrollbars (`.scrollIndicators()`).
@@ -345,6 +351,16 @@ pub const MaterialSpecification = views.MaterialSpecification;
 pub const OverlayStyle = views.OverlayStyle;
 /// Named typographic styles.
 pub const FontToken = views.FontToken;
+/// The font a view draws in (SwiftUI's `Font`): what `.font()` takes, a semantic size or `.custom(name, size)`.
+pub const Font = views.Font;
+/// A family by name at a size.
+pub const CustomFont = views.CustomFont;
+/// Whether a view's text can be selected (`.textSelection()`).
+pub const TextSelectability = views.TextSelectability;
+/// How a `TextField` draws its chrome (`.textFieldStyle()`).
+pub const TextFieldStyle = views.TextFieldStyle;
+/// How a `TextEditor` draws its chrome (`.textEditorStyle()`).
+pub const TextEditorStyle = views.TextEditorStyle;
 /// The outline a shape view fills.
 pub const ShapeKind = views.ShapeKind;
 /// The semantic appearance of a button.
@@ -512,6 +528,8 @@ pub const ProgressView = views.ProgressView;
 pub const Picker = views.Picker;
 /// A one-line text field.
 pub const TextField = views.TextField;
+/// A one-line field that shows dots instead of its text.
+pub const SecureField = views.SecureField;
 /// A multi-line text editor.
 pub const TextEditor = views.TextEditor;
 /// A title behind a color swatch.
@@ -548,6 +566,10 @@ pub const Appearance = views.Appearance;
 pub const AppearancePicker = views.AppearancePicker;
 /// A settings page's theme choice: a little window per theme family, then the accent swatches.
 pub const ThemePicker = views.ThemePicker;
+/// A color picker: a title and a row of swatches.
+pub const ColorPicker = views.ColorPicker;
+/// An editor's settings as one plain value an app keeps and saves.
+pub const TextEditorSettings = views.TextEditorSettings;
 /// The theme families alone, as mini renderings with their names as hover hints.
 pub const ThemeFamilyPicker = views.ThemeFamilyPicker;
 /// A label renamed in place: a click while it is selected makes it a field.
@@ -846,6 +868,26 @@ pub const DisplayText = views.DisplayText;
 pub const TextLines = views.TextLines;
 /// Tab-aware widths of edited text (caret, selection, click).
 pub const EditorMetrics = views.EditorMetrics;
+/// A text field's undo and redo steps.
+pub const TextHistory = views.TextHistory;
+/// What a recorded edit was, which decides whether it joins the undo step before it.
+pub const TextEditKind = views.TextEditKind;
+/// One recorded edit's removed and inserted bytes.
+pub const TextEdit = views.TextEdit;
+/// One undo step's edits.
+pub const TextEditGroup = views.TextEditGroup;
+/// An edit as a field reports it to its history.
+pub const TextEditRecord = views.TextEditRecord;
+/// How an editor indents: tabs or spaces, and a level's width.
+pub const TextIndentation = views.TextIndentation;
+/// What Tab inserts: spaces or a tab character.
+pub const IndentationStyle = views.IndentationStyle;
+/// How a document's lines end on disk: LF or CRLF.
+pub const LineEnding = views.LineEnding;
+/// Plain-text search over a buffer.
+pub const TextSearch = views.TextSearch;
+/// How a text search matches: case, whole words.
+pub const TextSearchOptions = views.TextSearchOptions;
 
 // -----------------------------------------------------------------------------
 // Window
@@ -1052,6 +1094,10 @@ pub const SearchField = views.SearchField;
 pub const FindCount = views.FindCount;
 /// What a `FindBar`'s field, buttons and keys do (`handleKey`).
 pub const FindActions = views.FindActions;
+/// A find bar's replace row: its field and its buttons.
+pub const FindReplace = views.FindReplace;
+/// A text editor's find and replace, which `View.findNavigator` attaches.
+pub const TextFindState = views.TextFindState;
 /// A find bar: a search field, the count, and Previous, Next and Done.
 pub const FindBar = views.FindBar;
 /// A composed field's look: the raised ground, a strong hairline border, a 6pt corner.

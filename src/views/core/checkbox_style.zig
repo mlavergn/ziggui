@@ -8,7 +8,7 @@ const log = std.log.scoped(.ziggui_checkbox_style);
 /// inherited by the subtree of the view that sets it (`.checkboxStyle()`).
 /// SwiftUI has no counterpart; it reads as `.buttonBorderShape()` does. The
 /// explicit styles look the same under every theme family; their color is the
-/// toggle's own `.foreground()`, else the one each names.
+/// toggle's own `.foregroundStyle()`, else the one each names.
 pub const CheckboxStyle = enum {
     const Self = @This();
 

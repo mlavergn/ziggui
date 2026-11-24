@@ -22,14 +22,18 @@ pub const PositionedGlyph = @import("positioned_glyph.zig").PositionedGlyph;
 pub const WrappedLine = @import("wrapped_line.zig").WrappedLine;
 /// Measures, lays out and wraps text in one face.
 pub const TextShaper = @import("text_shaper.zig").TextShaper;
-/// A font face and its metrics.
-pub const Font = @import("font.zig").Font;
+/// A font file's face and its metrics.
+pub const FontFile = @import("font_file.zig").FontFile;
 /// Paints text and icon glyphs into a display list.
 pub const TextPainter = @import("text_painter.zig").TextPainter;
 /// A text style's face selection (weight, italic, monospace).
 pub const FontStyle = @import("font_style.zig").FontStyle;
 /// The bundled faces and a glyph cache for each.
 pub const FontSet = @import("font_set.zig").FontSet;
+/// A font family an app registers: a TrueType face per style.
+pub const FontFamily = @import("font_family.zig").FontFamily;
+/// The process's registered font families, by name.
+pub const FontRegistry = @import("font_registry.zig").FontRegistry;
 /// A Lucide icon, valued by its codepoint in the icon font.
 pub const Icon = @import("icon.zig").Icon;
 
@@ -58,13 +62,15 @@ test {
     // Nothing here does I/O to trace.
     _ = log;
     _ = @import("ttf_font.zig");
+    _ = @import("font_family.zig");
+    _ = @import("font_registry.zig");
     _ = @import("raster_glyph.zig");
     _ = @import("external_face.zig");
     _ = @import("glyph_cache.zig");
     _ = @import("positioned_glyph.zig");
     _ = @import("wrapped_line.zig");
     _ = @import("text_shaper.zig");
-    _ = @import("font.zig");
+    _ = @import("font_file.zig");
     _ = @import("text_painter.zig");
     _ = @import("font_style.zig");
     _ = @import("font_set.zig");

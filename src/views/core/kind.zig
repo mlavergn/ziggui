@@ -239,6 +239,9 @@ pub const TextEditorData = struct {
 
     /// Whether a line-number gutter shows.
     line_numbers: bool = true,
+
+    /// The find whose matches it marks, while its bar shows (`View.findNavigator`).
+    find: ?*mod.TextFindState = null,
 };
 
 /// A scroll view whose offset lives in an app-owned `ScrollState`.

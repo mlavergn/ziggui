@@ -37,6 +37,34 @@ const CharClass = enum {
     }
 };
 
+/// The lines an indent or outdent works on, by their first bytes.
+const LineSpan = struct {
+    const Self = @This();
+
+    /// The first line's start.
+    first: usize,
+
+    /// The last line's start.
+    last: usize,
+
+    /// The caret's line alone.
+    ///
+    /// - `field`: the field.
+    /// - Returns: the span.
+    fn ofCaret(field: *const TextFieldState) Self {
+        const start = mod.TextLines.init(field.buffer.items).lineStart(field.caret);
+        return .{ .first = start, .last = start };
+    }
+};
+
+/// The last revision any field was given, so each new one is unique in the
+/// process: a cache keyed by a field's address and revision (a find's
+/// matches) never mistakes a new field at a freed one's address for it.
+var last_revision = std.atomic.Value(u64).init(0);
+
+/// Enough spaces for the widest indentation level.
+const spaces: [mod.TextIndentation.max_width]u8 = @splat(' ');
+
 /// Editable text buffer + caret for a `TextField` or `TextEditor`. Owned by the
 /// app (like a `State`), so editing survives across frames. Key events call its
 /// methods. Beyond a caret it tracks an optional selection (`selection_anchor`)
@@ -63,7 +91,7 @@ pub const TextFieldState = struct {
     /// across frames, so the text moves only when the caret leaves the view.
     scroll_x: f32 = 0,
 
-    /// True for a `.secure()` field (a password): its text is never copied,
+    /// True for a `SecureField` (a password): its text is never copied,
     /// cut, or given to accessibility, and is wiped from memory it leaves.
     /// Set by the field's painter each frame; an app that fills the field
     /// with a stored secret before its first frame sets it first, so the
@@ -85,9 +113,22 @@ pub const TextFieldState = struct {
     /// otherwise.
     last_caret: usize = 0,
 
-    /// Bumped on every mutation so an app can cheaply detect "modified since
-    /// saved" without diffing the buffer.
+    /// Names the text's content: every edit gives it a value no field in the
+    /// process has had, and undo and redo give back the value the text had then, so
+    /// an app compares it with the one it saved at ("modified since saved")
+    /// without diffing the buffer, and an undo back to a save reads clean.
     revision: u64 = 0,
+
+    /// The undo and redo steps (none for a secure field).
+    history: mod.TextHistory,
+
+    /// What Tab inserts and where tab characters stop: read by a
+    /// `TextEditor` (a one-line field's Tab moves the focus instead).
+    indentation: mod.TextIndentation = .{},
+
+    /// How the document's lines end on disk (`encodedAlloc`); the buffer
+    /// always holds `\n`.
+    line_ending: mod.LineEnding = .lf,
 
     /// The `.onSubmit` callback for this field, refreshed during paint while the
     /// field is focused so `Focus.submit` (called from the event loop on Enter)
@@ -103,7 +144,7 @@ pub const TextFieldState = struct {
     /// - Returns: the field.
     pub fn init(allocator: std.mem.Allocator) Self {
         log.debug("{s}:{d} :: {s}", .{ @src().file, @src().line, @src().fn_name });
-        const self = Self{ .allocator = allocator };
+        const self = Self{ .allocator = allocator, .history = mod.TextHistory.init(allocator) };
         return self;
     }
 
@@ -117,6 +158,7 @@ pub const TextFieldState = struct {
         mod.Focus.shared().forget(self);
         std.crypto.secureZero(u8, self.buffer.allocatedSlice());
         self.buffer.deinit(self.allocator);
+        self.history.deinit();
     }
 
     /// The text.
@@ -127,7 +169,8 @@ pub const TextFieldState = struct {
         return self.buffer.items;
     }
 
-    /// Replaces the text, the caret at its end.
+    /// Replaces the text, the caret at its end: a load, so the undo history
+    /// is forgotten (`setTextUndoable` keeps it).
     ///
     /// - `self`: the field.
     /// - `string`: the new text, copied.
@@ -154,7 +197,257 @@ pub const TextFieldState = struct {
         self.selection_anchor = null;
         self.preferred_column = null;
         self.last_caret = 0;
-        self.revision +%= 1;
+        self.history.clear();
+        self.newRevision();
+    }
+
+    /// Replaces the whole text as one step the user can undo (a format
+    /// pass, a conversion), the caret at its end.
+    ///
+    /// - `self`: the field.
+    /// - `string`: the new text, copied.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn setTextUndoable(self: *Self, string: []const u8) std.mem.Allocator.Error!void {
+        try self.edit(0, self.buffer.items.len, string, .other);
+    }
+
+    /// Replaces a byte range with text, as one step of its own: the one
+    /// edit every other goes through. The caret lands after the text.
+    ///
+    /// - `self`: the field.
+    /// - `start`: the range's first byte.
+    /// - `stop`: the byte just past it.
+    /// - `string`: the text, copied.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn replaceRange(self: *Self, start: usize, stop: usize, string: []const u8) std.mem.Allocator.Error!void {
+        try self.edit(start, stop, string, .other);
+    }
+
+    /// Pastes text at the caret, replacing the selection, as one step of
+    /// its own; in an editor (`multiline`) its line breaks become `\n`, while
+    /// a one-line field takes the bytes as they are.
+    ///
+    /// - `self`: the field.
+    /// - `string`: the text, copied.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn paste(self: *Self, string: []const u8) std.mem.Allocator.Error!void {
+        const range = self.editRange();
+        if (!self.multiline or !mod.LineEnding.needsNormalizing(string)) return self.edit(range.start, range.stop, string, .other);
+        const normalized = try mod.LineEnding.normalizeAlloc(self.allocator, string);
+        defer {
+            std.crypto.secureZero(u8, normalized);
+            self.allocator.free(normalized);
+        }
+        try self.edit(range.start, range.stop, normalized, .other);
+    }
+
+    /// Loads a document as read from disk: its line ending and indentation
+    /// detected (the indentation kept when none shows), its line breaks
+    /// made `\n`, the undo history forgotten, the caret at its start.
+    ///
+    /// - `self`: the field.
+    /// - `bytes`: the file's bytes.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn loadDocument(self: *Self, bytes: []const u8) std.mem.Allocator.Error!void {
+        self.line_ending = mod.LineEnding.detect(bytes);
+        if (mod.TextIndentation.detect(bytes)) |detected| self.indentation = detected;
+        if (mod.LineEnding.needsNormalizing(bytes)) {
+            const normalized = try mod.LineEnding.normalizeAlloc(self.allocator, bytes);
+            defer self.allocator.free(normalized);
+            try self.setText(normalized);
+        } else try self.setText(bytes);
+        self.caret = 0;
+        self.last_caret = 0;
+    }
+
+    /// The text as a file holds it: each line break as `line_ending`.
+    ///
+    /// - `self`: the field.
+    /// - `allocator`: where the copy goes.
+    /// - Returns: the bytes, owned; propagates allocation failure.
+    pub fn encodedAlloc(self: *const Self, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
+        return self.line_ending.encodeAlloc(allocator, self.buffer.items);
+    }
+
+    /// Changes how the document's lines end on disk. The text does not
+    /// change, but the file would, so a change gives `revision` a new value
+    /// (the document reads modified); it is no undo step.
+    ///
+    /// - `self`: the field.
+    /// - `ending`: the new ending.
+    pub fn setLineEnding(self: *Self, ending: mod.LineEnding) void {
+        if (self.line_ending == ending) return;
+        self.line_ending = ending;
+        self.newRevision();
+    }
+
+    // --- indentation -------------------------------------------------------
+
+    /// Tab in an editor: with a selection over more than one line, indents
+    /// each of those lines (one undo step, the lines kept selected); else
+    /// inserts a tab, or spaces up to the next stop, in place of any selection.
+    ///
+    /// - `self`: the field.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn indent(self: *Self) std.mem.Allocator.Error!void {
+        if (self.selectedLines()) |lines| return self.indentLines(lines);
+        const range = self.editRange();
+        if (self.indentation.style == .tabs) return self.edit(range.start, range.stop, "\t", .typing);
+        const width = self.indentation.columns();
+        const column = self.visualColumn(range.start);
+        try self.edit(range.start, range.stop, spaces[0 .. width - column % width], .typing);
+    }
+
+    /// ⇧Tab in an editor: takes one level (a tab, or up to a level of
+    /// spaces) off the start of the caret's line, or of every line the
+    /// selection touches, as one undo step.
+    ///
+    /// - `self`: the field.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn outdent(self: *Self) std.mem.Allocator.Error!void {
+        const lines = self.selectedLines() orelse LineSpan.ofCaret(self);
+        const revision_before = self.revision;
+        self.beginUndoGrouping();
+        defer self.endUndoGrouping();
+        const anchor = self.selection_anchor;
+        var start = if (anchor) |at| @min(at, self.caret) else self.caret;
+        var stop = if (anchor) |at| @max(at, self.caret) else self.caret;
+        const forward = if (anchor) |at| at <= self.caret else true;
+        var line_start = lines.last;
+        while (true) {
+            const leading = self.leadingWhitespace(line_start);
+            // A leading tab, else the spaces before any tab, up to a level.
+            var taken: usize = 0;
+            if (leading.len > 0 and leading[0] == '\t') {
+                taken = 1;
+            } else {
+                while (taken < leading.len and taken < self.indentation.columns() and leading[taken] == ' ') taken += 1;
+            }
+            if (taken > 0) {
+                start -= @min(taken, start -| line_start);
+                stop -= @min(taken, stop -| line_start);
+                self.remove(line_start, line_start + taken, .other);
+            }
+            if (line_start == lines.first) break;
+            line_start = mod.TextLines.init(self.buffer.items).lineStart(line_start - 1);
+        }
+        if (self.revision != revision_before) self.restoreSelection(anchor != null, forward, start, stop);
+    }
+
+    /// Re-indents every line's leading whitespace in another style or width,
+    /// as one undo step, and adopts it; the caret stays on its line.
+    ///
+    /// - `self`: the field.
+    /// - `to`: the indentation to convert to.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn convertIndentation(self: *Self, to: mod.TextIndentation) std.mem.Allocator.Error!void {
+        const lines = mod.TextLines.init(self.buffer.items);
+        const caret_line = lines.lineIndex(self.caret);
+        const from_line_end = lines.lineEnd(self.caret) - self.caret;
+        // Every line's start, found in one pass, then converted from the last
+        // back, so the starts before an edit stay where they were.
+        var starts: std.ArrayList(usize) = .empty;
+        defer starts.deinit(self.allocator);
+        try starts.append(self.allocator, 0);
+        for (self.buffer.items, 0..) |byte, index| {
+            if (byte == '\n') try starts.append(self.allocator, index + 1);
+        }
+        const revision_before = self.revision;
+        self.beginUndoGrouping();
+        defer self.endUndoGrouping();
+        var line_index = starts.items.len;
+        while (line_index > 0) {
+            line_index -= 1;
+            const line_start = starts.items[line_index];
+            const leading = self.leadingWhitespace(line_start);
+            if (leading.len == 0) continue;
+            const converted = try to.leadingAlloc(self.allocator, self.indentation.visualColumns(leading));
+            defer self.allocator.free(converted);
+            if (std.mem.eql(u8, converted, leading)) continue;
+            try self.edit(line_start, line_start + leading.len, converted, .other);
+        }
+        self.indentation = to;
+        if (self.revision == revision_before) return;
+        const range = mod.TextLines.init(self.buffer.items).lineRange(caret_line);
+        self.caret = range.end - @min(from_line_end, range.end - range.start);
+        self.history.settle(self.caret, self.revision);
+    }
+
+    // --- undo --------------------------------------------------------------
+
+    /// Whether there is a step to undo.
+    ///
+    /// - `self`: the field.
+    /// - Returns: true when one is kept (never for a secure field).
+    pub fn canUndo(self: *const Self) bool {
+        return !self.secure and self.history.canUndo();
+    }
+
+    /// Whether there is a step to redo.
+    ///
+    /// - `self`: the field.
+    /// - Returns: true when one is kept (never for a secure field).
+    pub fn canRedo(self: *const Self) bool {
+        return !self.secure and self.history.canRedo();
+    }
+
+    /// Takes back the last step: its edits undone newest first, the caret,
+    /// selection and revision as they were before it.
+    ///
+    /// - `self`: the field.
+    /// - Returns: whether there was one; propagates allocation failure (nothing changed then).
+    pub fn undo(self: *Self) std.mem.Allocator.Error!bool {
+        if (!self.canUndo()) return false;
+        // Room first: growing the stacks moves the group.
+        try self.history.reserveMove();
+        const group = self.history.nextUndo().?;
+        try self.reserve(group.removedLength());
+        var index = group.edits.items.len;
+        while (index > 0) {
+            index -= 1;
+            const step = group.edits.items[index];
+            self.splice(step.start, step.start + step.inserted.len, step.removed);
+        }
+        self.caret = group.caret_before;
+        self.selection_anchor = group.anchor_before;
+        self.preferred_column = null;
+        self.revision = group.revision_before;
+        self.history.didUndo();
+        return true;
+    }
+
+    /// Puts back the last step undone: its edits redone oldest first, the
+    /// caret and revision as they were after it.
+    ///
+    /// - `self`: the field.
+    /// - Returns: whether there was one; propagates allocation failure (nothing changed then).
+    pub fn redo(self: *Self) std.mem.Allocator.Error!bool {
+        if (!self.canRedo()) return false;
+        try self.history.reserveMove();
+        const group = self.history.nextRedo().?;
+        try self.reserve(group.insertedLength());
+        for (group.edits.items) |step| self.splice(step.start, step.start + step.removed.len, step.inserted);
+        self.caret = group.caret_after;
+        self.selection_anchor = null;
+        self.preferred_column = null;
+        self.revision = group.revision_after;
+        self.history.didRedo();
+        return true;
+    }
+
+    /// Opens one undo step for every edit until `endUndoGrouping` (replace
+    /// all, indenting a block). Calls nest.
+    ///
+    /// - `self`: the field.
+    pub fn beginUndoGrouping(self: *Self) void {
+        self.history.beginUndoGrouping();
+    }
+
+    /// Closes the undo step `beginUndoGrouping` opened.
+    ///
+    /// - `self`: the field.
+    pub fn endUndoGrouping(self: *Self) void {
+        self.history.endUndoGrouping();
     }
 
     // --- selection ---------------------------------------------------------
@@ -246,13 +539,7 @@ pub const TextFieldState = struct {
             self.selection_anchor = null;
             return false;
         };
-        const count = range.end - range.start;
-        @memmove(self.buffer.items[range.start..][0 .. self.buffer.items.len - range.end], self.buffer.items[range.end..]);
-        self.buffer.shrinkRetainingCapacity(self.buffer.items.len - count);
-        self.caret = range.start;
-        self.selection_anchor = null;
-        self.preferred_column = null;
-        self.revision +%= 1;
+        self.remove(range.start, range.end, .other);
         return true;
     }
 
@@ -264,13 +551,10 @@ pub const TextFieldState = struct {
     /// - `string`: the text, copied.
     /// - Returns: nothing; propagates allocation failure.
     pub fn insert(self: *Self, string: []const u8) std.mem.Allocator.Error!void {
-        _ = self.deleteSelection();
-        try self.reserve(string.len);
-        self.buffer.insertSliceAssumeCapacity(self.caret, string);
-        self.caret += string.len;
-        self.selection_anchor = null;
-        self.preferred_column = null;
-        self.revision +%= 1;
+        // A line break is a step of its own, as in every editor.
+        const kind: mod.TextEditKind = if (std.mem.findScalar(u8, string, '\n') != null) .other else .typing;
+        const range = self.editRange();
+        try self.edit(range.start, range.stop, string, kind);
     }
 
     /// Deletes the selection, or the codepoint before the caret.
@@ -279,13 +563,18 @@ pub const TextFieldState = struct {
     pub fn backspace(self: *Self) void {
         if (self.deleteSelection()) return;
         if (self.caret == 0) return;
+        if (self.multiline and self.indentation.style == .spaces) {
+            // In leading spaces, back to the previous stop, as code editors do.
+            const line_start = mod.TextLines.init(self.buffer.items).lineStart(self.caret);
+            const before = self.buffer.items[line_start..self.caret];
+            if (before.len > 1 and std.mem.trim(u8, before, " ").len == 0) {
+                const width = self.indentation.columns();
+                const count = if (before.len % width == 0) width else before.len % width;
+                return self.remove(self.caret - count, self.caret, .deletingBackward);
+            }
+        }
         const start = mod.TextLines.init(self.buffer.items).previousCodepointStart(self.caret);
-        const count = self.caret - start;
-        @memmove(self.buffer.items[start..][0 .. self.buffer.items.len - self.caret], self.buffer.items[self.caret..]);
-        self.buffer.shrinkRetainingCapacity(self.buffer.items.len - count);
-        self.caret = start;
-        self.preferred_column = null;
-        self.revision +%= 1;
+        self.remove(start, self.caret, .deletingBackward);
     }
 
     /// Forward-delete (the Delete key): deletes the selection, or the codepoint
@@ -297,10 +586,7 @@ pub const TextFieldState = struct {
         const items = self.buffer.items;
         if (self.caret >= items.len) return;
         const stop = mod.TextLines.init(items).nextCodepointEnd(self.caret);
-        @memmove(self.buffer.items[self.caret..][0 .. self.buffer.items.len - stop], self.buffer.items[stop..]);
-        self.buffer.shrinkRetainingCapacity(items.len - (stop - self.caret));
-        self.preferred_column = null;
-        self.revision +%= 1;
+        self.remove(self.caret, stop, .deletingForward);
     }
 
     /// Deletes the selection, or back to the start of the word before the
@@ -313,8 +599,7 @@ pub const TextFieldState = struct {
         if (self.deleteSelection()) return;
         const start = if (self.secure) 0 else self.wordStartBefore(self.caret);
         if (start == self.caret) return;
-        self.selection_anchor = start;
-        _ = self.deleteSelection();
+        self.remove(start, self.caret, .other);
     }
 
     /// Deletes the selection, or on to the end of the word after the caret,
@@ -326,8 +611,7 @@ pub const TextFieldState = struct {
         if (self.deleteSelection()) return;
         const stop = if (self.secure) self.buffer.items.len else self.wordEndAfter(self.caret);
         if (stop == self.caret) return;
-        self.selection_anchor = stop;
-        _ = self.deleteSelection();
+        self.remove(self.caret, stop, .other);
     }
 
     // --- caret movement (extend = Shift held, growing the selection) -------
@@ -504,6 +788,217 @@ pub const TextFieldState = struct {
         std.crypto.secureZero(u8, self.buffer.allocatedSlice());
         self.buffer.deinit(self.allocator);
         self.buffer = grown;
+    }
+
+    /// The lines a selection over more than one line touches (a selection
+    /// ending at a line's start leaves that line out).
+    ///
+    /// - `self`: the field.
+    /// - Returns: the first and last lines' starts, or null for no such selection.
+    fn selectedLines(self: *const Self) ?LineSpan {
+        const range = self.selectionRange() orelse return null;
+        const lines = mod.TextLines.init(self.buffer.items);
+        const first = lines.lineStart(range.start);
+        const last = lines.lineStart(if (range.end > range.start and lines.lineStart(range.end) == range.end) range.end - 1 else range.end);
+        if (first == last) return null;
+        return .{ .first = first, .last = last };
+    }
+
+    /// Indents every line of a span that holds text by one level, as one
+    /// undo step, keeping the selection over them.
+    ///
+    /// - `self`: the field.
+    /// - `lines`: the lines.
+    /// - Returns: nothing; propagates allocation failure.
+    fn indentLines(self: *Self, lines: LineSpan) std.mem.Allocator.Error!void {
+        const unit = if (self.indentation.style == .tabs) "\t" else spaces[0..self.indentation.columns()];
+        const anchor = self.selection_anchor;
+        const forward = if (anchor) |at| at <= self.caret else true;
+        var start = if (anchor) |at| @min(at, self.caret) else self.caret;
+        var stop = if (anchor) |at| @max(at, self.caret) else self.caret;
+        const revision_before = self.revision;
+        self.beginUndoGrouping();
+        defer self.endUndoGrouping();
+        var line_start = lines.last;
+        while (true) {
+            const text_lines = mod.TextLines.init(self.buffer.items);
+            if (text_lines.lineEnd(line_start) > line_start) {
+                if (start > line_start) start += unit.len;
+                stop += unit.len;
+                try self.edit(line_start, line_start, unit, .other);
+            }
+            if (line_start == lines.first) break;
+            line_start = mod.TextLines.init(self.buffer.items).lineStart(line_start - 1);
+        }
+        if (self.revision != revision_before) self.restoreSelection(anchor != null, forward, start, stop);
+    }
+
+    /// Puts a selection back after the edits of an indent or outdent, and
+    /// notes it as where the undo step left the field (call it only when the
+    /// step made an edit, or it would rewrite the step before).
+    ///
+    /// - `self`: the field.
+    /// - `selected`: whether there was a selection (else only the caret).
+    /// - `forward`: whether the caret was at its end.
+    /// - `start`: the selection's new first byte (or the caret's place).
+    /// - `stop`: the selection's new end.
+    fn restoreSelection(self: *Self, selected: bool, forward: bool, start: usize, stop: usize) void {
+        const length = self.buffer.items.len;
+        if (selected) {
+            self.selection_anchor = @min(if (forward) start else stop, length);
+            self.caret = @min(if (forward) stop else start, length);
+        } else {
+            self.selection_anchor = null;
+            self.caret = @min(start, length);
+        }
+        self.history.settle(self.caret, self.revision);
+    }
+
+    /// A line's leading spaces and tabs.
+    ///
+    /// - `self`: the field.
+    /// - `line_start`: the line's first byte.
+    /// - Returns: a slice into the buffer.
+    fn leadingWhitespace(self: *const Self, line_start: usize) []const u8 {
+        const items = self.buffer.items;
+        var at = line_start;
+        while (at < items.len and (items[at] == ' ' or items[at] == '\t')) at += 1;
+        return items[line_start..at];
+    }
+
+    /// The column a byte sits at on its line, tabs stopping at the
+    /// indentation's width and every other codepoint one column.
+    ///
+    /// - `self`: the field.
+    /// - `index`: the byte.
+    /// - Returns: its column, from 0.
+    fn visualColumn(self: *const Self, index: usize) usize {
+        const lines = mod.TextLines.init(self.buffer.items);
+        const width = self.indentation.columns();
+        var column: usize = 0;
+        var at = lines.lineStart(index);
+        while (at < index) : (at = lines.nextCodepointEnd(at)) {
+            column = if (self.buffer.items[at] == '\t') (column / width + 1) * width else column + 1;
+        }
+        return column;
+    }
+
+    /// The range typing or pasting replaces: the selection, else the caret.
+    ///
+    /// - `self`: the field.
+    /// - Returns: the range's first byte and the byte just past it.
+    fn editRange(self: *const Self) struct { start: usize, stop: usize } {
+        if (self.selectionRange()) |range| return .{ .start = range.start, .stop = range.end };
+        const at = @min(self.caret, self.buffer.items.len);
+        return .{ .start = at, .stop = at };
+    }
+
+    /// Replaces a byte range with text, recording it for undo: the one
+    /// mutation every edit makes. The caret lands after the text and any
+    /// selection goes. A history that cannot record is dropped (logged),
+    /// never the edit.
+    ///
+    /// - `self`: the field.
+    /// - `start`: the range's first byte.
+    /// - `stop`: the byte just past it.
+    /// - `string`: the text, copied.
+    /// - `kind`: what the edit is, for joining undo steps.
+    /// - Returns: nothing; propagates allocation failure (nothing changed then).
+    fn edit(self: *Self, start: usize, stop: usize, string: []const u8, kind: mod.TextEditKind) std.mem.Allocator.Error!void {
+        // Text from the field's own buffer (`replaceRange(0, 3, field.text()[5..])`)
+        // would move as the buffer grows and overlap the splice: copy it first.
+        const held = self.buffer.allocatedSlice();
+        const address = @intFromPtr(string.ptr);
+        if (string.len > 0 and address >= @intFromPtr(held.ptr) and address < @intFromPtr(held.ptr) + held.len) {
+            const copy = try self.allocator.dupe(u8, string);
+            defer {
+                std.crypto.secureZero(u8, copy);
+                self.allocator.free(copy);
+            }
+            return self.edit(start, stop, copy, kind);
+        }
+        const first = @min(start, self.buffer.items.len);
+        const last = @min(@max(stop, first), self.buffer.items.len);
+        if (string.len > last - first) try self.reserve(string.len - (last - first));
+        self.apply(first, last, string, kind);
+    }
+
+    /// Removes a byte range, recording it for undo; a removal needs no room,
+    /// so it cannot fail.
+    ///
+    /// - `self`: the field.
+    /// - `start`: the range's first byte.
+    /// - `stop`: the byte just past it.
+    /// - `kind`: what the edit is, for joining undo steps.
+    fn remove(self: *Self, start: usize, stop: usize, kind: mod.TextEditKind) void {
+        const first = @min(start, self.buffer.items.len);
+        self.apply(first, @min(@max(stop, first), self.buffer.items.len), "", kind);
+    }
+
+    /// Makes an edit whose room is already reserved: records it, splices
+    /// it in, moves the caret after it and gives the text a new revision.
+    ///
+    /// - `self`: the field.
+    /// - `first`: the range's first byte, within the text.
+    /// - `last`: the byte just past it, within the text.
+    /// - `string`: the text, copied.
+    /// - `kind`: what the edit is, for joining undo steps.
+    fn apply(self: *Self, first: usize, last: usize, string: []const u8, kind: mod.TextEditKind) void {
+        const recorded = self.recordEdit(first, last, string, kind);
+        self.splice(first, last, string);
+        self.caret = first + string.len;
+        self.selection_anchor = null;
+        self.preferred_column = null;
+        self.newRevision();
+        if (recorded) self.history.settle(self.caret, self.revision);
+    }
+
+    /// Hands an edit about to be made to the history, unless the field is
+    /// secure (whose history is wiped instead).
+    ///
+    /// - `self`: the field.
+    /// - `start`: the range's first byte.
+    /// - `stop`: the byte just past it.
+    /// - `string`: the text replacing it.
+    /// - `kind`: what the edit is.
+    /// - Returns: whether it was recorded.
+    fn recordEdit(self: *Self, start: usize, stop: usize, string: []const u8, kind: mod.TextEditKind) bool {
+        if (self.secure) {
+            self.history.clear();
+            return false;
+        }
+        self.history.record(.{
+            .start = start,
+            .removed = self.buffer.items[start..stop],
+            .inserted = string,
+            .kind = kind,
+            .caret_before = self.caret,
+            .anchor_before = self.selection_anchor,
+            .revision_before = self.revision,
+        }, mod.FrameClock.shared().time()) catch |err| {
+            log.warn("undo history dropped: {s}", .{@errorName(err)});
+            self.history.clear();
+            return false;
+        };
+        return true;
+    }
+
+    /// Replaces a byte range in the buffer, recording nothing; room for the
+    /// text is already reserved (`reserve`).
+    ///
+    /// - `self`: the field.
+    /// - `start`: the range's first byte.
+    /// - `stop`: the byte just past it.
+    /// - `string`: the text.
+    fn splice(self: *Self, start: usize, stop: usize, string: []const u8) void {
+        self.buffer.replaceRangeAssumeCapacity(start, stop - start, string);
+    }
+
+    /// Gives `revision` a value it never had.
+    ///
+    /// - `self`: the field.
+    fn newRevision(self: *Self) void {
+        self.revision = last_revision.fetchAdd(1, .monotonic) + 1;
     }
 
     /// Anchors a selection at the caret when Shift is held, or drops it.
@@ -857,4 +1352,208 @@ test "TextFieldState: word deletes take a selection first, and clear a secure fi
     field.caret = 1;
     field.deleteWordForward();
     try std.testing.expectEqualStrings("o", field.text());
+}
+
+test "TextFieldState: a typing run undoes as one step and redoes" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    for ("abc") |byte| try field.insert(&.{byte});
+    try field.insert("\n"); // a line break is a step of its own
+    for ("de") |byte| try field.insert(&.{byte});
+    try std.testing.expect(try field.undo());
+    try std.testing.expectEqualStrings("abc\n", field.text());
+    try std.testing.expect(try field.undo());
+    try std.testing.expectEqualStrings("abc", field.text());
+    try std.testing.expect(try field.undo());
+    try std.testing.expectEqualStrings("", field.text());
+    try std.testing.expect(!try field.undo());
+    try std.testing.expect(try field.redo());
+    try std.testing.expectEqualStrings("abc", field.text());
+    try std.testing.expectEqual(@as(usize, 3), field.caret);
+    // A new edit drops what was left to redo.
+    try field.insert("!");
+    try std.testing.expect(!field.canRedo());
+}
+
+test "TextFieldState: an undo back to a saved revision reads clean, and a new edit never reuses one" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("saved");
+    const saved = field.revision;
+    try field.insert("!");
+    const edited = field.revision;
+    try std.testing.expect(edited != saved);
+    _ = try field.undo();
+    try std.testing.expectEqual(saved, field.revision);
+    _ = try field.redo();
+    try std.testing.expectEqual(edited, field.revision);
+    _ = try field.undo();
+    try field.insert("?");
+    try std.testing.expect(field.revision != saved and field.revision != edited);
+}
+
+test "TextFieldState: deletes undo with their selection, and runs of Backspace join" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("hello world");
+    field.selection_anchor = 0;
+    field.caret = 6; // "hello " selected
+    field.backspace();
+    try std.testing.expectEqualStrings("world", field.text());
+    field.caret = 5;
+    field.backspace();
+    field.backspace();
+    try std.testing.expectEqualStrings("wor", field.text());
+    _ = try field.undo(); // both Backspaces
+    try std.testing.expectEqualStrings("world", field.text());
+    _ = try field.undo(); // the selection's delete, the selection back
+    try std.testing.expectEqualStrings("hello world", field.text());
+    try std.testing.expectEqualStrings("hello ", field.selectedText());
+    try std.testing.expect(!field.canUndo()); // setText left nothing before
+}
+
+test "TextFieldState: an edit group undoes as one step, and a secure field keeps no history" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("a b c");
+    field.beginUndoGrouping();
+    try field.replaceRange(4, 5, "C");
+    try field.replaceRange(0, 1, "A");
+    field.endUndoGrouping();
+    try std.testing.expectEqualStrings("A b C", field.text());
+    _ = try field.undo();
+    try std.testing.expectEqualStrings("a b c", field.text());
+
+    var secret = TextFieldState.init(std.testing.allocator);
+    defer secret.deinit();
+    secret.secure = true;
+    try secret.insert("hunter2");
+    try std.testing.expect(!secret.canUndo());
+    try std.testing.expect(!try secret.undo());
+}
+
+test "TextFieldState: a paste is a step of its own" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.insert("a");
+    try field.paste("bc");
+    try field.insert("d");
+    _ = try field.undo();
+    try std.testing.expectEqualStrings("abc", field.text());
+    _ = try field.undo();
+    try std.testing.expectEqualStrings("a", field.text());
+}
+
+test "TextFieldState: Tab inserts to the next stop, and Backspace in leading spaces goes back to one" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    field.multiline = true;
+    try field.insert("ab");
+    try field.indent();
+    try std.testing.expectEqualStrings("ab  ", field.text());
+    try field.setText("");
+    try field.indent();
+    try field.indent();
+    try std.testing.expectEqualStrings("        ", field.text());
+    field.backspace();
+    try std.testing.expectEqualStrings("    ", field.text());
+    field.indentation = .{ .style = .tabs };
+    try field.indent();
+    try std.testing.expectEqualStrings("    \t", field.text());
+}
+
+test "TextFieldState: Tab and Shift-Tab indent and outdent the selected lines as one step" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    field.multiline = true;
+    try field.setText("one\n\ntwo\nthree");
+    field.selection_anchor = 1;
+    field.caret = 10; // "ne\n\ntwo\nt": the empty line stays empty
+    try field.indent();
+    try std.testing.expectEqualStrings("    one\n\n    two\n    three", field.text());
+    try std.testing.expectEqualStrings("ne\n\n    two\n    t", field.selectedText());
+    try field.outdent();
+    try std.testing.expectEqualStrings("one\n\ntwo\nthree", field.text());
+    try std.testing.expectEqualStrings("ne\n\ntwo\nt", field.selectedText());
+    _ = try field.undo();
+    try std.testing.expectEqualStrings("    one\n\n    two\n    three", field.text());
+    _ = try field.undo();
+    try std.testing.expectEqualStrings("one\n\ntwo\nthree", field.text());
+    // A selection ending at a line's start leaves that line alone.
+    field.selection_anchor = 0;
+    field.caret = 5;
+    try field.indent();
+    try std.testing.expectEqualStrings("    one\n\ntwo\nthree", field.text());
+    // Shift-Tab with no selection outdents the caret's line, a tab at a time.
+    try field.setText("\t\tx");
+    try field.outdent();
+    try std.testing.expectEqualStrings("\tx", field.text());
+}
+
+test "TextFieldState: converting indentation retabs every line as one step" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("a\n    b\n        c\n\td");
+    try field.convertIndentation(.{ .style = .tabs, .width = 4 });
+    try std.testing.expectEqualStrings("a\n\tb\n\t\tc\n\td", field.text());
+    try std.testing.expectEqual(mod.IndentationStyle.tabs, field.indentation.style);
+    _ = try field.undo();
+    try std.testing.expectEqualStrings("a\n    b\n        c\n\td", field.text());
+}
+
+test "TextFieldState: a document loads with its ending and indentation, and saves with its ending" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.loadDocument("a {\r\n  b\r\n}\r\n");
+    try std.testing.expectEqualStrings("a {\n  b\n}\n", field.text());
+    try std.testing.expectEqual(mod.LineEnding.crlf, field.line_ending);
+    try std.testing.expectEqual(@as(u8, 2), field.indentation.width);
+    const encoded = try field.encodedAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqualStrings("a {\r\n  b\r\n}\r\n", encoded);
+    const loaded = field.revision;
+    field.setLineEnding(.lf);
+    try std.testing.expect(field.revision != loaded);
+    // A paste's CRLFs land as LFs in an editor.
+    field.multiline = true;
+    try field.paste("x\r\ny");
+    try std.testing.expectEqualStrings("x\ny", field.text()[0..3]);
+}
+
+test "TextFieldState: an indent, outdent or conversion that changes nothing leaves the last step alone" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    field.multiline = true;
+    try field.setText("a\n\n\nb");
+    field.caret = 1;
+    try field.insert("x"); // "ax\n\n\nb", the step leaving the caret at 2
+    field.caret = 0;
+    try field.outdent(); // no indentation to take
+    try field.convertIndentation(.{ .style = .tabs }); // none to convert
+    field.selection_anchor = 3;
+    field.caret = 5; // the two empty lines, which take no indentation
+    try field.indent();
+    try std.testing.expectEqualStrings("ax\n\n\nb", field.text());
+    try std.testing.expectEqual(@as(usize, 1), field.history.undo_stack.items.len);
+    try std.testing.expectEqual(@as(usize, 2), field.history.nextUndo().?.caret_after);
+}
+
+test "TextFieldState: revisions never repeat across fields" {
+    var first = TextFieldState.init(std.testing.allocator);
+    defer first.deinit();
+    var second = TextFieldState.init(std.testing.allocator);
+    defer second.deinit();
+    try first.insert("a");
+    try second.insert("a");
+    try std.testing.expect(first.revision != second.revision);
+}
+
+test "TextFieldState: text from the field's own buffer replaces a range safely" {
+    var field = TextFieldState.init(std.testing.allocator);
+    defer field.deinit();
+    try field.setText("abcdef");
+    try field.replaceRange(0, 1, field.text()[1..]); // grows the buffer from itself
+    try std.testing.expectEqualStrings("bcdefbcdef", field.text());
+    try field.setTextUndoable(field.text()[0..3]);
+    try std.testing.expectEqualStrings("bcd", field.text());
 }

@@ -22,8 +22,8 @@ pub fn ConfirmAlert(question: *const mod.Confirm, no_label: []const u8, on_no: m
     const tokens = mod.BuildScope.shared().tokens();
     const allocator = mod.BuildScope.shared().allocator();
     return mod.VStack(.{
-        mod.WrappedText(mod.DisplayText.clean(allocator, question.title)).size(15).weight(.semibold).frameMaxWidth().frameAlign(.leading),
-        if (question.detail.len > 0) mod.WrappedText(mod.DisplayText.clean(allocator, question.detail)).size(12).foreground(tokens.secondary_label).frameMaxWidth().frameAlign(.leading) else mod.Empty(),
+        mod.WrappedText(mod.DisplayText.clean(allocator, question.title)).font(.system(15)).fontWeight(.semibold).frameMaxWidth().frameAlign(.leading),
+        if (question.detail.len > 0) mod.WrappedText(mod.DisplayText.clean(allocator, question.detail)).font(.system(12)).foregroundStyle(tokens.secondary_label).frameMaxWidth().frameAlign(.leading) else mod.Empty(),
         mod.HStack(.{
             mod.Spacer(),
             mod.ButtonRoled(no_label, .normal, on_no),

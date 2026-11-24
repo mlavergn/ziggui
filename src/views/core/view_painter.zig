@@ -31,7 +31,7 @@ pub const ViewPainter = struct {
         child_context.opacity = context.opacity * view.modifiers.opacity;
         if (view.modifiers.disabled) child_context.disabled = true;
         if (view.modifiers.foreground) |foreground| child_context.foreground = foreground;
-        // The tint is this view's own `.foreground()`, never an ancestor's, so
+        // The tint is this view's own `.foregroundStyle()`, never an ancestor's, so
         // a color set on a pane or a row leaves its plain buttons as they are.
         child_context.tint = view.modifiers.foreground;
         child_context.applyFontModifiers(view);
@@ -60,8 +60,10 @@ pub const ViewPainter = struct {
             }
         }
 
-        // Background fill (behind content, spanning the padded frame).
-        if (view.modifiers.background) |fill| try Self.paintFill(display_list, outer, child_context.theme.metrics.radius(view.modifiers.corner_radius), fill, opacity, &child_context.theme.colors);
+        // Background fill (behind content, spanning the padded frame). A
+        // `TextEditor` with its own chrome takes a color as its field's ground instead.
+        const editor_ground = view.kind == .textEditor and child_context.text_editor_style != .plain and view.modifiers.background != null and view.modifiers.background.? == .color;
+        if (view.modifiers.background) |fill| if (!editor_ground) try Self.paintFill(display_list, outer, child_context.theme.metrics.radius(view.modifiers.corner_radius), fill, opacity, &child_context.theme.colors);
 
         // Hover highlight: painted over the background while the cursor is inside
         // this view (and it isn't disabled). Cheap point-in-rect test per frame.

@@ -278,14 +278,14 @@ pub const Kit = struct {
     /// - Returns: the card.
     pub fn badgeCard(self: *Self, theme: ziggui.Theme) ziggui.View {
         _ = self;
-        return gallery.Card.view(theme, "Badge in each tone (.mono() for a code)", "ziggui.Badge", ziggui.HStack(.{
+        return gallery.Card.view(theme, "Badge in each tone (.monospaced() for a code)", "ziggui.Badge", ziggui.HStack(.{
             ziggui.Badge("idle", .neutral),
             ziggui.Badge("connected", .success),
             ziggui.Badge("refused", .danger),
             ziggui.Badge("version mismatch", .warning),
             ziggui.Badge("2026-07-28", .info),
             ziggui.Badge("active", .accent),
-            ziggui.Badge("-32601", .danger).mono(),
+            ziggui.Badge("-32601", .danger).monospaced(),
             ziggui.Spacer(),
         }).spacing(6));
     }
@@ -322,7 +322,7 @@ pub const Kit = struct {
                 ziggui.ButtonKeyed("Find", "⌘F", .plain, ziggui.Callback.init(Self, self, Self.found)),
                 ziggui.Spacer(),
             }).spacing(8),
-            ziggui.Text(self.pressed).font(.footnote).foreground(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
+            ziggui.Text(self.pressed).font(.footnote).foregroundStyle(theme.colors.secondary_label).frameMaxWidth().frameAlign(.leading),
         }).spacing(10));
     }
 
@@ -554,14 +554,14 @@ pub const Kit = struct {
                 ziggui.FileBrowser(&self.files, self.files_have_keys).frameHeight(200),
                 ziggui.Toggle("Only .txt and .md files (folders always show)", self.text_only.binding()).toggleStyle(.checkbox),
             }).spacing(10).alignment(.leading)),
-            ziggui.Text(said).foreground(secondary).truncated().frameMaxWidth().frameAlign(.leading),
+            ziggui.Text(said).foregroundStyle(secondary).truncated().frameMaxWidth().frameAlign(.leading),
             gallery.Card.view(theme, "FileDialog: the system's open and save panels, started in the folder on show", "ziggui.FileDialog.openFile · .saveFile · .takeResult", ziggui.VStack(.{
                 ziggui.HStack(.{
                     ziggui.Button("Open File…", ziggui.Callback.attempt(Self, self, Self.openFile, "open panel not shown")),
                     ziggui.Button("Save As…", ziggui.Callback.attempt(Self, self, Self.saveFile, "save panel not shown")),
                     ziggui.Spacer(),
                 }).spacing(10),
-                ziggui.Text(self.dialog_said orelse "No panel shown yet.").foreground(secondary).truncated().frameMaxWidth().frameAlign(.leading),
+                ziggui.Text(self.dialog_said orelse "No panel shown yet.").foregroundStyle(secondary).truncated().frameMaxWidth().frameAlign(.leading),
             }).spacing(10).alignment(.leading)),
         }).spacing(16);
     }
@@ -590,7 +590,7 @@ pub const Kit = struct {
             const content = if (item.editing)
                 ziggui.HStack(.{ ziggui.Icon(start[0], 13, color), name })
             else
-                ziggui.HStack(.{ ziggui.Icon(start[0], 13, color), name.foreground(color), ziggui.Spacer() });
+                ziggui.HStack(.{ ziggui.Icon(start[0], 13, color), name.foregroundStyle(color), ziggui.Spacer() });
             row.* = ziggui.SelectableRow(content.spacing(6), selected, true, tapped);
         }
         const said = if (self.renamed_last) |index|
@@ -600,7 +600,7 @@ pub const Kit = struct {
         return ziggui.VStack(.{
             gallery.Card.view(theme, "EditableText: a selected row's name renamed in place, as Finder renames", "ziggui.EditableText · ziggui.EditableTextState", ziggui.VStack(.{
                 ziggui.StackBuilder.fromSlice(.vertical, row_spacing, .leading, rows).frameMaxWidth(),
-                ziggui.Text(said).foreground(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
+                ziggui.Text(said).foregroundStyle(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
             }).spacing(10).frameMaxWidth()),
         }).spacing(16);
     }
@@ -618,7 +618,7 @@ pub const Kit = struct {
                 ziggui.Text("Advanced"),
                 self.disclosure_open,
                 ziggui.Callback.init(Self, self, Self.toggleDisclosure),
-                ziggui.WrappedText("Content shown while the group is open, folded away under its header otherwise.").foreground(secondary),
+                ziggui.WrappedText("Content shown while the group is open, folded away under its header otherwise.").foregroundStyle(secondary),
             ),
             ziggui.DisclosureGroupAccessory(
                 ziggui.Text("Downloads"),
@@ -655,7 +655,7 @@ pub const Kit = struct {
         for (check_options, rows, 0..) |option, *row, index| {
             const content = ziggui.VStack(.{
                 ziggui.Text(option[0]),
-                ziggui.Text(option[1]).font(.footnote).foreground(theme.colors.secondary_label),
+                ziggui.Text(option[1]).font(.footnote).foregroundStyle(theme.colors.secondary_label),
             }).spacing(2).alignment(.leading);
             row.* = ziggui.CheckRow(content, self.check_choice.get() == @as(i64, @intCast(index)), ziggui.Callback.tagged(Self, self, Self.checkChosen, index));
         }
@@ -803,7 +803,7 @@ pub const Kit = struct {
             const selected = selection.get() == @as(i64, @intCast(item));
             const color = ziggui.SelectableRowStyle.selectionText(selected, focused);
             const glyph = ziggui.Icon(sample_items[item][0], 14, color);
-            const name = ziggui.Text(sample_items[item][1]).foreground(color);
+            const name = ziggui.Text(sample_items[item][1]).foregroundStyle(color);
             const tapped = ziggui.Callback.select(selection.binding(), @intCast(item));
             if (reorder) |state| {
                 const label = ziggui.HStack(.{ ziggui.Icon(.gripVertical, 14, color), glyph, name }).spacing(8);
@@ -829,7 +829,7 @@ pub const Kit = struct {
         const trimmed = std.mem.trimEnd(u8, node.key, "/");
         const name = if (std.mem.findScalarLast(u8, trimmed, '/')) |slash| trimmed[slash + 1 ..] else trimmed;
         const glyph: ziggui.IconName = if (!node.has_children) .fileText else if (expanded) .folderOpen else .folder;
-        const label = ziggui.HStack(.{ ziggui.Icon(glyph, 13, color), ziggui.Text(name).foreground(color) }).spacing(6);
+        const label = ziggui.HStack(.{ ziggui.Icon(glyph, 13, color), ziggui.Text(name).foregroundStyle(color) }).spacing(6);
         const tapped = ziggui.Callback.tagged(Self, self, Self.outlineTapped, index);
         // Its key is what the row is: rows move under the pointer as folders fold.
         const identity = std.hash.Wyhash.hash(0, node.key);

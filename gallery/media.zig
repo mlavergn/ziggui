@@ -138,7 +138,7 @@ pub const Media = struct {
         return ziggui.VStack(.{
             gallery.Card.view(theme, "VideoPlayer: the platform player draws the picture, ziggui the controls over it", "ziggui.VideoPlayer · ziggui.VideoPlayerControls · ziggui.Player", self.picture(8).frameHeight(300)),
             buttons,
-            ziggui.Text(Self.describe(observation, "No item. Load sample stream plays Apple's HLS example (over the network).")).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
+            ziggui.Text(Self.describe(observation, "No item. Load sample stream plays Apple's HLS example (over the network).")).foregroundStyle(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
             self.accessoriesCard(theme),
             self.infoCard(theme, "VideoInfoView: how the window draws and the media player", "ziggui.VideoInfoView · ziggui.SystemInfo", .video),
             self.infoCard(theme, "SystemInfoView: drawing, the player and the audio outputs, an app's System Info sheet", "ziggui.SystemInfoView · ziggui.SystemReport", .system),
@@ -192,7 +192,7 @@ pub const Media = struct {
         return ziggui.VStack(.{
             gallery.Card.view(theme, "AudioPlayerControls: a podcast player's bar over a Player with no picture", "ziggui.AudioPlayerControls · ziggui.AudioPlayerControlsState · ziggui.Player", ziggui.AudioPlayerControls(&self.audio_player, &self.audio_controls, title)),
             buttons,
-            ziggui.Text(Self.describe(observation, "No item. Load sample audio plays the audio of Apple's HLS example (over the network).")).foreground(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
+            ziggui.Text(Self.describe(observation, "No item. Load sample audio plays the audio of Apple's HLS example (over the network).")).foregroundStyle(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
             self.infoCard(theme, "AudioInfoView: the output the player plays through, and the devices", "ziggui.AudioInfoView · ziggui.AudioOutputs", .audio),
         }).spacing(16);
     }
@@ -247,8 +247,8 @@ pub const Media = struct {
         const secondary = ziggui.BuildScope.shared().tokens().secondary_label;
         return ziggui.VStack(.{
             gallery.Card.view(theme, "NativeView: the app's platform view, placed and clipped where layout puts it", "ziggui.NativeView", ziggui.NativeView(self.native_sample).cornerRadius(8).frameHeight(220)),
-            ziggui.Text("It sits over the window's surface, so it hides while a sheet, alert, popover or menu is open.").foreground(secondary).truncated().frameMaxWidth().frameAlign(.leading),
-            ziggui.Text("A view that takes the keyboard (a web view) gets it on a click; a click elsewhere gives it back.").foreground(secondary).truncated().frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("It sits over the window's surface, so it hides while a sheet, alert, popover or menu is open.").foregroundStyle(secondary).truncated().frameMaxWidth().frameAlign(.leading),
+            ziggui.Text("A view that takes the keyboard (a web view) gets it on a click; a click elsewhere gives it back.").foregroundStyle(secondary).truncated().frameMaxWidth().frameAlign(.leading),
         }).spacing(16);
     }
 
