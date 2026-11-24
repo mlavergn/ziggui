@@ -38,6 +38,10 @@ pub const App = @import("app.zig").App;
 pub const AppConfig = @import("app_config.zig").AppConfig;
 /// Why the runtime could not start.
 pub const AppError = @import("app_error.zig").AppError;
+/// One running copy of an app: an OS file lock, and bringing the running copy forward.
+pub const AppInstance = @import("app_instance.zig").AppInstance;
+/// What `AppInstance.claim` found.
+pub const AppInstanceClaim = @import("app_instance.zig").AppInstanceClaim;
 /// A window or tray icon as RGBA8 pixels.
 pub const WindowIcon = @import("window_icon.zig").WindowIcon;
 /// Where the main window is and how big.

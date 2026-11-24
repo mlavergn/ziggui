@@ -100,6 +100,28 @@ pub const Cocoa = struct {
         return sdl_c.SDL_CreateColorCursor(base, @intFromFloat(hot_spot.x), @intFromFloat(hot_spot.y));
     }
 
+    /// Brings another running app forward, its windows with it
+    /// (`AppInstance.activate`). Since macOS 14 only the active app may hand
+    /// activation on, so this process (just launched, and so the one the user
+    /// chose) first yields it to the other, then asks for it. Works before
+    /// SDL starts: `NSApplication` is made here if it was not.
+    ///
+    /// - `pid`: the other app's process.
+    /// - Returns: false when no app runs as `pid` or AppKit refused.
+    pub fn activateProcess(pid: i32) bool {
+        const pool = mod.ObjectiveC.pushPool();
+        defer mod.ObjectiveC.popPool(pool);
+        const other = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSRunningApplication"), "runningApplicationWithProcessIdentifier:", .{@as(c_int, pid)});
+        if (other == null) return false;
+        const ns_app = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSApplication"), "sharedApplication", .{});
+        const yield = mod.ObjectiveC.selectorNamed("yieldActivationToApplication:");
+        if (mod.ObjectiveC.send(u8, ns_app, "respondsToSelector:", .{yield}) != 0) {
+            mod.ObjectiveC.send(void, ns_app, "yieldActivationToApplication:", .{other});
+        }
+        const all_windows: u64 = 1 << 0; // NSApplicationActivateAllWindows
+        return mod.ObjectiveC.send(u8, other, "activateWithOptions:", .{all_windows}) != 0;
+    }
+
     /// Puts a frosted NSVisualEffectView behind SDL's content view, so the tray
     /// panel reads as translucent glass over the desktop (Swift's
     /// MenuBarExtra window) instead of a flat translucent rectangle. The

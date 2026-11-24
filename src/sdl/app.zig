@@ -153,6 +153,11 @@ pub const App = struct {
     /// it is maximized. Null until the window opens.
     restored_frame: ?mod.WindowFrame = null,
 
+    /// Set from a signal handler when another launch of the app asked this
+    /// one to come forward (`AppInstance.activate`); the loop shows the
+    /// window on its next wake (`takeActivationRequest`).
+    activation_requested: std.atomic.Value(bool) = .init(false),
+
     /// The process's app.
     var shared_app: Self = .{};
 
@@ -215,6 +220,15 @@ pub const App = struct {
     /// - `self`: the app.
     pub fn quit(self: *const Self) void {
         if (self.running) |running| running.* = false;
+    }
+
+    /// Takes a request from another launch to come forward
+    /// (`activation_requested`), clearing it.
+    ///
+    /// - `self`: the app.
+    /// - Returns: true when one was waiting.
+    pub fn takeActivationRequest(self: *Self) bool {
+        return self.activation_requested.swap(false, .acq_rel);
     }
 
     /// Shows and raises the window (e.g. from a tray "Open" entry).

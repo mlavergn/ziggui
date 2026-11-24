@@ -920,6 +920,10 @@ pub const App = if (config.with_sdl) sdl.App else void;
 pub const AppConfig = if (config.with_sdl) sdl.AppConfig else void;
 /// Why the runtime could not start (app build only).
 pub const AppError = if (config.with_sdl) sdl.AppError else void;
+/// One running copy of an app: an OS file lock, and bringing the running copy forward (app build only).
+pub const AppInstance = if (config.with_sdl) sdl.AppInstance else void;
+/// What `AppInstance.claim` found (app build only).
+pub const AppInstanceClaim = if (config.with_sdl) sdl.AppInstanceClaim else void;
 /// A window or tray icon as RGBA8 pixels (app build only).
 pub const WindowIcon = if (config.with_sdl) sdl.WindowIcon else void;
 /// The main window's position and size, in points (app build only).

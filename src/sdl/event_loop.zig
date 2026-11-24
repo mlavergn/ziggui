@@ -1222,6 +1222,8 @@ pub fn EventLoop(comptime AppState: type) type {
                 // the window is visible, so the tray tracks status even when hidden.
                 if (app.frame_hook) |hook| hook();
                 mod.StatusItem.shared().takeLinuxClick();
+                // Another launch of the app asked this one to come forward (`AppInstance`).
+                if (app.takeActivationRequest()) app.showWindow();
 
                 // Fresh per-frame region lists (arena-backed via `draw`); discarded at
                 // the next arena reset. The main window is skipped while
@@ -1330,6 +1332,8 @@ pub fn EventLoop(comptime AppState: type) type {
             while (self.running) {
                 if (router.waitForEvent(app.idleWaitMs())) break;
                 if (app.frame_hook) |hook| hook();
+                // Another launch asked this one to come forward: the outer loop shows the window.
+                if (app.activation_requested.load(.acquire)) break;
                 // Background work (a generation, playback) may have flipped the
                 // busy cadence on: leave idle so the outer loop redraws at it.
                 if (app.busyIntervalMs() != 0) break;

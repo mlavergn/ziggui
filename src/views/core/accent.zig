@@ -68,7 +68,7 @@ pub const Accent = enum {
             .pink => renderer.Color.fromRgb8(0xFF, 0x2D, 0x78),
             .red => renderer.Color.fromRgb8(0xFF, 0x3B, 0x30),
             .yellow => renderer.Color.fromRgb8(0xFF, 0xCC, 0x00),
-            .green => renderer.Color.fromRgb8(0x28, 0xC8, 0x40),
+            .green => renderer.Color.fromRgb8(0x76, 0xC0, 0x43),
             .graphite => renderer.Color.fromRgb8(0x8E, 0x8E, 0x93),
         };
     }
@@ -78,7 +78,7 @@ pub const Accent = enum {
     /// - `self`: the accent.
     /// - Returns: white, as on macOS, but black on the yellow and the green.
     pub fn onColor(self: *const Self) renderer.Color {
-        // White barely shows on the yellow and the green (about 1.5:1 and 2:1).
+        // White barely shows on the yellow and the green (about 1.5:1 and 2.2:1).
         return switch (self.*) {
             .yellow, .green => renderer.Color.black,
             else => renderer.Color.white,
