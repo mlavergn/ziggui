@@ -207,6 +207,8 @@ pub const WrapCache = @import("wrap_cache.zig").WrapCache;
 pub const StackBuilder = @import("stack_builder.zig").StackBuilder;
 /// The built-in controls' geometry.
 pub const ControlMetrics = @import("control_metrics.zig").ControlMetrics;
+/// What a checkbox measures in one style (`ControlMetrics.checkbox`).
+pub const CheckboxMeasures = @import("control_metrics.zig").CheckboxMeasures;
 /// Lowers views to layout nodes.
 pub const ViewLowering = @import("view_lowering.zig").ViewLowering;
 /// Paints laid-out views.

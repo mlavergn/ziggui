@@ -3089,3 +3089,23 @@ test "a SceneView ignores .opacity(): its background draws at full strength" {
     };
     try std.testing.expectEqual(@as(usize, 1), backgrounds);
 }
+
+test "a compact checkbox is the small box beside a footnote label, the whole of it the toggle's tap" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    var on = renderer.State(bool).init(std.testing.allocator, false);
+    defer on.deinit();
+    const view = mod.Toggle("Wrap", on.binding()).toggleStyle(.checkbox).checkboxStyle(.compact);
+    const footnote = context.theme.typography.footnote.size;
+    const label_width = renderer.TextShaper.init(context.cache.face).measureLineWidth("Wrap", footnote);
+    const size = try mod.ViewRenderer.measure(&context, view, .unspecified);
+    try std.testing.expectApproxEqAbs(mod.ControlMetrics.compact_checkbox_size + mod.ControlMetrics.compact_checkbox_gap + label_width, size.width, 0.01);
+    // The whole of it, label included, is the toggle's tap.
+    try mod.ViewRenderer.render(&context, view, .{ .x = 0, .y = 0, .width = size.width, .height = size.height }, &display_list);
+    try std.testing.expectEqual(@as(usize, 1), environment.hits.items.len);
+    try std.testing.expectApproxEqAbs(size.width, environment.hits.items[0].rect.width, 0.01);
+}

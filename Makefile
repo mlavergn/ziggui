@@ -11,7 +11,7 @@
 
 .DEFAULT_GOAL := all
 
-.PHONY: build dist app install
+.PHONY: build dist app app-install install
 
 # ---------------------------------------------
 # Configuration
@@ -35,7 +35,7 @@ endif
 GALLERY_BUNDLE := ziggui Gallery.app
 GALLERY_APP := zig-out/$(GALLERY_BUNDLE)
 
-# Where `make install` puts the gallery's bundle: `make install APP_DIR=/Applications`.
+# Where `make app-install` puts the gallery's bundle: `make app-install APP_DIR=/Applications`.
 APP_DIR ?= $(HOME)/Applications
 
 # The Zig source roots `format` and `lint` walk (see ../styleguide/Makefile.in).
@@ -80,7 +80,7 @@ endif
 
 # Build the gallery's bundle as `app` does and copy it to $(APP_DIR),
 # replacing any older copy (unsigned, as built). macOS only.
-install:
+app-install:
 ifeq ($(HOST_OS),Darwin)
 	$(ZIG) build gallery-app -Doptimize=ReleaseFast
 	install -d "$(APP_DIR)"
@@ -88,8 +88,11 @@ ifeq ($(HOST_OS),Darwin)
 	cp -R "$(GALLERY_APP)" "$(APP_DIR)/"
 	@echo "installed $(APP_DIR)/$(GALLERY_BUNDLE)"
 else
-	@echo "❌ make install copies the gallery's macOS bundle; on $(HOST_OS) use make app"; exit 1
+	@echo "❌ make app-install copies the gallery's macOS bundle; on $(HOST_OS) use make app"; exit 1
 endif
+
+# The name `app-install` had before.
+install: app-install
 
 # ---------------------------------------------
 # Cross-compilation

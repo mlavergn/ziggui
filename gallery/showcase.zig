@@ -87,15 +87,17 @@ const table_rows = [_][]const []const u8{
     &.{ "Margaret Hamilton", "Engineer", "33" },
 };
 
-/// The Controls panel's radio group's options.
 /// The Toggles card's checkbox rows: each explicit `CheckboxStyle`, its row's
-/// title, and the color its checkboxes are given with `.foregroundStyle()`, if any.
-const checkbox_styles = [_]struct { style: ziggui.CheckboxStyle, title: []const u8, tint: ?ziggui.Color }{
+/// title, the color its checkboxes are given with `.foregroundStyle()`, if any,
+/// and the off and on checkboxes' labels.
+const checkbox_styles = [_]struct { style: ziggui.CheckboxStyle, title: []const u8, tint: ?ziggui.Color, labels: [2][]const u8 = .{ "", "" } }{
     .{ .style = .rounded, .title = "Rounded", .tint = null },
     .{ .style = .square, .title = "Square", .tint = ziggui.Color.hex(0xDD4466) },
     .{ .style = .circular, .title = "Circular", .tint = null },
+    .{ .style = .compact, .title = "Compact", .tint = null, .labels = .{ "Wrap", "Ignore whitespace" } },
 };
 
+/// The Controls panel's radio group's options.
 const radio_options = [_][]const u8{ "Automatic", "On", "Off" };
 
 /// The split view card's sidebar: mail folders, each with an icon.
@@ -391,6 +393,7 @@ pub const Showcase = struct {
                 ziggui.State(bool).init(allocator, false), ziggui.State(bool).init(allocator, true),
                 ziggui.State(bool).init(allocator, false), ziggui.State(bool).init(allocator, true),
                 ziggui.State(bool).init(allocator, false), ziggui.State(bool).init(allocator, true),
+                ziggui.State(bool).init(allocator, false), ziggui.State(bool).init(allocator, true),
             },
             .remember = ziggui.State(bool).init(allocator, true),
             .picture_invert_y = ziggui.State(bool).init(allocator, false),
@@ -545,24 +548,26 @@ pub const Showcase = struct {
 
     /// The Toggles card: two switches in rows, then a row of checkboxes per
     /// explicit `CheckboxStyle`, one off and one on, the square ones tinted
-    /// with their own `.foregroundStyle()`, and a labeled circular one.
+    /// with their own `.foregroundStyle()` and the compact ones labeled, and a
+    /// labeled circular one.
     ///
     /// - `self`: the showcase.
     /// - `theme`: the theme this frame draws with.
     /// - Returns: the card.
     pub fn togglesCard(self: *Self, theme: ziggui.Theme) ziggui.View {
-        return gallery.Card.view(theme, "Toggles", "ziggui.Toggle · .toggleStyle(.checkbox) · .checkboxStyle(.rounded) · .square · .circular", ziggui.VStack(.{
+        return gallery.Card.view(theme, "Toggles", "ziggui.Toggle · .toggleStyle(.checkbox) · .checkboxStyle(.rounded) · .square · .circular · .compact", ziggui.VStack(.{
             Self.row("Wi‑Fi", ziggui.Toggle("", self.wifi.binding())),
             ziggui.Divider(),
             Self.row("Notifications", ziggui.Toggle("", self.notifications.binding())),
             ziggui.Divider(),
-            ziggui.VStack(.{ self.checkboxRow(0), self.checkboxRow(1), self.checkboxRow(2) }).spacing(10),
+            ziggui.VStack(.{ self.checkboxRow(0), self.checkboxRow(1), self.checkboxRow(2), self.checkboxRow(3) }).spacing(10),
             ziggui.Toggle("Remember this choice", self.remember.binding()).toggleStyle(.checkbox).checkboxStyle(.circular).frameMaxWidth().frameAlign(.leading),
         }).spacing(8));
     }
 
     /// One of the Toggles card's checkbox rows: the style's title, then its
-    /// off and on checkboxes, given the style's tint if it has one.
+    /// off and on checkboxes, given the style's tint if it has one and its
+    /// labels.
     ///
     /// - `self`: the showcase.
     /// - `index`: the row, an index into `checkbox_styles`.
@@ -571,7 +576,7 @@ pub const Showcase = struct {
         const style = checkbox_styles[index];
         var pair: [2]ziggui.View = undefined;
         for (&pair, 0..) |*checkbox, column| {
-            checkbox.* = ziggui.Toggle("", self.checkboxes[2 * index + column].binding());
+            checkbox.* = ziggui.Toggle(style.labels[column], self.checkboxes[2 * index + column].binding());
             if (style.tint) |tint| checkbox.* = checkbox.foregroundStyle(tint);
         }
         return Self.row(style.title, ziggui.HStack(.{ pair[0], pair[1] }).spacing(14).toggleStyle(.checkbox).checkboxStyle(style.style));

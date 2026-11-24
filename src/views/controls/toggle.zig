@@ -54,3 +54,35 @@ test "a checkbox style draws its box: square and circular filled while on, round
     try std.testing.expect(window.tap(.{ .x = 7, .y = 7 }));
     try std.testing.expect(!on.get());
 }
+
+test "a compact checkbox is a small outlined box: the tint and the check while on, untinted and empty while off" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var on = renderer.State(bool).init(std.testing.allocator, true);
+    defer on.deinit();
+    const red = renderer.Color.rgb(1, 0, 0);
+    const white = renderer.Color.white.toRgba8();
+    const side: u32 = @intFromFloat(mod.ControlMetrics.compact_checkbox_size);
+    for ([_]bool{ true, false }) |value| {
+        on.set(value);
+        window.begin(renderer.MacosTheme.light);
+        const view = Toggle("", on.binding()).foregroundStyle(red).toggleStyle(.checkbox).checkboxStyle(.compact);
+        window.end();
+        var frame = try window.render(view, side, side);
+        defer frame.deinit();
+        // Never filled: the rounded corner and the inside above the check show the ground.
+        try std.testing.expectEqual(white, frame.rgba8At(0, 0));
+        try std.testing.expectEqual(white, frame.rgba8At(side / 2, 3));
+        const edge = frame.rgba8At(side / 2, 0);
+        const check = frame.rgba8At(side / 2 - 1, 7);
+        if (value) {
+            // On: the outline and the check in the toggle's tint.
+            try std.testing.expectEqual(red.toRgba8(), edge);
+            try std.testing.expectEqual(red.toRgba8(), check);
+        } else {
+            // Off: the outline grey (the secondary label color, not the tint), no check.
+            try std.testing.expect(edge.r == edge.g and edge.g == edge.b and edge.r < white.r);
+            try std.testing.expectEqual(white, check);
+        }
+    }
+}

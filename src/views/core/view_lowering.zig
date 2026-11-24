@@ -207,13 +207,15 @@ pub const ViewLowering = struct {
             } },
             .button => |button| return .{ .leaf = renderer.SizingHints.fixedSize(Self.buttonSize(context, button)) },
             .toggle => |toggle| {
-                const pixel_size = context.theme.typography.body.size;
+                const checkbox = context.resolvedToggleStyle() == .checkbox;
+                const measures = mod.ControlMetrics.checkbox(context.checkbox_style, &context.theme.typography);
+                const pixel_size = if (checkbox) measures.label_size else context.theme.typography.body.size;
                 const label_width: f32 = if (toggle.label.len > 0) renderer.TextShaper.init(context.cache.face).measureLineWidth(toggle.label, pixel_size) else 0;
                 const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
-                if (context.resolvedToggleStyle() == .checkbox) {
+                if (checkbox) {
                     // As wide as the box and its label: a click beside it is not on it.
-                    const width = mod.ControlMetrics.checkbox_size + (if (toggle.label.len > 0) mod.ControlMetrics.checkbox_gap + label_width else 0);
-                    return .{ .leaf = renderer.SizingHints.fixedSize(.{ .width = width, .height = @max(line_height, mod.ControlMetrics.checkbox_size) }) };
+                    const width = measures.side + (if (toggle.label.len > 0) measures.gap + label_width else 0);
+                    return .{ .leaf = renderer.SizingHints.fixedSize(.{ .width = width, .height = @max(line_height, measures.side) }) };
                 }
                 const gap: f32 = if (toggle.label.len > 0) 8 else 0;
                 const height = @max(line_height, mod.ControlMetrics.switch_height);

@@ -327,7 +327,7 @@ pub const NativeViewData = views.NativeViewData;
 pub const Modifiers = views.Modifiers;
 /// How a `Toggle` draws: a switch or a checkbox (`.toggleStyle()`).
 pub const ToggleStyle = views.ToggleStyle;
-/// How a checkbox `Toggle` draws its box: rounded, square or circular (`.checkboxStyle()`).
+/// How a checkbox `Toggle` draws its box: rounded, square, circular or compact (`.checkboxStyle()`).
 pub const CheckboxStyle = views.CheckboxStyle;
 /// The colors a `TextEditor` draws its caret, selection, gutter and matches in.
 pub const TextEditorColors = views.TextEditorColors;
@@ -440,6 +440,8 @@ pub const WrapCache = views.WrapCache;
 pub const StackBuilder = views.StackBuilder;
 /// The built-in controls' geometry.
 pub const ControlMetrics = views.ControlMetrics;
+/// What a checkbox measures in one style (`ControlMetrics.checkbox`).
+pub const CheckboxMeasures = views.CheckboxMeasures;
 /// Lowers views to layout nodes.
 pub const ViewLowering = views.ViewLowering;
 /// Paints laid-out views.

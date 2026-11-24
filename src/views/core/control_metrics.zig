@@ -2,6 +2,22 @@
 
 const std = @import("std");
 const log = std.log.scoped(.ziggui_control_metrics);
+const mod = @import("module.zig");
+const renderer = @import("renderer");
+
+/// What a checkbox `Toggle` measures in one `CheckboxStyle`
+/// (`ControlMetrics.checkbox`): the one set of sizes layout reserves and
+/// painting draws into.
+pub const CheckboxMeasures = struct {
+    const Self = @This();
+
+    /// The box's side.
+    side: f32,
+    /// The gap between the box and its label.
+    gap: f32,
+    /// The label's font size.
+    label_size: f32,
+};
 
 /// Control sizes, sampled from native macOS 26 controls, that layout reserves
 /// and painting draws into.
@@ -18,6 +34,13 @@ pub const ControlMetrics = struct {
     pub const checkbox_size: f32 = 14;
     /// The gap between a checkbox and its label.
     pub const checkbox_gap: f32 = 6;
+    /// A `.compact` checkbox's side (`CheckboxStyle.compact`).
+    pub const compact_checkbox_size: f32 = 12;
+    /// A `.compact` checkbox's corner radius: `checkbox_radius` scaled to its
+    /// smaller side.
+    pub const compact_checkbox_radius: f32 = 3;
+    /// The gap between a `.compact` checkbox and its label.
+    pub const compact_checkbox_gap: f32 = 4;
     /// A pop-up button's (`.pickerStyle(.menu)`) up-and-down chevron side.
     pub const popup_chevron_size: f32 = 12;
     /// The gap between a pop-up button's title and its chevron.
@@ -101,6 +124,18 @@ pub const ControlMetrics = struct {
     /// the cap's border, as a `KeyCap` has one, in a color that reads on the
     /// button's fill.
     pub const button_key_border_alpha: f32 = 0.3;
+
+    /// The measures a checkbox `Toggle` lays out and paints with in a style:
+    /// a `.compact` one's smaller box and gap with its label in the footnote
+    /// font, any other's with its label in the body font.
+    ///
+    /// - `style`: the checkbox's style.
+    /// - `typography`: the theme's type sizes.
+    /// - Returns: its box side, the gap after the box and its label's size.
+    pub fn checkbox(style: mod.CheckboxStyle, typography: *const renderer.Typography) CheckboxMeasures {
+        if (style == .compact) return .{ .side = Self.compact_checkbox_size, .gap = Self.compact_checkbox_gap, .label_size = typography.footnote.size };
+        return .{ .side = Self.checkbox_size, .gap = Self.checkbox_gap, .label_size = typography.body.size };
+    }
 };
 
 // -----------------------------------------------------------------------------
@@ -110,4 +145,18 @@ test {
     std.testing.refAllDecls(@This());
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "a compact checkbox measures smaller, its label in the footnote font; the others alike in the body font" {
+    const typography = &renderer.MacosTheme.light.typography;
+    const compact = ControlMetrics.checkbox(.compact, typography);
+    try std.testing.expectEqual(ControlMetrics.compact_checkbox_size, compact.side);
+    try std.testing.expectEqual(ControlMetrics.compact_checkbox_gap, compact.gap);
+    try std.testing.expectEqual(typography.footnote.size, compact.label_size);
+    for ([_]mod.CheckboxStyle{ .automatic, .rounded, .square, .circular }) |style| {
+        const measures = ControlMetrics.checkbox(style, typography);
+        try std.testing.expectEqual(ControlMetrics.checkbox_size, measures.side);
+        try std.testing.expectEqual(ControlMetrics.checkbox_gap, measures.gap);
+        try std.testing.expectEqual(typography.body.size, measures.label_size);
+    }
 }

@@ -498,7 +498,8 @@ pub const ControlPainter = struct {
     /// Paints a checkbox toggle: a box on the leading edge (the accent with a
     /// check mark while on, the control's ground with its border while off,
     /// or an explicit `CheckboxStyle`'s through `paintStyledBox`), then the
-    /// label. A tap anywhere on it flips it.
+    /// label (a `.compact` one smaller, in the footnote font and the secondary
+    /// label color while off). A tap anywhere on it flips it.
     ///
     /// - `context`: the context.
     /// - `toggle`: the toggle.
@@ -509,37 +510,35 @@ pub const ControlPainter = struct {
         const colors = &context.theme.colors;
         const dim: f32 = if (context.disabled) 0.4 else 1;
         const opacity = context.opacity * dim;
-        const box = renderer.Rect{
-            .x = rect.x,
-            .y = Self.verticalCenter(rect, mod.ControlMetrics.checkbox_size),
-            .width = mod.ControlMetrics.checkbox_size,
-            .height = mod.ControlMetrics.checkbox_size,
-        };
+        const on = toggle.value.get();
+        const measures = mod.ControlMetrics.checkbox(context.checkbox_style, &context.theme.typography);
+        const box = renderer.Rect{ .x = rect.x, .y = Self.verticalCenter(rect, measures.side), .width = measures.side, .height = measures.side };
         if (context.checkbox_style == .automatic) {
             const radius = context.theme.metrics.radius(mod.ControlMetrics.checkbox_radius);
             const surface = context.surface(display_list);
-            if (toggle.value.get()) {
+            if (on) {
                 try surface.fill(box, radius, colors.accent.multiplyAlpha(dim));
                 Self.paintCheck(context, box, colors.on_accent.multiplyAlpha(opacity), display_list);
             } else {
                 try surface.fill(box, radius, colors.control_background.multiplyAlpha(dim));
                 try surface.stroke(box, radius, context.theme.metrics.hairline, colors.control_border.multiplyAlpha(dim));
             }
-        } else try Self.paintStyledBox(context, box, toggle.value.get(), opacity, display_list);
+        } else try Self.paintStyledBox(context, box, on, opacity, display_list);
         if (toggle.label.len > 0) {
-            const pixel_size = context.theme.typography.body.size;
-            const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
-            const origin = renderer.Point{ .x = box.maxX() + mod.ControlMetrics.checkbox_gap, .y = Self.verticalCenter(rect, line_height) };
-            context.drawText(display_list, toggle.label, pixel_size, context.foreground.multiplyAlpha(opacity), origin) catch |err| log.debug("text not drawn [{t}]", .{err});
+            const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(measures.label_size);
+            const origin = renderer.Point{ .x = box.maxX() + measures.gap, .y = Self.verticalCenter(rect, line_height) };
+            const label_color = if (context.checkbox_style == .compact and !on) colors.secondary_label else context.foreground;
+            context.drawText(display_list, toggle.label, measures.label_size, label_color.multiplyAlpha(opacity), origin) catch |err| log.debug("text not drawn [{t}]", .{err});
         }
         try context.hit_regions.append(context.arena, .{ .rect = rect, .action = .{ .toggle = toggle.value }, .disabled = context.disabled });
     }
 
     /// Paints a checkbox's box in one of the explicit `CheckboxStyle`s, the
     /// same under every theme family: outlined, the outline inside the box;
-    /// `.rounded` keeps it empty with the check in the outline's color,
-    /// `.square` and `.circular` fill it while on with the check in the
-    /// accent's text color.
+    /// `.rounded` and `.compact` keep it empty with the check in the outline's
+    /// color (`.compact`'s the accent while on and the secondary label color
+    /// while off), `.square` and `.circular` fill it while on with the check
+    /// in the accent's text color.
     ///
     /// - `context`: the context, with the style and the toggle's own tint.
     /// - `box`: the box's frame.
@@ -550,14 +549,19 @@ pub const ControlPainter = struct {
     fn paintStyledBox(context: *const mod.Context, box: renderer.Rect, on: bool, opacity: f32, display_list: *renderer.DisplayList) !void {
         const colors = &context.theme.colors;
         const style = context.checkbox_style;
-        const color = (context.tint orelse if (style == .rounded) context.foreground else colors.accent).multiplyAlpha(opacity);
+        const color = (switch (style) {
+            .rounded => context.tint orelse context.foreground,
+            .compact => if (on) context.tint orelse colors.accent else colors.secondary_label,
+            .automatic, .square, .circular => context.tint orelse colors.accent,
+        }).multiplyAlpha(opacity);
         const radius: f32 = switch (style) {
             .automatic, .rounded => mod.ControlMetrics.checkbox_radius,
+            .compact => mod.ControlMetrics.compact_checkbox_radius,
             .square => 0,
             .circular => box.width / 2,
         };
         const line_width = mod.ControlMetrics.checkbox_line_width;
-        if (on and style != .rounded) {
+        if (on and (style == .square or style == .circular)) {
             try display_list.fillRoundedRect(box, radius, color);
             try Self.paintBoldCheck(box, colors.on_accent.multiplyAlpha(opacity), display_list);
             return;

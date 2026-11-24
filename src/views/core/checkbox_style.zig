@@ -27,6 +27,12 @@ pub const CheckboxStyle = enum {
     /// An outlined circle in the accent, filled with it while on, the check in
     /// the accent's text color.
     circular,
+
+    /// A small outlined, rounded box for a toolbar or a pane's heading, never
+    /// filled: in the accent with the check inside it while on, in the
+    /// secondary label color while off; its label in the footnote font, the
+    /// secondary label color while off.
+    compact,
 };
 
 // -----------------------------------------------------------------------------
