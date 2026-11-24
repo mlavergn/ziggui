@@ -778,6 +778,30 @@ pub const AudioOutputBackend = @import("audio/module.zig").AudioOutputBackend;
 pub const AudioOutputs = @import("audio/module.zig").AudioOutputs;
 /// Builds the list an audio output backend returns: strings copied, each id once.
 pub const AudioOutputCollector = @import("audio/module.zig").AudioOutputCollector;
+/// What `AudioClip.decodeWav` refuses, and allocation failure.
+pub const AudioClipError = @import("audio/module.zig").AudioClipError;
+/// What a WAV file's header says of its sound (`AudioClip.inspectWav`).
+pub const AudioClipInfo = @import("audio/module.zig").AudioClipInfo;
+/// A mono 16-bit sound in memory, read from and written to WAV bytes (`AudioRecorder`, `AudioClipPlayer`).
+pub const AudioClip = @import("audio/module.zig").AudioClip;
+/// Which way sound goes through an audio device: recording or playback.
+pub const AudioDirection = @import("audio/module.zig").AudioDirection;
+/// One device the recorder or the clip player can open (`AudioDevices.list`).
+pub const AudioDevice = @import("audio/module.zig").AudioDevice;
+/// The platform's audio streams, installed by the SDL runtime.
+pub const AudioDeviceBackend = @import("audio/module.zig").AudioDeviceBackend;
+/// The installed audio device backend, and its device lists.
+pub const AudioDevices = @import("audio/module.zig").AudioDevices;
+/// What an `AudioRecorder` is doing: idle, recording or paused.
+pub const AudioRecorderStatus = @import("audio/module.zig").AudioRecorderStatus;
+/// A microphone recorder modeled on `AVAudioRecorder`, apart from any `Player`.
+pub const AudioRecorder = @import("audio/module.zig").AudioRecorder;
+/// Plays an `AudioClip`, modeled on `AVAudioPlayer`, apart from any `Player`.
+pub const AudioClipPlayer = @import("audio/module.zig").AudioClipPlayer;
+/// One fake stream of `TestAudioDevices`.
+pub const TestAudioStream = @import("audio/module.zig").TestAudioStream;
+/// A fake audio device backend for tests.
+pub const TestAudioDevices = @import("audio/module.zig").TestAudioDevices;
 /// How the window's frames are drawn: GPU, software, or not yet known.
 pub const GraphicsRenderer = @import("system/module.zig").GraphicsRenderer;
 /// One reading of the system (`SystemInfo.report`).

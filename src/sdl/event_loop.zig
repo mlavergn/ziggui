@@ -1105,6 +1105,7 @@ pub fn EventLoop(comptime AppState: type) type {
             mod.VideoBackend.install();
             // `AudioOutputs` lists its sound outputs.
             mod.AudioBackend.install();
+            mod.SdlAudioDevices.install();
             // And `WebPage`s with its web view.
             mod.WebBackend.install();
             app.hide_on_close = config.hide_on_close;
@@ -1180,6 +1181,7 @@ pub fn EventLoop(comptime AppState: type) type {
             // Before the window goes: the pictures leave it, players live on.
             mod.VideoBackend.uninstall();
             mod.AudioBackend.uninstall();
+            mod.SdlAudioDevices.uninstall();
             mod.WebBackend.uninstall();
             // And the app's platform views leave it; the app still owns them.
             mod.NativeBackend.detachAll();

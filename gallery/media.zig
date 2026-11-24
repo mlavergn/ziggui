@@ -68,6 +68,10 @@ pub const Media = struct {
     /// Whether the Media Audio panel's output menu is shown.
     audio_output_menu: ziggui.State(bool),
 
+    /// The Media Audio panel's voice memos, recorded and played apart from
+    /// `audio_player`.
+    memos: gallery.VoiceMemos,
+
     /// Whether the player fills the window alone (the controls' full-screen button).
     expanded: bool = false,
 
@@ -110,6 +114,7 @@ pub const Media = struct {
             .report_arena = std.heap.ArenaAllocator.init(allocator),
             .audio_player = ziggui.Player.init(allocator),
             .audio_output_menu = ziggui.State(bool).init(allocator, false),
+            .memos = gallery.VoiceMemos.init(allocator),
         };
         return self;
     }
@@ -124,6 +129,7 @@ pub const Media = struct {
         self.report_arena.deinit();
         self.audio_player.deinit();
         self.audio_output_menu.deinit();
+        self.memos.deinit();
     }
 
     /// The Media Video panel: the picture with the standard controls over it, the
@@ -180,7 +186,7 @@ pub const Media = struct {
 
     /// The Media Audio panel: the audio bar over its own `Player`, the
     /// item's buttons (and the output menu where outputs are listed), what
-    /// the player reports, and the audio outputs.
+    /// the player reports, the voice memos, and the audio outputs.
     ///
     /// - `self`: the panel.
     /// - `theme`: the theme this frame draws with.
@@ -193,6 +199,7 @@ pub const Media = struct {
             gallery.Card.view(theme, "AudioPlayerControls: a podcast player's bar over a Player with no picture", "ziggui.AudioPlayerControls · ziggui.AudioPlayerControlsState · ziggui.Player", ziggui.AudioPlayerControls(&self.audio_player, &self.audio_controls, title)),
             buttons,
             ziggui.Text(Self.describe(observation, "No item. Load sample audio plays the audio of Apple's HLS example (over the network).")).foregroundStyle(ziggui.BuildScope.shared().tokens().secondary_label).truncated().frameMaxWidth().frameAlign(.leading),
+            self.memos.card(theme),
             self.infoCard(theme, "AudioInfoView: the output the player plays through, and the devices", "ziggui.AudioInfoView · ziggui.AudioOutputs", .audio),
         }).spacing(16);
     }
@@ -270,11 +277,13 @@ pub const Media = struct {
 
     /// Reads the system the first time the Media Video or Media Audio panel shows,
     /// so their views only draw what was read; the gallery calls it as the
-    /// section opens. GStreamer starts and the devices are probed here, once.
+    /// section opens. GStreamer starts and the devices are probed here, once,
+    /// and the voice memos are read from their folder.
     ///
     /// - `self`: the panel.
     pub fn showPanel(self: *Self) void {
         if (!self.report_read) self.readReport();
+        self.memos.load();
     }
 
     /// Plays the sample stream from its start.

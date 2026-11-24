@@ -98,6 +98,8 @@ pub const SceneShaders = @import("gpu/scene_renderer.zig").SceneShaders;
 pub const VideoBackend = @import("video_backend.zig").VideoBackend;
 /// This OS's audio output listing for `AudioOutputs`.
 pub const AudioBackend = @import("audio_backend.zig").AudioBackend;
+/// SDL's audio devices for `AudioRecorder` and `AudioClipPlayer`.
+pub const SdlAudioDevices = @import("sdl_audio_devices.zig").SdlAudioDevices;
 /// A video frame the player hands the renderer to draw under the surface (Windows).
 pub const VideoUnderlay = @import("video_underlay.zig").VideoUnderlay;
 /// The macOS media player: AVFoundation, its pictures behind the Metal view.

@@ -37,6 +37,8 @@ pub const SceneDemo = @import("scene_demo.zig").SceneDemo;
 pub const ChartsDemo = @import("charts_demo.zig").ChartsDemo;
 /// The Pickers panel: menu-style pickers in a form, and outside one.
 pub const Pickers = @import("pickers.zig").Pickers;
+/// The Media Audio section's voice memos card: record, keep as WAV, play back.
+pub const VoiceMemos = @import("voice_memos.zig").VoiceMemos;
 /// The Settings panel: an app's settings (`ziggui.Settings`), and their state.
 pub const SettingsPanel = @import("settings_panel.zig").SettingsPanel;
 /// The Media Web panel: a `WebPage` under a browser's toolbar, and its bookmarks.

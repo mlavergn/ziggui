@@ -211,7 +211,7 @@ pub const Section = enum {
             .effects => &.{ "ziggui.Animator · ziggui.ProgressView", ".glassEffect", ".opacity · .border · .cornerRadius", ".backgroundMaterial(.regular)" },
             .forms => &.{ "ziggui.SettingRow", "ziggui.LabeledField · ziggui.FieldChrome", "ziggui.KeyValueEditor", "ziggui.TokenField", "ziggui.ThemeFamilyPicker", "ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker · ziggui.ThemePicker" },
             .files => &.{ "ziggui.FileBrowser · FileBrowserState.shows_file", "ziggui.FileDialog.openFile · .saveFile · .takeResult" },
-            .mediaAudio => &.{ "ziggui.AudioPlayerControls · ziggui.AudioPlayerControlsState · ziggui.Player", "ziggui.AudioInfoView · ziggui.AudioOutputs" },
+            .mediaAudio => &.{ "ziggui.AudioPlayerControls · ziggui.AudioPlayerControlsState · ziggui.Player", "ziggui.AudioRecorder · ziggui.AudioClipPlayer · ziggui.AudioClip · ziggui.AudioDevices", "ziggui.AudioInfoView · ziggui.AudioOutputs" },
             .mediaVideo => &.{ "ziggui.VideoPlayer · ziggui.VideoPlayerControls · ziggui.Player", "ziggui.VideoPlayerControlsWith · ziggui.VideoPlayerControlButton · ziggui.VideoPlayerControlMenu", "ziggui.VideoInfoView · ziggui.SystemInfo", "ziggui.SystemInfoView · ziggui.SystemReport" },
             .mediaWeb => &.{"ziggui.WebView · ziggui.WebPage · ziggui.WebPageMessageCallback"},
             .mediaNative => &.{"ziggui.NativeView"},
@@ -621,6 +621,8 @@ pub const Gallery = struct {
         // The Media Video panel's player, full screen: nothing else shows but the
         // sheet and alerts (the quit question).
         self.media.syncFullScreen();
+        // Voice memos record and play on whatever section shows.
+        self.media.memos.update();
         if (self.media.expanded) return self.showcase.presentations(self.media.expandedView(), active_theme);
         const root = ziggui.VStack(.{
             self.topBar(active_theme),
@@ -742,6 +744,7 @@ pub const Gallery = struct {
                 return false;
             } else self.sidebarKeyDown(keycode, modifiers),
             .lists => self.kit.editableKeyDown(keycode, modifiers) or self.sidebarKeyDown(keycode, modifiers),
+            .mediaAudio => self.media.memos.keyDown(keycode, modifiers) or self.sidebarKeyDown(keycode, modifiers),
             .table => self.tableKeyDown(keycode, modifiers) or self.sidebarKeyDown(keycode, modifiers),
             else => self.sidebarKeyDown(keycode, modifiers),
         };

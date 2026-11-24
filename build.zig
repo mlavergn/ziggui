@@ -509,6 +509,9 @@ const Gallery = struct {
             .icns = b.path("assets/icon/zigz.icns"),
             .png = b.path("assets/icon/zigz.png"),
             .comment = "Every ziggui component, in every theme",
+            // The Media Audio section's voice memos record from the
+            // microphone, which macOS allows only an app that says why.
+            .plist_extra = "    <key>NSMicrophoneUsageDescription</key>\n    <string>The gallery records voice memos from the microphone.</string>",
         };
         const app_step = b.step("gallery-app", "Build the component gallery as an app (a .app bundle on macOS)");
         app_step.dependOn(zigbuildx.App.addInstall(b, bundle, null));

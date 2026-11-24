@@ -1162,6 +1162,30 @@ pub const AudioOutputBackend = views.AudioOutputBackend;
 pub const AudioOutputs = views.AudioOutputs;
 /// Builds the list an audio output backend returns: strings copied, each id once.
 pub const AudioOutputCollector = views.AudioOutputCollector;
+/// What `AudioClip.decodeWav` refuses, and allocation failure.
+pub const AudioClipError = views.AudioClipError;
+/// What a WAV file's header says of its sound (`AudioClip.inspectWav`).
+pub const AudioClipInfo = views.AudioClipInfo;
+/// A mono 16-bit sound in memory, read from and written to WAV bytes (`AudioRecorder`, `AudioClipPlayer`).
+pub const AudioClip = views.AudioClip;
+/// Which way sound goes through an audio device: recording or playback.
+pub const AudioDirection = views.AudioDirection;
+/// One device the recorder or the clip player can open (`AudioDevices.list`).
+pub const AudioDevice = views.AudioDevice;
+/// The platform's audio streams, installed by the SDL runtime.
+pub const AudioDeviceBackend = views.AudioDeviceBackend;
+/// The installed audio device backend, and its device lists.
+pub const AudioDevices = views.AudioDevices;
+/// What an `AudioRecorder` is doing: idle, recording or paused.
+pub const AudioRecorderStatus = views.AudioRecorderStatus;
+/// A microphone recorder modeled on `AVAudioRecorder`, apart from any `Player`.
+pub const AudioRecorder = views.AudioRecorder;
+/// Plays an `AudioClip`, modeled on `AVAudioPlayer`, apart from any `Player`.
+pub const AudioClipPlayer = views.AudioClipPlayer;
+/// One fake stream of `TestAudioDevices`.
+pub const TestAudioStream = views.TestAudioStream;
+/// A fake audio device backend for tests.
+pub const TestAudioDevices = views.TestAudioDevices;
 /// How the window's frames are drawn: GPU, software, or not yet known.
 pub const GraphicsRenderer = views.GraphicsRenderer;
 /// One reading of the system (`SystemInfo.report`).

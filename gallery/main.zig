@@ -125,6 +125,9 @@ const Arguments = struct {
     path_entry: bool = false,
     /// Turn on the Scenes section's ray tracing.
     ray_traced: bool = false,
+    /// Show the Media Audio section's voice memos with two sample memos, one
+    /// playing, and a take recording, on `ziggui.TestAudioDevices` (headless).
+    memos: bool = false,
 
     /// Draw one frame to this BMP instead of opening a window.
     screenshot: ?[]const u8 = null,
@@ -192,6 +195,8 @@ const Arguments = struct {
                 arguments.path_entry = true;
             } else if (std.mem.eql(u8, argument, "--ray-traced")) {
                 arguments.ray_traced = true;
+            } else if (std.mem.eql(u8, argument, "--memos")) {
+                arguments.memos = true;
             } else if (std.mem.eql(u8, argument, "--gpu")) {
                 arguments.gpu = true;
             } else if (std.mem.eql(u8, argument, "--bench") and index + 1 < argument_vector.len) {
@@ -302,6 +307,14 @@ const Arguments = struct {
         if (self.search) |text| shown.search.field.setText(text) catch |err| log.err("search not typed: {s}", .{@errorName(err)});
         if (self.video) |video| shown.media.sample = video;
         if (self.ray_traced) shown.scene_demo.ray_traced.set(true);
+        if (self.memos) {
+            ziggui.TestAudioDevices.install();
+            shown.media.memos.showSample();
+            // A second into the memo playing, and a loud moment of the take.
+            ziggui.TestAudioDevices.playOut(gallery.VoiceMemos.sample_rate);
+            const loud: [64]i16 = @splat(-24_000);
+            ziggui.TestAudioDevices.capture(&loud);
+        }
     }
 };
 
@@ -945,6 +958,8 @@ const Window = struct {
             target.media.set_full_screen_fn = null;
             target.media.is_full_screen_fn = null;
         }
+        // The Media Audio section's voice memos live beside the settings.
+        target.media.memos.keep(WindowSettings.settings_io, WindowSettings.folder);
         const native_sample = Self.makeNativeSample();
         target.media.native_sample = native_sample;
         defer {
