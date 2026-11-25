@@ -1,7 +1,8 @@
 //! The Charts section: `LineChart` and what it takes, card by card: several
 //! series with one primary, its scales (symmetric about a baseline, or a
-//! domain given), a line broken where readings are missing, a chart built
-//! from two sliders each frame, and sparklines with no caption or labels;
+//! domain given), a log scale beside a linear one, a line broken where
+//! readings are missing, a chart built from two sliders each frame, and
+//! sparklines with no caption or labels;
 //! then `BarChart`: a week of steps with a grid and a line through the bars,
 //! and a year's profit with its losses below zero, each bar colored.
 
@@ -35,6 +36,9 @@ pub const ChartsDemo = struct {
         .{ .x = 16, .y = 20.1 },             .{ .x = 18, .y = 17.2 }, .{ .x = 20, .y = 14.6 },              .{ .x = 22, .y = 12.9 },
         .{ .x = 24, .y = 11.8 },
     };
+    /// A model's training loss over 400 steps: a fast fall then a long,
+    /// slow one, across nearly three decades.
+    const training_loss = Self.trainingLoss();
     /// A week of steps (thousands), a bar a day.
     const week_steps = [_]f32{ 3.5, 6.0, 4.5, 8.0, 5.5, 9.0, 7.0 };
     /// The day under each of `week_steps`.
@@ -93,6 +97,7 @@ pub const ChartsDemo = struct {
         return ziggui.VStack(.{
             Self.seriesCard(theme),
             Self.scalesCard(theme),
+            Self.logScaleCard(theme),
             Self.gapsCard(theme),
             self.liveCard(theme),
             Self.sparklinesCard(theme),
@@ -147,6 +152,29 @@ pub const ChartsDemo = struct {
                 .caption = "Processor, 0–100 %",
                 .x_start_label = "−60 s",
                 .x_end_label = "now",
+            }).frameMaxWidth().frameHeight(110),
+        }).spacing(16));
+    }
+
+    /// The log scale card: a training loss on a log y scale, where its slow
+    /// late fall still reads, beside the same loss on a linear one, where it
+    /// flattens against the floor.
+    ///
+    /// - `theme`: the theme this frame draws with.
+    /// - Returns: the card.
+    fn logScaleCard(theme: ziggui.Theme) ziggui.View {
+        const loss = [_]ziggui.ChartSeries{.{ .points = &training_loss }};
+        return gallery.Card.view(theme, "A log scale: each decade of a falling loss takes equal room", "ziggui.ChartScaleType · LineChartOptions.y_scale_type", ziggui.HStack(.{
+            ziggui.LineChart(&loss, .{
+                .y_scale_type = .log,
+                .caption = "Loss, log scale",
+                .x_start_label = "step 0",
+                .x_end_label = "400",
+            }).frameMaxWidth().frameHeight(110),
+            ziggui.LineChart(&loss, .{
+                .caption = "Loss, linear",
+                .x_start_label = "step 0",
+                .x_end_label = "400",
             }).frameMaxWidth().frameHeight(110),
         }).spacing(16));
     }
@@ -320,6 +348,22 @@ pub const ChartsDemo = struct {
             const burst: f32 = if (index >= 24 and index < 34) 45 * @sin((second - 24) / 10 * std.math.pi) else 0;
             const jitter = 6 * @sin(second * 2.7) * @cos(second * 1.3);
             point.* = .{ .x = second, .y = std.math.clamp(swell + burst + jitter, 0, 100) };
+        }
+        return points;
+    }
+
+    /// A training loss every 5 steps for 400: from about 11 it falls fast,
+    /// then ever more slowly toward 0.02, with a little noise.
+    ///
+    /// - Returns: the samples, x from 0 to 400 steps.
+    fn trainingLoss() [81]ziggui.Point {
+        @setEvalBranchQuota(20_000);
+        var points: [81]ziggui.Point = undefined;
+        for (&points, 0..) |*point, index| {
+            const step: f32 = @floatFromInt(index * 5);
+            const fall = 11 * @exp(-step / 18) + 0.6 * @exp(-step / 120) + 0.02;
+            const noise = 1 + 0.04 * @sin(step * 0.7) * @cos(step * 0.23);
+            point.* = .{ .x = step, .y = fall * noise };
         }
         return points;
     }

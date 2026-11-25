@@ -35,6 +35,10 @@ pub const Media = @import("media.zig").Media;
 pub const SceneDemo = @import("scene_demo.zig").SceneDemo;
 /// The Charts section's cards: `LineChart` and its options.
 pub const ChartsDemo = @import("charts_demo.zig").ChartsDemo;
+/// The Menus & Commands section's recent-projects card: a `MenuTable` with File → Open Recent.
+pub const RecentMenus = @import("recent_menus.zig").RecentMenus;
+/// What an entry of the recent-projects card's table does.
+pub const RecentMenuAction = @import("recent_menus.zig").RecentMenuAction;
 /// The Pickers panel: menu-style pickers in a form, and outside one.
 pub const Pickers = @import("pickers.zig").Pickers;
 /// The Media Audio section's voice memos card: record, keep as WAV, play back.

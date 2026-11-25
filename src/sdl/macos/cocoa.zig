@@ -9,13 +9,36 @@ const mod = @import("module.zig");
 const views = @import("views");
 const sdl_c = @import("sdl_c");
 
+/// A menu-bar submenu whose entries the app swaps while it runs
+/// (`CommandItem.replaceable`), with the actions of the entries it holds now.
+const ReplaceableMenu = struct {
+    const Self = @This();
+
+    /// The title of the entry that opens it, which names it; owned.
+    title: []const u8,
+    /// The `NSMenu`.
+    menu: mod.Id,
+    /// Its entries' actions, by the low part of each one's tag (`Cocoa.replaceable_tag`).
+    actions: std.ArrayList(views.Callback) = .empty,
+};
+
 /// The Objective-C bridge and the AppKit objects it keeps: menu actions and
 /// the status item. One per process (`shared`).
 pub const Cocoa = struct {
     const Self = @This();
 
+    /// Tags at or above this belong to a replaceable submenu's entry:
+    /// `replaceable_tag * (menu + 1) + entry`.
+    const replaceable_tag: i64 = 1 << 32;
+
     /// Menu actions, indexed by each item's tag (they live for the process).
     actions: std.ArrayList(views.Callback) = .empty,
+
+    /// The submenus the app can swap the entries of, in the order built.
+    replaceables: std.ArrayList(ReplaceableMenu) = .empty,
+
+    /// The one object every menu item targets (`menuTarget`), made once.
+    menu_target: mod.Id = null,
 
     /// The status item, while one exists.
     status_item: mod.Id = null,
@@ -232,8 +255,14 @@ pub const Cocoa = struct {
         const bar = mod.ObjectiveC.send(mod.Id, ns_app, "mainMenu", .{}) orelse return;
         if (menus.len > 0) {
             while (mod.ObjectiveC.send(i64, bar, "numberOfItems", .{}) > 1) mod.ObjectiveC.send(void, bar, "removeItemAtIndex:", .{@as(i64, 1)});
+            // Their submenus went with the menus: none is left to swap.
+            for (self.replaceables.items) |*replaceable| {
+                std.heap.page_allocator.free(replaceable.title);
+                replaceable.actions.deinit(std.heap.page_allocator);
+            }
+            self.replaceables.clearRetainingCapacity();
         }
-        const target = Self.menuTarget();
+        const target = self.menuTarget();
         if (settings) |callback| settings: {
             const app_item = mod.ObjectiveC.send(mod.Id, bar, "itemAtIndex:", .{@as(i64, 0)}) orelse break :settings;
             const app_menu = mod.ObjectiveC.send(mod.Id, app_item, "submenu", .{}) orelse break :settings;
@@ -260,31 +289,132 @@ pub const Cocoa = struct {
         }
         for (menus) |menu| {
             const holder = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSMenuItem"), "new", .{});
-            const submenu = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSMenu"), "alloc", .{}), "initWithTitle:", .{mod.ObjectiveC.string(menu.title)});
-            for (menu.items) |entry| {
-                if (entry.title.len == 0) {
-                    mod.ObjectiveC.send(void, submenu, "addItem:", .{mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSMenuItem"), "separatorItem", .{})});
-                    continue;
-                }
-                const selector = mod.ObjectiveC.selectorNamed(if (entry.selector) |name| name else "fire:");
-                const item = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSMenuItem"), "alloc", .{}), "initWithTitle:action:keyEquivalent:", .{ mod.ObjectiveC.string(entry.title), selector, mod.ObjectiveC.string(entry.key) });
-                if (entry.key.len > 0) {
-                    var mask: u64 = 1 << 20; // Command
-                    if (entry.shift) mask |= 1 << 17;
-                    if (entry.control) mask |= 1 << 18;
-                    if (entry.option) mask |= 1 << 19;
-                    mod.ObjectiveC.send(void, item, "setKeyEquivalentModifierMask:", .{mask});
-                }
-                if (entry.action) |callback| {
-                    mod.ObjectiveC.send(void, item, "setTag:", .{@as(i64, @intCast(self.actions.items.len))});
-                    self.actions.append(std.heap.page_allocator, callback) catch continue;
-                    mod.ObjectiveC.send(void, item, "setTarget:", .{target});
-                }
-                mod.ObjectiveC.send(void, submenu, "addItem:", .{item});
-            }
+            const submenu = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSMenu"), "alloc", .{}), "initWithTitle:", .{Self.menuString(menu.title)});
+            self.addItems(submenu, menu.items, target, null);
             mod.ObjectiveC.send(void, holder, "setSubmenu:", .{submenu});
             mod.ObjectiveC.send(void, bar, "addItem:", .{holder});
+            // The bar holds the holder and the holder its submenu, as `addItems` leaves its own.
+            mod.ObjectiveC.release(submenu);
+            mod.ObjectiveC.release(holder);
         }
+    }
+
+    /// Swaps the entries of the replaceable submenu opened by the entry
+    /// titled `title` (`CommandItem.replaceable`); the actions of the entries
+    /// it held go with them. Nothing happens when no such submenu was built.
+    ///
+    /// - `self`: the bridge.
+    /// - `title`: the opening entry's title.
+    /// - `items`: the new entries; their titles are copied, their actions kept.
+    pub fn replaceSubmenu(self: *Self, title: []const u8, items: []const mod.CommandItem) void {
+        // The app calls this from its own code, outside SDL's event pump and
+        // its pool: without one, each swap's autoreleased strings would leak.
+        const pool = mod.ObjectiveC.pushPool();
+        defer mod.ObjectiveC.popPool(pool);
+        for (self.replaceables.items, 0..) |*replaceable, owner| {
+            if (!std.mem.eql(u8, replaceable.title, title)) continue;
+            mod.ObjectiveC.send(void, replaceable.menu, "removeAllItems", .{});
+            replaceable.actions.clearRetainingCapacity();
+            self.addItems(replaceable.menu, items, self.menuTarget(), owner);
+            return;
+        }
+        // A title no submenu has: the swap is lost, so say so.
+        log.warn("no replaceable submenu {s}", .{title});
+    }
+
+    /// Adds `items` to `menu`, each entry with a submenu opening one of its own.
+    ///
+    /// - `self`: the bridge.
+    /// - `menu`: the `NSMenu`.
+    /// - `items`: the entries.
+    /// - `target`: the object the entries' actions go to.
+    /// - `owner`: the replaceable submenu `menu` is, whose list keeps the
+    ///   actions; null keeps them for the process.
+    fn addItems(self: *Self, menu: mod.Id, items: []const mod.CommandItem, target: mod.Id, owner: ?usize) void {
+        for (items) |entry| {
+            if (entry.title.len == 0) {
+                mod.ObjectiveC.send(void, menu, "addItem:", .{mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSMenuItem"), "separatorItem", .{})});
+                continue;
+            }
+            const opens = entry.submenu.len > 0 or entry.replaceable;
+            // An entry that opens a submenu sends nothing itself.
+            const selector: mod.Id = if (opens) null else mod.ObjectiveC.selectorNamed(if (entry.selector) |name| name else "fire:");
+            const item = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSMenuItem"), "alloc", .{}), "initWithTitle:action:keyEquivalent:", .{ Self.menuString(entry.title), selector, Self.menuString(entry.key) });
+            if (entry.key.len > 0) {
+                var mask: u64 = 1 << 20; // Command
+                if (entry.shift) mask |= 1 << 17;
+                if (entry.control) mask |= 1 << 18;
+                if (entry.option) mask |= 1 << 19;
+                mod.ObjectiveC.send(void, item, "setKeyEquivalentModifierMask:", .{mask});
+            }
+            if (opens) {
+                const submenu = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSMenu"), "alloc", .{}), "initWithTitle:", .{Self.menuString(entry.title)});
+                // Inside a replaceable submenu a replaceable one stays plain:
+                // the outer swap frees it, and `replaceables` would keep a
+                // dangling pointer (and a new entry each swap).
+                const nested: ?usize = if (entry.replaceable and owner == null) self.keepReplaceable(entry.title, submenu) else owner;
+                self.addItems(submenu, entry.submenu, target, nested);
+                mod.ObjectiveC.send(void, item, "setSubmenu:", .{submenu});
+                // The item holds the submenu now (`replaceables` keeps a weak pointer).
+                mod.ObjectiveC.release(submenu);
+            } else if (entry.action) |callback| keep: {
+                const list = if (owner) |at| &self.replaceables.items[at].actions else &self.actions;
+                list.append(std.heap.page_allocator, callback) catch |err| {
+                    log.warn("cannot keep the action of {s} [{t}]", .{ entry.title, err });
+                    break :keep;
+                };
+                const index: i64 = @intCast(list.items.len - 1);
+                const tag = if (owner) |at| replaceable_tag * @as(i64, @intCast(at + 1)) + index else index;
+                mod.ObjectiveC.send(void, item, "setTag:", .{tag});
+                mod.ObjectiveC.send(void, item, "setTarget:", .{target});
+            }
+            mod.ObjectiveC.send(void, menu, "addItem:", .{item});
+            // The menu holds the item now: a swapped submenu's old entries go with `removeAllItems`.
+            mod.ObjectiveC.release(item);
+        }
+    }
+
+    /// An `NSString` for a menu's title or key, never nil: AppKit raises on a
+    /// nil title, and `stringWithUTF8String:` gives nil for text that is not
+    /// UTF-8, so such text has each invalid byte replaced (`DisplayText`).
+    ///
+    /// - `text`: the title or key.
+    /// - Returns: the autoreleased string.
+    fn menuString(text: [:0]const u8) mod.Id {
+        const string = mod.ObjectiveC.string(text);
+        if (string != null) return string;
+        const cleaned = views.DisplayText.cleanAlloc(std.heap.page_allocator, text) catch |err| {
+            log.warn("menu title not cleaned [{t}]", .{err});
+            return mod.ObjectiveC.string(views.DisplayText.replacement);
+        };
+        defer if (cleaned.ptr != text.ptr) std.heap.page_allocator.free(cleaned);
+        const terminated = std.heap.page_allocator.dupeSentinel(u8, cleaned, 0) catch |err| {
+            log.warn("menu title not copied [{t}]", .{err});
+            return mod.ObjectiveC.string(views.DisplayText.replacement);
+        };
+        defer std.heap.page_allocator.free(terminated);
+        const repaired = mod.ObjectiveC.string(terminated);
+        return if (repaired != null) repaired else mod.ObjectiveC.string(views.DisplayText.replacement);
+    }
+
+    /// Records a replaceable submenu.
+    ///
+    /// - `self`: the bridge.
+    /// - `title`: the title of the entry that opens it.
+    /// - `menu`: the `NSMenu`.
+    /// - Returns: its index in `replaceables`; null when it cannot be kept,
+    ///   its entries' actions then kept for the process.
+    fn keepReplaceable(self: *Self, title: []const u8, menu: mod.Id) ?usize {
+        const name = std.heap.page_allocator.dupe(u8, title) catch |err| {
+            log.warn("cannot keep the submenu {s} [{t}]", .{ title, err });
+            return null;
+        };
+        self.replaceables.append(std.heap.page_allocator, .{ .title = name, .menu = menu }) catch |err| {
+            std.heap.page_allocator.free(name);
+            log.warn("cannot keep the submenu {s} [{t}]", .{ title, err });
+            return null;
+        };
+        return self.replaceables.items.len - 1;
     }
 
     /// Marks the status-bar buttons under `view` as template images.
@@ -310,19 +440,29 @@ pub const Cocoa = struct {
     fn fire(_: mod.Id, _: mod.Id, sender: mod.Id) callconv(.c) void {
         const self = Self.shared();
         const tag = mod.ObjectiveC.send(i64, sender, "tag", .{});
-        if (tag >= 0 and tag < self.actions.items.len) {
-            const callback = self.actions.items[@intCast(tag)];
-            callback.function(callback.context);
-        }
+        // Copied out first: the action may replace the submenu that holds it.
+        const found: ?views.Callback = if (tag >= replaceable_tag) replaceable: {
+            const owner: usize = @intCast(@divTrunc(tag, replaceable_tag) - 1);
+            const index: usize = @intCast(@mod(tag, replaceable_tag));
+            if (owner >= self.replaceables.items.len) break :replaceable null;
+            const actions = self.replaceables.items[owner].actions.items;
+            break :replaceable if (index < actions.len) actions[index] else null;
+        } else if (tag >= 0 and tag < self.actions.items.len) self.actions.items[@intCast(tag)] else null;
+        if (found) |callback| callback.function(callback.context);
         mod.App.shared().wake();
     }
 
-    /// The object every menu item targets, of a class registered with `fire:`.
+    /// The object every menu item targets, of a class registered with
+    /// `fire:`: made on first use and kept, so a swapped submenu makes none.
     ///
+    /// - `self`: the bridge.
     /// - Returns: the target, or nil when the class could not be registered.
-    fn menuTarget() mod.Id {
-        const class = mod.ObjectiveC.defineClass("ZigguiMenuTarget", "NSObject", &.{.{ .selector = "fire:", .implementation = @ptrCast(&Self.fire), .types = "v@:@" }});
-        return mod.ObjectiveC.send(mod.Id, class, "new", .{});
+    fn menuTarget(self: *Self) mod.Id {
+        if (self.menu_target == null) {
+            const class = mod.ObjectiveC.defineClass("ZigguiMenuTarget", "NSObject", &.{.{ .selector = "fire:", .implementation = @ptrCast(&Self.fire), .types = "v@:@" }});
+            self.menu_target = mod.ObjectiveC.send(mod.Id, class, "new", .{});
+        }
+        return self.menu_target;
     }
 
     /// The status item's `click:`: runs its callback and wakes the loop.
@@ -436,4 +576,41 @@ test {
     std.testing.refAllDecls(@This());
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "a menu title that is not UTF-8 still makes a string, its bad bytes replaced" {
+    if (comptime mod.os_tag != .macos) return error.SkipZigTest;
+    const pool = mod.ObjectiveC.pushPool();
+    defer mod.ObjectiveC.popPool(pool);
+    try std.testing.expectEqualStrings("Recent", mod.ObjectiveC.utf8(Cocoa.menuString("Recent")));
+    try std.testing.expectEqualStrings("bad\u{FFFD}", mod.ObjectiveC.utf8(Cocoa.menuString("bad\xff")));
+}
+
+test "a replaceable submenu inside another stays plain, so swaps keep one record" {
+    if (comptime mod.os_tag != .macos) return error.SkipZigTest;
+    const pool = mod.ObjectiveC.pushPool();
+    defer mod.ObjectiveC.popPool(pool);
+    var cocoa: Cocoa = .{};
+    defer {
+        for (cocoa.replaceables.items) |*replaceable| {
+            std.heap.page_allocator.free(replaceable.title);
+            replaceable.actions.deinit(std.heap.page_allocator);
+        }
+        cocoa.replaceables.deinit(std.heap.page_allocator);
+        cocoa.actions.deinit(std.heap.page_allocator);
+    }
+    const inner = [_]mod.CommandItem{.{ .title = "Inner", .replaceable = true }};
+    const items = [_]mod.CommandItem{.{ .title = "Outer", .submenu = &inner, .replaceable = true }};
+    const menu = mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.send(mod.Id, mod.ObjectiveC.class("NSMenu"), "alloc", .{}), "initWithTitle:", .{mod.ObjectiveC.string("File")});
+    defer mod.ObjectiveC.release(menu);
+    cocoa.addItems(menu, &items, null, null);
+    try std.testing.expectEqual(1, cocoa.replaceables.items.len);
+    // Swapping the outer submenu, its new entries holding a replaceable one
+    // again, records nothing more.
+    cocoa.replaceSubmenu("Outer", &inner);
+    cocoa.replaceSubmenu("Outer", &inner);
+    try std.testing.expectEqual(1, cocoa.replaceables.items.len);
+    try std.testing.expectEqualStrings("Outer", cocoa.replaceables.items[0].title);
+    // The inner one is not a swap target: nothing happens, nothing dangles.
+    cocoa.replaceSubmenu("Inner", &.{});
 }

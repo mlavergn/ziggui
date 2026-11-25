@@ -25,8 +25,20 @@ pub const DisplayText = struct {
     /// - `text`: the text.
     /// - Returns: `text` itself when it is valid UTF-8, else the cleaned copy.
     pub fn clean(allocator: std.mem.Allocator, text: []const u8) []const u8 {
+        return Self.cleanAlloc(allocator, text) catch @panic("oom");
+    }
+
+    /// The text, or a copy with each invalid byte replaced, for code that can
+    /// fail rather than panic (a menu built outside a view).
+    ///
+    /// - `allocator`: owns a copy when one is made; the caller frees it only
+    ///   when the result is not `text` itself.
+    /// - `text`: the text.
+    /// - Returns: `text` itself when it is valid UTF-8, else the cleaned copy;
+    ///   propagates allocation failure.
+    pub fn cleanAlloc(allocator: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error![]const u8 {
         if (std.unicode.utf8ValidateSlice(text)) return text;
-        return Self.copy(allocator, text) catch @panic("oom");
+        return Self.copy(allocator, text);
     }
 
     /// How much of `text` fits in `capacity` bytes, cut on a character,
@@ -47,7 +59,7 @@ pub const DisplayText = struct {
     /// - `allocator`: owns the copy.
     /// - `text`: the text.
     /// - Returns: the copy; propagates allocation failure.
-    fn copy(allocator: std.mem.Allocator, text: []const u8) ![]const u8 {
+    fn copy(allocator: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error![]const u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(allocator);
         var index: usize = 0;

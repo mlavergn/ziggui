@@ -47,7 +47,8 @@ const LineChartFrame = struct {
     label_color: renderer.Color,
 
     /// A frame from the series, the options and the theme's colors, its scales
-    /// resolved from the points that will draw (both coordinates finite).
+    /// resolved from the points that will draw (both coordinates finite, and
+    /// y positive on a log scale).
     ///
     /// - `series`: the series, already in the build arena.
     /// - `options`: the scales, baseline and labels.
@@ -59,9 +60,11 @@ const LineChartFrame = struct {
         var x_upper = nan;
         var y_lower = nan;
         var y_upper = nan;
+        const log_y = options.y_scale_type == .log;
         for (series) |line| {
             for (line.points) |point| {
                 if (!Self.drawable(point)) continue;
+                if (log_y and !(point.y > 0)) continue;
                 // `@min`/`@max` keep the number over a NaN, so the first point seeds them.
                 x_lower = @min(x_lower, point.x);
                 x_upper = @max(x_upper, point.x);
@@ -70,7 +73,7 @@ const LineChartFrame = struct {
             }
         }
         if (options.baseline) |baseline| {
-            if (std.math.isFinite(baseline)) {
+            if (std.math.isFinite(baseline) and (!log_y or baseline > 0)) {
                 y_lower = @min(y_lower, baseline);
                 y_upper = @max(y_upper, baseline);
             }
@@ -78,7 +81,7 @@ const LineChartFrame = struct {
         const self = Self{
             .series = series,
             .x_axis = mod.ChartAxis.init(options.x_domain, x_lower, x_upper),
-            .y_axis = mod.ChartAxis.init(options.y_domain, y_lower, y_upper),
+            .y_axis = mod.ChartAxis.initScaled(options.y_domain, options.y_scale_type, y_lower, y_upper),
             .baseline = options.baseline,
             .caption = options.caption,
             .x_start_label = options.x_start_label,
@@ -256,8 +259,8 @@ const LineChartFrame = struct {
 /// offered, so give it a frame (`.frameMaxWidth().frameHeight(96)`).
 /// Accessibility reads it as an image named "Line chart" and its caption and
 /// axis labels; `.accessibilityLabel` names it otherwise. Points that are not
-/// finite are skipped, and no series, a lone point or a frame too small for a
-/// plot draw what they can.
+/// finite are skipped (on a log y scale, so are points at or below zero), and
+/// no series, a lone point or a frame too small for a plot draw what they can.
 ///
 /// - `series`: the lines, copied into the build arena; their points must last
 ///   until the frame is drawn.
@@ -390,6 +393,36 @@ test "a line chart skips what cannot draw and stops at its plot's edge" {
     // point's dot, and the clipped segments into, between and out of the far values.
     try std.testing.expectEqual(1, dots);
     try std.testing.expectEqual(4, lines);
+}
+
+test "a line chart on a log scale gives each decade equal room and breaks at zero" {
+    var environment = views.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    var a11y: std.ArrayList(views.A11yNode) = .empty;
+    // 100, 10 and 1 across three steps, then a zero (no place on the scale),
+    // then 10 alone: a dot.
+    const loss = [_]renderer.Point{ .{ .x = 0, .y = 100 }, .{ .x = 1, .y = 10 }, .{ .x = 2, .y = 1 }, .{ .x = 3, .y = 0 }, .{ .x = 4, .y = 10 } };
+    const series = [_]mod.ChartSeries{.{ .points = &loss }};
+    try mod.ChartProbe.render(&environment, &display_list, &a11y, LineChart(&series, .{ .y_scale_type = .log, .baseline = 0 }), 100, 60);
+    var lines: std.ArrayList(renderer.LineCommand) = .empty;
+    defer lines.deinit(std.testing.allocator);
+    try mod.ChartProbe.lines(&display_list, &lines);
+    // No baseline at zero; two segments, each falling half the plot (a decade of two).
+    try std.testing.expectEqual(2, lines.items.len);
+    try std.testing.expectEqual(renderer.Point{ .x = 0, .y = 0 }, lines.items[0].start);
+    try std.testing.expectEqual(renderer.Point{ .x = 25, .y = 30 }, lines.items[0].end);
+    try std.testing.expectEqual(renderer.Point{ .x = 50, .y = 60 }, lines.items[1].end);
+    var dots: usize = 0;
+    for (display_list.commands.items[1..]) |command| {
+        if (command == .fillRoundedRect) {
+            dots += 1;
+            try std.testing.expectEqual(renderer.Point{ .x = 100, .y = 30 }, command.fillRoundedRect.rect.center());
+        }
+    }
+    try std.testing.expectEqual(1, dots);
 }
 
 test "a line chart with nothing to chart, one point, or no room draws safely" {

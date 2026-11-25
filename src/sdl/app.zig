@@ -248,6 +248,18 @@ pub const App = struct {
         if (self.window) |window| _ = sdl_c.SDL_HideWindow(window);
     }
 
+    /// Swaps the entries of a native menu-bar submenu built `replaceable`
+    /// (`views.CommandItem.replaceable`), as a recent list changes; macOS
+    /// only, since the bar elsewhere is the app's own drawn `MenuBar`.
+    ///
+    /// - `self`: the app.
+    /// - `title`: the title of the entry that opens the submenu.
+    /// - `items`: the new entries; titles copied, actions kept until the next swap.
+    pub fn replaceSubmenu(self: *const Self, title: []const u8, items: []const views.CommandItem) void {
+        _ = self;
+        if (mod.os_tag == .macos) mod.Cocoa.shared().replaceSubmenu(title, items);
+    }
+
     /// Minimizes the main window (a custom title bar's minimize button).
     ///
     /// - `self`: the app.
@@ -660,8 +672,9 @@ pub const App = struct {
     /// Gives the C library a UTF-8 character-type locale before SDL talks to the
     /// display. Unix processes start in the "C" locale, and on X11 (which SDL
     /// also picks under GNOME/XWayland) the legacy WM_NAME title goes through
-    /// Xlib's locale conversion: in "C" the UTF-8 bytes of "ziggui — Gallery" are
-    /// stored as Latin-1 and the title bar shows "ziggui â\u{80}\u{94} Gallery".
+    /// Xlib's locale conversion: in "C" the UTF-8 bytes of a title such as
+    /// "Notes — Draft" are stored as Latin-1 and the title bar shows
+    /// "Notes â\u{80}\u{94} Draft".
     /// Only LC_CTYPE is touched (as GTK/Qt apps do), so number formatting and
     /// collation stay "C". Uses the user's locale, else C.UTF-8. No-op off
     /// Linux/BSD.

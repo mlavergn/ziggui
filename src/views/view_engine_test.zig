@@ -1287,6 +1287,51 @@ test "a11y: an icon segmented control's segments are buttons named by their titl
     try std.testing.expect(files.?.selected);
 }
 
+test "a11y: a picker is a pop-up button, or a group of segments named by their titles" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var a11y: std.ArrayList(mod.A11yNode) = .empty;
+    context.a11y = &a11y;
+    var chosen = renderer.State(i64).init(std.testing.allocator, 1);
+    defer chosen.deinit();
+    var none = renderer.State(i64).init(std.testing.allocator, -1);
+    defer none.deinit();
+    defer mod.PickerMenu.shared().close();
+
+    var display_list = renderer.DisplayList.init(std.testing.allocator);
+    defer display_list.deinit();
+    const options = [_][]const u8{ "Day", "Week", "Month" };
+    const tree = mod.VStack(.{
+        mod.Picker(chosen.binding(), &options).pickerStyle(.segmented).accessibilityLabel("Range"),
+        mod.Picker(chosen.binding(), &options).pickerStyle(.menu).accessibilityIdentifier("range-menu"),
+        mod.Picker(none.binding(), &options).pickerStyle(.menu).prompt("Choose a range").accessibilityIdentifier("range-prompt"),
+    });
+    try mod.ViewRenderer.render(&context, tree, .{ .x = 0, .y = 0, .width = 300, .height = 200 }, &display_list);
+
+    // The segmented picker: its group, named by its label, then each segment.
+    try std.testing.expectEqual(mod.A11yRole.radioGroup, a11y.items[0].role);
+    try std.testing.expectEqualStrings("Range", a11y.items[0].label);
+    try std.testing.expectEqualStrings("Week", a11y.items[0].value);
+    for (a11y.items[1..4], options, 0..) |node, option, index| {
+        try std.testing.expectEqual(mod.A11yRole.radioButton, node.role);
+        try std.testing.expectEqualStrings(option, node.label);
+        try std.testing.expectEqual(index == 1, node.selected);
+        try std.testing.expect(a11y.items[0].rect.contains(node.rect.center()));
+    }
+    // The segments run leading to trailing.
+    try std.testing.expect(a11y.items[2].rect.x > a11y.items[1].rect.x);
+    // A menu picker: a pop-up button, its value the chosen option.
+    const menu = mod.A11yNode.find(a11y.items, "range-menu").?;
+    try std.testing.expectEqual(mod.A11yRole.popUpButton, menu.role);
+    try std.testing.expectEqualStrings("Week", menu.value);
+    // With nothing chosen, no value, and its prompt for a label.
+    const prompted = mod.A11yNode.find(a11y.items, "range-prompt").?;
+    try std.testing.expectEqualStrings("", prompted.value);
+    try std.testing.expectEqualStrings("Choose a range", prompted.label);
+}
+
 test "a selectable row's id rides its tap region" {
     const window = try mod.TestWindow.create(std.testing.allocator);
     defer window.destroy();
@@ -2869,6 +2914,30 @@ test "a menu picker whose selection names no option lays its first row over it" 
     // The second row lies a row lower than the first.
     try std.testing.expect(window.overlays.items[0].content_anchor.?.y > unchosen);
     try std.testing.expectEqual(@as(i64, -1), none.get());
+}
+
+test "a menu picker with nothing chosen shows its prompt, and nothing without one" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var none = renderer.State(i64).init(std.testing.allocator, -1);
+    defer none.deinit();
+    defer mod.PickerMenu.shared().close();
+
+    const options = [_][]const u8{ "d6", "d12" };
+    var frames: [3]renderer.Framebuffer = undefined;
+    for (&frames, [_]?[]const u8{ null, "Choose a model", "Choose a model" }, 0..) |*frame, prompt, index| {
+        if (index == 2) none.set(0);
+        window.begin(renderer.MacosTheme.light);
+        const picker = mod.Picker(none.binding(), &options).pickerStyle(.menu).frameWidth(160);
+        const view = mod.VStack(.{ mod.HStack(.{ if (prompt) |text| picker.prompt(text) else picker, mod.Spacer() }), mod.Spacer() }).padding(40);
+        window.end();
+        frame.* = try window.render(view, 300, 120);
+    }
+    defer for (&frames) |*frame| frame.deinit();
+    // The prompt draws where an empty picker draws nothing.
+    try std.testing.expect(!std.mem.eql(u8, std.mem.sliceAsBytes(frames[0].pixels), std.mem.sliceAsBytes(frames[1].pixels)));
+    // Once an option is chosen, its title replaces the prompt.
+    try std.testing.expect(!std.mem.eql(u8, std.mem.sliceAsBytes(frames[1].pixels), std.mem.sliceAsBytes(frames[2].pixels)));
 }
 
 test "the text of a key the picker menu took is dropped, once" {

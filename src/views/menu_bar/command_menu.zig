@@ -32,6 +32,17 @@ pub const CommandItem = struct {
 
     /// A standard Cocoa action sent down the responder chain instead.
     selector: ?[:0]const u8 = null,
+
+    /// The entries of the submenu it opens (File → Open Recent ▸); none for a
+    /// plain entry. An entry with no `action` and no `selector` is drawn
+    /// disabled.
+    submenu: []const CommandItem = &.{},
+
+    /// Its submenu's entries can be swapped while the app runs
+    /// (`App.replaceSubmenu`, naming it by `title`), as a recent list changes.
+    /// Inside another replaceable submenu it is a plain one, since a swap of
+    /// the outer one takes it away.
+    replaceable: bool = false,
 };
 
 /// One menu in the macOS menu bar, after the application menu (see

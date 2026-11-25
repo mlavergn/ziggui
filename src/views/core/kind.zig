@@ -288,6 +288,20 @@ pub const PickerData = struct {
 
     /// The options' titles.
     options: []const []const u8,
+
+    /// What a pop-up picker shows, dimmed, while its selection names none of
+    /// its options (`.prompt`); empty shows nothing.
+    prompt: []const u8 = "",
+
+    /// The title of the option the selection names.
+    ///
+    /// - `self`: the picker.
+    /// - Returns: that option's title; null when the selection names none.
+    pub fn chosenTitle(self: *const Self) ?[]const u8 {
+        const selected = self.selection.get();
+        if (selected < 0 or selected >= @as(i64, @intCast(self.options.len))) return null;
+        return self.options[@intCast(selected)];
+    }
 };
 
 /// A view that paints itself through a callback (see `Canvas`).

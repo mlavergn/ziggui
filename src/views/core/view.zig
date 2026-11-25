@@ -671,6 +671,19 @@ pub const View = struct {
         return view;
     }
 
+    /// Sets the text a pop-up `Picker` shows, dimmed, while its selection
+    /// names none of its options ("Choose a model"), as SwiftUI's `prompt`
+    /// hints at an empty control; a segmented picker and other views ignore it.
+    ///
+    /// - `self`: the view.
+    /// - `text`: the prompt; it must last until the frame is drawn.
+    /// - Returns: the view.
+    pub fn prompt(self: *const Self, text: []const u8) Self {
+        var view = self.*;
+        if (view.kind == .picker) view.kind.picker.prompt = text;
+        return view;
+    }
+
     /// Sets whether the scroll views in this subtree draw their scrollbars, as
     /// SwiftUI's `.scrollIndicators()`: `.visible` keeps a bar up while the
     /// content overflows, `.hidden` draws none and leaves its edge to the

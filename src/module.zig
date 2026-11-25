@@ -590,6 +590,8 @@ pub const ChartSeries = charts.ChartSeries;
 pub const ChartEmphasis = charts.ChartEmphasis;
 /// The range of data values one axis of a chart (`LineChart`, `BarChart`) spans.
 pub const ChartDomain = charts.ChartDomain;
+/// How an axis of a chart maps its values: linear, or a log scale (`LineChartOptions.y_scale_type`).
+pub const ChartScaleType = charts.ChartScaleType;
 /// What a `LineChart` shows besides its series: scales, baseline and labels.
 pub const LineChartOptions = charts.LineChartOptions;
 /// A bar chart of labelled values, drawn into its frame.
@@ -768,6 +770,8 @@ pub const CommandItem = views.CommandItem;
 pub const CommandMenu = views.CommandMenu;
 /// Which systems a menu entry shows on.
 pub const MenuOnly = views.MenuOnly;
+/// One entry a listing menu entry lists (File → Open Recent's repositories).
+pub const ListedMenuItem = views.ListedMenuItem;
 /// An app's menus as one table, built into either menu bar.
 pub const MenuTable = views.MenuTable;
 /// Where the running executable's freedesktop entry stands.

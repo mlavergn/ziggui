@@ -236,8 +236,17 @@ pub const ViewPainter = struct {
                 }
             },
             .picker => |picker| switch (context.resolvedPickerStyle()) {
-                .menu => try mod.ControlPainter.paintMenuPicker(context, picker, rect, display_list),
-                else => try mod.ControlPainter.paintPicker(context, picker, rect, display_list),
+                .menu => {
+                    // A pop-up button: the chosen option its value, the
+                    // prompt its label while unnamed, as a field's placeholder.
+                    try context.emitAccessibility(view, rect, .popUpButton, picker.prompt, picker.chosenTitle() orelse "");
+                    try mod.ControlPainter.paintMenuPicker(context, picker, rect, display_list);
+                },
+                else => {
+                    // The group first: the painter emits its segments after it.
+                    try context.emitAccessibility(view, rect, .radioGroup, "", picker.chosenTitle() orelse "");
+                    try mod.ControlPainter.paintPicker(context, picker, rect, display_list);
+                },
             },
             .stack => |stack| {
                 for (stack.children, 0..) |child, index| {

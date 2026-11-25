@@ -18,6 +18,8 @@ pub const CommandItem = @import("command_menu.zig").CommandItem;
 pub const CommandMenu = @import("command_menu.zig").CommandMenu;
 /// Which systems a menu entry shows on.
 pub const MenuOnly = @import("menu_table.zig").MenuOnly;
+/// One entry a listing menu entry lists (File → Open Recent's repositories).
+pub const ListedMenuItem = @import("menu_table.zig").ListedMenuItem;
 /// An app's menus as one table, built into either menu bar.
 pub const MenuTable = @import("menu_table.zig").MenuTable;
 /// One entry of a `MenuBarMenu`.
@@ -46,6 +48,8 @@ pub const BuildScope = @import("../module.zig").BuildScope;
 pub const WindowChrome = @import("../module.zig").WindowChrome;
 /// A tap handler (`init` wraps a method, `action` a function, `select` a selection), from the views module.
 pub const Callback = @import("../module.zig").Callback;
+/// Text made safe to draw and show: invalid UTF-8 bytes replaced (from the views module).
+pub const DisplayText = @import("../module.zig").DisplayText;
 /// A hairline across a stack (from the views module).
 pub const Divider = @import("../module.zig").Divider;
 /// Children side by side (from the views module).

@@ -13,6 +13,8 @@ pub const ChartSeries = @import("chart_series.zig").ChartSeries;
 pub const ChartEmphasis = @import("chart_series.zig").ChartEmphasis;
 /// The range of data values one axis of a chart spans.
 pub const ChartDomain = @import("chart_domain.zig").ChartDomain;
+/// How an axis of a chart maps its values: linear or log.
+pub const ChartScaleType = @import("chart_scale_type.zig").ChartScaleType;
 /// What a `LineChart` shows besides its series: scales, baseline and labels.
 pub const LineChartOptions = @import("line_chart_options.zig").LineChartOptions;
 /// A bar chart of labelled values, drawn into its frame.
@@ -40,6 +42,7 @@ test {
     _ = @import("line_chart.zig");
     _ = @import("chart_series.zig");
     _ = @import("chart_domain.zig");
+    _ = @import("chart_scale_type.zig");
     _ = @import("line_chart_options.zig");
     _ = @import("bar_chart.zig");
     _ = @import("bar_mark.zig");

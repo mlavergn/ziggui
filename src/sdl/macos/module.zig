@@ -46,6 +46,8 @@ pub const MetalSceneRayTracer = @import("metal_scene_ray_tracer.zig").MetalScene
 pub const App = @import("../module.zig").App;
 /// The native app menu's data (`Cocoa` installs it), from the sdl module.
 pub const CommandMenu = @import("../module.zig").CommandMenu;
+/// One entry of a `CommandMenu`, a submenu's included.
+pub const CommandItem = @import("../module.zig").CommandItem;
 /// The window's icon (`Cocoa` sets the Dock's), from the sdl module.
 pub const WindowIcon = @import("../module.zig").WindowIcon;
 /// Frames for a moment after a resize (the video and native-view hosts), from the sdl module.

@@ -375,8 +375,9 @@ pub const ViewLowering = struct {
         }
     }
 
-    /// A menu-style picker's size: wide enough for its widest option and the
-    /// theme family's trailing mark, as tall as a control.
+    /// A menu-style picker's size: wide enough for its widest option (or its
+    /// prompt, when wider) and the theme family's trailing mark, as tall as a
+    /// control.
     ///
     /// - `context`: the context.
     /// - `picker`: the picker.
@@ -386,6 +387,7 @@ pub const ViewLowering = struct {
         const shaper = renderer.TextShaper.init(context.cache.face);
         var widest: f32 = 0;
         for (picker.options) |option| widest = @max(widest, shaper.measureLineWidth(option, pixel_size));
+        widest = @max(widest, shaper.measureLineWidth(picker.prompt, pixel_size));
         const height = @max(shaper.lineHeight(pixel_size), context.theme.metrics.control_height);
         // The mark's box measured from the trailing edge of a zero-width frame.
         const mark = mod.ControlPainter.menuPickerMark(context.theme.menu_picker, .{ .width = 0, .height = height });

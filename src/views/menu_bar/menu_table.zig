@@ -18,6 +18,18 @@ pub const MenuOnly = enum {
     other,
 };
 
+/// One entry a listing entry lists (`MenuTable.Entry.listing`): a recent
+/// repository under File → Open Recent. An empty title is a separator; an
+/// entry with no action is drawn disabled ("No Recent Repositories").
+pub const ListedMenuItem = struct {
+    const Self = @This();
+
+    /// The entry's title, or empty for a separator.
+    title: []const u8 = "",
+    /// What choosing it does; null draws it disabled.
+    action: ?mod.Callback = null,
+};
+
 /// An app's menus, as a table of entries that each name one of the app's `Action`s.
 ///
 /// The app writes its entries once, menu by menu (an entry with no title is a
@@ -51,6 +63,16 @@ pub fn MenuTable(comptime Context: type, comptime Action: type) type {
             does: ?Action = null,
             /// Where it shows.
             only: MenuOnly = .all,
+            /// Makes it a list the app fills as it runs (Open Recent): on
+            /// macOS a submenu titled `title`, swapped by the app through
+            /// `App.replaceSubmenu` with `listedCommands`' entries; in the
+            /// drawn bar a heading titled `title` over the entries, built
+            /// again with the bar. `does` is unused.
+            ///
+            /// - `context`: what the listing reads (the app).
+            /// - `allocator`: the menus' allocator, which owns what it returns.
+            /// - Returns: the entries listed now; propagates allocation failure.
+            listing: ?*const fn (context: *Context, allocator: std.mem.Allocator) std.mem.Allocator.Error![]const ListedMenuItem = null,
 
             /// Whether the entry shows on this system.
             ///
@@ -164,6 +186,11 @@ pub fn MenuTable(comptime Context: type, comptime Action: type) type {
                         try items.append(allocator, .{});
                         continue;
                     }
+                    if (entry.listing) |listing| {
+                        try items.append(allocator, .{ .title = entry.title, .heading = true });
+                        for (try listing(context, allocator)) |listed| try items.append(allocator, .{ .title = listed.title, .enabled = listed.action != null, .action = listed.action });
+                        continue;
+                    }
                     const choice = try allocator.create(Choice);
                     choice.* = .{ .table = self, .context = context, .entry = entry };
                     try items.append(allocator, .{
@@ -195,6 +222,10 @@ pub fn MenuTable(comptime Context: type, comptime Action: type) type {
                         try items.append(allocator, .{});
                         continue;
                     }
+                    if (entry.listing != null) {
+                        try items.append(allocator, .{ .title = try allocator.dupeSentinel(u8, entry.title, 0), .submenu = try Self.listedCommands(entry, allocator, context), .replaceable = true });
+                        continue;
+                    }
                     const shown = if (entry.hint.len > 0 and entry.shortcut.len == 0) try allocator.print("{s}    {s}", .{ entry.title, entry.hint }) else entry.title;
                     const choice = try allocator.create(Choice);
                     choice.* = .{ .table = self, .context = context, .entry = entry };
@@ -207,6 +238,28 @@ pub fn MenuTable(comptime Context: type, comptime Action: type) type {
                 menu.* = .{ .title = try allocator.dupeSentinel(u8, title, 0), .items = try items.toOwnedSlice(allocator) };
             }
             return menus;
+        }
+
+        /// A listing entry's entries as macOS's submenu holds them, for the
+        /// first build and for each `App.replaceSubmenu` after it.
+        ///
+        /// - `entry`: the listing entry.
+        /// - `allocator`: owns the entries and their titles; they must live
+        ///   until the submenu is swapped again.
+        /// - `context`: what the listing reads.
+        /// - Returns: the entries, none for an entry that lists nothing, each
+        ///   title's invalid UTF-8 replaced (AppKit refuses such a title);
+        ///   propagates allocation failure.
+        pub fn listedCommands(entry: *const Entry, allocator: std.mem.Allocator, context: *Context) std.mem.Allocator.Error![]const mod.CommandItem {
+            const listing = entry.listing orelse return &.{};
+            const listed = try listing(context, allocator);
+            const items = try allocator.alloc(mod.CommandItem, listed.len);
+            for (items, listed) |*item, listed_item| {
+                const cleaned = try mod.DisplayText.cleanAlloc(allocator, listed_item.title);
+                defer if (cleaned.ptr != listed_item.title.ptr) allocator.free(cleaned);
+                item.* = .{ .title = try allocator.dupeSentinel(u8, cleaned, 0), .action = listed_item.action };
+            }
+            return items;
         }
 
         /// Whether every entry shown on a system belongs to one of that system's menus: an app's tests call it.
@@ -253,7 +306,52 @@ const TestMenus = struct {
 
         /// The last action performed.
         last: ?Action = null,
+        /// What the Recent listing lists.
+        recents: []const []const u8 = &.{},
+        /// The recent chosen last.
+        opened: ?usize = null,
+
+        /// Notes a recent chosen.
+        ///
+        /// - `self`: the app.
+        /// - `index`: the recent.
+        fn open(self: *App, index: usize) void {
+            self.opened = index;
+        }
     };
+
+    /// A recent's choice, in the menus' allocator.
+    const Recent = struct {
+        const Self = @This();
+
+        /// The app.
+        app: *App,
+        /// The recent.
+        index: usize,
+
+        /// Opens the recent.
+        ///
+        /// - `self`: the choice.
+        fn fire(self: *Recent) void {
+            self.app.open(self.index);
+        }
+    };
+
+    /// The Recent listing: each recent, or a disabled line with none.
+    ///
+    /// - `app`: the test app.
+    /// - `allocator`: the menus' allocator.
+    /// - Returns: the entries; propagates allocation failure.
+    fn recents(app: *App, allocator: std.mem.Allocator) std.mem.Allocator.Error![]const ListedMenuItem {
+        if (app.recents.len == 0) return allocator.dupe(ListedMenuItem, &.{.{ .title = "None" }});
+        const items = try allocator.alloc(ListedMenuItem, app.recents.len);
+        for (items, app.recents, 0..) |*item, title, index| {
+            const choice = try allocator.create(Recent);
+            choice.* = .{ .app = app, .index = index };
+            item.* = .{ .title = title, .action = mod.Callback.init(Recent, choice, Recent.fire) };
+        }
+        return items;
+    }
     /// The table type.
     const Table = MenuTable(App, Action);
 
@@ -272,6 +370,7 @@ const TestMenus = struct {
             .{ .menu = "File", .only = .other },
             .{ .menu = "File", .title = "Quit", .shortcut = "q", .does = .quit, .only = .other },
             .{ .menu = "Go", .title = "Refresh", .hint = "r", .does = .refresh },
+            .{ .menu = "Go", .title = "Recent", .listing = recents },
         },
         .mac_titles = &.{ "File", "Go" },
         .other_titles = &.{ "File", "Go" },
@@ -307,4 +406,41 @@ test "menu table builds both menu bars from one table, and routes a choice to th
     try std.testing.expectEqual(@as(?TestMenus.Action, .quit), app.last);
     try std.testing.expect(!TestMenus.table.chooseShortcut(&app, 'q', true));
     try std.testing.expect(TestMenus.table.find("Open…") != null);
+}
+
+test "a listing entry is a replaceable submenu on macOS and a heading over its entries in the drawn bar" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var app: TestMenus.App = .{};
+
+    // None listed: the disabled line alone.
+    const empty = try TestMenus.table.barMenus(allocator, &app, false);
+    try std.testing.expectEqual(@as(usize, 3), empty[1].items.len);
+    try std.testing.expect(empty[1].items[1].heading);
+    try std.testing.expectEqualStrings("Recent", empty[1].items[1].title);
+    try std.testing.expect(!empty[1].items[2].selectable());
+
+    app.recents = &.{ "app", "lib" };
+    const drawn = try TestMenus.table.barMenus(allocator, &app, false);
+    try std.testing.expectEqual(@as(usize, 4), drawn[1].items.len);
+    try std.testing.expectEqualStrings("lib", drawn[1].items[3].title);
+    drawn[1].items[3].action.?.call();
+    try std.testing.expectEqual(@as(?usize, 1), app.opened);
+
+    const native = try TestMenus.table.commandMenus(allocator, &app);
+    const recent = native[1].items[1];
+    try std.testing.expectEqualStrings("Recent", recent.title);
+    try std.testing.expect(recent.replaceable);
+    try std.testing.expectEqual(@as(usize, 2), recent.submenu.len);
+    recent.submenu[0].action.?.call();
+    try std.testing.expectEqual(@as(?usize, 0), app.opened);
+
+    // What a swap hands macOS: the listing as it is now, a title that is
+    // not UTF-8 (a folder's name off a network volume) cleaned.
+    app.recents = &.{ "other", "bad\xff" };
+    const swapped = try TestMenus.Table.listedCommands(TestMenus.table.find("Recent").?, allocator, &app);
+    try std.testing.expectEqual(@as(usize, 2), swapped.len);
+    try std.testing.expectEqualStrings("other", swapped[0].title);
+    try std.testing.expectEqualStrings("bad\u{FFFD}", swapped[1].title);
 }

@@ -88,8 +88,8 @@ pub const Section = enum {
     /// translucent pane, its camera orbited and zoomed.
     scenes,
 
-    /// Charts (from `src/charts`): line charts (several series, scales, gaps, a chart built
-    /// each frame from sliders, sparklines) and bar charts.
+    /// Charts (from `src/charts`): line charts (several series, scales, a log scale, gaps, a
+    /// chart built each frame from sliders, sparklines) and bar charts.
     charts,
 
     /// Every section, as sidebar rows, in the enum's order: a section's index
@@ -199,14 +199,14 @@ pub const Section = enum {
             .text => &.{ "ziggui.Text", "ziggui.WrappedText", "ziggui.RichText · ziggui.RichTextSpaced · ziggui.RichTextPreformatted", "ziggui.HighlightedText · ziggui.TextRange", "ziggui.Label", "ziggui.TextField", "ziggui.SearchField", "ziggui.SecureField" },
             .textEditor => &.{ "ziggui.TextEditor · ziggui.TextEditorSettings · ziggui.TextEditorColors · .font(.custom)", "ziggui.TextEditor · .findNavigator · ziggui.TextFindState · ziggui.FindBar · ziggui.FindActions" },
             .controls => &.{ "ziggui.Button · ziggui.ButtonRoled · ziggui.IconButton · ziggui.ButtonIcon · ziggui.ButtonIconRoled", "ziggui.ButtonKeyed", "ziggui.Toggle · .toggleStyle(.checkbox) · .checkboxStyle(.rounded) · .square · .circular · .compact", "ziggui.Slider · ziggui.ProgressView", "ziggui.Spinner · ziggui.LoadingDots", "ziggui.Stepper", "ziggui.Badge", "ziggui.KeyCap" },
-            .pickers => &.{ "ziggui.Picker · ziggui.Form · .pickerStyle(.automatic)", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu)", "ziggui.RadioGroup", "ziggui.SegmentedControl", "ziggui.IconSegmentedControl", "ziggui.ColorPicker" },
+            .pickers => &.{ "ziggui.Picker · ziggui.Form · .pickerStyle(.automatic)", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu) · .prompt", "ziggui.RadioGroup", "ziggui.SegmentedControl", "ziggui.IconSegmentedControl", "ziggui.ColorPicker" },
             .images => &.{ "ziggui.Image · .scaledToFit()", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", "CanvasMarkers.crosshair · .ring · .halo · .reticle · .pill · .chip · .callout · .nearest", "ziggui.ZoomableImage · ZoomState (invert_scroll_y, invert_scroll_x) · AnnotationState · CanvasMarkers", "ziggui.Rectangle · ziggui.RoundedRectangle · ziggui.Circle · ziggui.Capsule · ziggui.Ellipse", "ziggui.LinearGradient", "ziggui.Icon · ziggui.LazyVGrid" },
             .layout => &.{ "ziggui.HStack · ziggui.VStack · ziggui.ZStack · ziggui.Spacer · ziggui.MinSpacer · ziggui.ForEach · ziggui.Empty", "ziggui.FlowStack", "ziggui.LazyVGrid", "ziggui.LazyHGrid", "ziggui.Divider · ziggui.VDivider", "ziggui.GeometryReader", "ziggui.ScrollView · ziggui.ScrollViewState · ziggui.ScrollViewStateBoth · ziggui.ScrollViewOffset", ".scrollIndicators · ziggui.ScrollIndicatorVisibility" },
             .lists => &.{ "ziggui.PaneHeader", "ziggui.SelectableRow", "ziggui.SelectableLabeledRow", "ziggui.ReorderableRow", "ziggui.OutlineState · ziggui.OutlineRow", "ziggui.DisclosureGroup · ziggui.DisclosureGroupAccessory", "ziggui.EditableText · ziggui.EditableTextState", "ziggui.CheckList · ziggui.CheckRow", "ziggui.List", "ziggui.PaneTitle · ziggui.EmptyState", "ziggui.VirtualListBoth", "ziggui.VirtualList" },
             .table => &.{ "ziggui.Table · ziggui.TableColumn", "ziggui.TableState · ziggui.TableOptions · ziggui.SortColumn", "TableOptions.header_accessory · .empty", "TableOptions.highlighted · .row_height", "ziggui.TableRows · ziggui.TableLayout", "ziggui.Visibility · TableOptions.column_headers", "ziggui.TableSelectionMode · ziggui.TableCell" },
             .navigation => &.{ "ziggui.TabView", "ziggui.HSplitView · ziggui.VSplitView", "ziggui.NavigationLinkIcon · ziggui.NavigationPath", "ziggui.NavigationLink · ziggui.NavigationBackButton", "ziggui.NavigationSplitView · ziggui.Sidebar", "ziggui.NavigationSplitViewInset · ziggui.SidebarStyled" },
             .presentations => &.{ ".sheet · .alert", "ziggui.ConfirmAlert · ziggui.Confirm", ".popover", ".popover · .popoverPassthrough", ".onHover", "ziggui.HoverPopover" },
-            .menus => &.{ "ziggui.MenuBar", "ziggui.Menu", "ziggui.ContextMenu", "ziggui.MenuList · ziggui.MenuItem", "ziggui.App.setKeyUpHandler · ziggui.Toggle" },
+            .menus => &.{ "ziggui.MenuBar", "ziggui.MenuTable · Entry.listing · ziggui.ListedMenuItem · App.replaceSubmenu", "ziggui.Menu", "ziggui.ContextMenu", "ziggui.MenuList · ziggui.MenuItem", "ziggui.App.setKeyUpHandler · ziggui.Toggle" },
             .windows => &.{ "ziggui.TitleBar · ziggui.MenuBar · ziggui.WindowButtons", "ziggui.WindowChrome.topBar", "ziggui.WindowChrome.topBarLeading · ziggui.IconSegmentedControl", "ziggui.WindowChrome.topBarLeading", "ziggui.Canvas · Theme.drawTitleBar · .modalPassthrough", "ziggui.StatusLine", "ziggui.KeyHintBar", "ziggui.NoticeBar" },
             .effects => &.{ "ziggui.Animator · ziggui.ProgressView", ".glassEffect", ".opacity · .border · .cornerRadius", ".backgroundMaterial(.regular)" },
             .forms => &.{ "ziggui.SettingRow", "ziggui.LabeledField · ziggui.FieldChrome", "ziggui.KeyValueEditor", "ziggui.TokenField", "ziggui.ThemeFamilyPicker", "ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker · ziggui.ThemePicker" },
@@ -218,7 +218,7 @@ pub const Section = enum {
             .chat => &.{ "ziggui.StatusMark", "ziggui.Chip", "ziggui.Bubble · ziggui.CodeBlock · ziggui.Quote" },
             .diffs => &.{ "ziggui.DiffView · ziggui.DiffLine", "ziggui.SelectableDiffView", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection" },
             .scenes => &.{"ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput · Scene.lighting_technique"},
-            .charts => &.{ "ziggui.LineChart · ziggui.ChartSeries · ziggui.ChartEmphasis", "ziggui.ChartDomain · LineChartOptions.x_domain · .y_domain · .baseline", "ChartSeries.points · LineChartOptions.caption · .x_start_label · .x_end_label", "ChartSeries in the build arena", "ziggui.LineChartOptions", "ziggui.BarChart · ziggui.BarMark · ziggui.BarChartOptions", "BarMark.color · a value below zero" },
+            .charts => &.{ "ziggui.LineChart · ziggui.ChartSeries · ziggui.ChartEmphasis", "ziggui.ChartDomain · LineChartOptions.x_domain · .y_domain · .baseline", "ziggui.ChartScaleType · LineChartOptions.y_scale_type", "ChartSeries.points · LineChartOptions.caption · .x_start_label · .x_end_label", "ChartSeries in the build arena", "ziggui.LineChartOptions", "ziggui.BarChart · ziggui.BarMark · ziggui.BarChartOptions", "BarMark.color · a value below zero" },
         };
     }
 
@@ -518,6 +518,10 @@ pub const Gallery = struct {
     /// The Menus & Commands section's last chosen entry.
     menu_choice: []const u8 = "Nothing chosen yet.",
 
+    /// The Menus & Commands section's recent-projects card, whose table is
+    /// also macOS's File menu (`main.zig`).
+    recents: gallery.RecentMenus = .{},
+
     /// The Menus & Commands section's entries, their actions pointing at this gallery (`barMenus`).
     bar_items: [bar_item_count]ziggui.MenuBarItem = undefined,
 
@@ -644,7 +648,7 @@ pub const Gallery = struct {
     /// - `active_theme`: the theme this frame draws with.
     /// - Returns: the band.
     fn topBar(self: *Self, active_theme: ziggui.Theme) ziggui.View {
-        const title = ziggui.Text("ziggui Gallery").font(.headline).foregroundStyle(active_theme.colors.label).truncated();
+        const title = ziggui.Text("Zig GUI Gallery").font(.headline).foregroundStyle(active_theme.colors.label).truncated();
         return ziggui.WindowChrome.topBarLeading(
             ziggui.IconSegmentedControl(self.listingBinding(), &listing_segments),
             ziggui.IconSegment.controlWidth(listing_segments.len),
@@ -974,7 +978,7 @@ pub const Gallery = struct {
             .table => Self.cards(.{ self.showcase.tableCard(active_theme), self.manyRowsTableCard(active_theme), self.showcase.filterTableCard(active_theme), self.showcase.highlightTableCard(active_theme), self.showcase.fittedTableCard(active_theme), self.showcase.headerlessTableCard(active_theme), self.showcase.cellTableCard(active_theme) }),
             .navigation => self.showcase.navigationPanel(active_theme, section.label(), Self.cards(.{ self.showcase.tabViewCard(active_theme), self.splitPanel(active_theme) })),
             .presentations => Self.cards(.{ self.showcase.modalCard(active_theme), self.showcase.confirmAlertCard(active_theme), self.showcase.popoverCard(active_theme), self.showcase.passthroughCard(active_theme), self.showcase.onHoverCard(active_theme), self.hoverPanel(active_theme) }),
-            .menus => Self.cards(.{ self.menuBarPanel(active_theme), self.showcase.menuCard(active_theme), self.showcase.contextMenuCard(active_theme), self.showcase.menuListCard(active_theme), self.showcase.keyUpsCard(active_theme) }),
+            .menus => Self.cards(.{ self.menuBarPanel(active_theme), self.recents.card(active_theme), self.showcase.menuCard(active_theme), self.showcase.contextMenuCard(active_theme), self.showcase.menuListCard(active_theme), self.showcase.keyUpsCard(active_theme) }),
             .windows => Self.cards(.{ self.titleBarPanel(active_theme), self.topBarPanel(active_theme), self.showcase.customTitleBarCard(active_theme), Self.statusLinePanel(active_theme), self.kit.keyHintBarCard(active_theme), self.noticeBarCard(active_theme) }),
             .effects => Self.cards(.{ self.showcase.effectsPanel(active_theme), self.showcase.materialCard(active_theme) }),
             .forms => Self.cards(.{ self.kit.settingRowCard(active_theme), self.kit.labeledFieldCard(active_theme), self.kit.keyValueEditorCard(active_theme), self.kit.tokenFieldCard(active_theme), self.themeFamilyCard(active_theme), self.settings.panel(active_theme, self.theme_family.binding(), self.accent.binding()) }),

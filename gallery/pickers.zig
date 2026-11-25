@@ -16,6 +16,8 @@ const spelling_options = [_][]const u8{ "As I Type", "When I Click Send", "Never
 const copy_options = [_][]const u8{ "Cc:", "Bcc:" };
 /// How long a sent message can be taken back.
 const delay_options = [_][]const u8{ "Off", "10 Seconds", "20 Seconds", "30 Seconds" };
+/// The dictionaries to check spelling against; none is chosen at first.
+const dictionary_options = [_][]const u8{ "English (US)", "English (UK)", "Français", "Deutsch" };
 
 /// The Pickers panel's choices.
 pub const Pickers = struct {
@@ -25,6 +27,8 @@ pub const Pickers = struct {
     format: ziggui.State(i64),
     /// When spelling is checked (As I Type).
     spelling: ziggui.State(i64),
+    /// The dictionary spelling is checked against; -1 until one is chosen.
+    dictionary: ziggui.State(i64),
     /// Whether a copy goes to myself.
     copy_myself: ziggui.State(bool),
     /// Who the copy goes to (Cc:).
@@ -43,6 +47,7 @@ pub const Pickers = struct {
         const self = Self{
             .format = ziggui.State(i64).init(allocator, 1),
             .spelling = ziggui.State(i64).init(allocator, 0),
+            .dictionary = ziggui.State(i64).init(allocator, -1),
             .copy_myself = ziggui.State(bool).init(allocator, false),
             .copy_kind = ziggui.State(i64).init(allocator, 0),
             .delay = ziggui.State(i64).init(allocator, 1),
@@ -59,6 +64,7 @@ pub const Pickers = struct {
         self.delay.deinit();
         self.copy_kind.deinit();
         self.copy_myself.deinit();
+        self.dictionary.deinit();
         self.spelling.deinit();
         self.format.deinit();
     }
@@ -107,9 +113,10 @@ pub const Pickers = struct {
                     ziggui.LabeledContent("Undo send delay:", ziggui.Picker(self.delay.binding(), &delay_options)),
                 }),
             })),
-            gallery.Card.view(theme, "Outside a Form: segmented, or a menu asked for", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu)", ziggui.VStack(.{
+            gallery.Card.view(theme, "Outside a Form: segmented, a menu asked for, and a menu's prompt while nothing is chosen", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu) · .prompt", ziggui.VStack(.{
                 ziggui.HStack(.{ ziggui.Picker(self.spelling.binding(), &spelling_options), ziggui.Spacer() }),
                 ziggui.HStack(.{ ziggui.Picker(self.spelling.binding(), &spelling_options).pickerStyle(.menu), ziggui.Spacer() }),
+                ziggui.HStack(.{ ziggui.Picker(self.dictionary.binding(), &dictionary_options).pickerStyle(.menu).prompt("Choose a dictionary"), ziggui.Spacer() }),
             }).spacing(12).alignment(.leading)),
             ziggui.Text("Each theme opens the menu as its platform does; switch themes in the sidebar.")
                 .foregroundStyle(theme.colors.secondary_label).truncated().frameMaxWidth().frameAlign(.leading),

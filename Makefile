@@ -32,7 +32,7 @@ HOST_OS := $(shell uname -s)
 endif
 
 # The gallery's macOS app bundle, under the install prefix (`zig build gallery-app`).
-GALLERY_BUNDLE := ziggui Gallery.app
+GALLERY_BUNDLE := ZigGallery.app
 GALLERY_APP := zig-out/$(GALLERY_BUNDLE)
 
 # Where `make app-install` puts the gallery's bundle: `make app-install APP_DIR=/Applications`.

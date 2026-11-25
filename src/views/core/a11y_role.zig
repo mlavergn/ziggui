@@ -21,6 +21,13 @@ pub const A11yRole = enum {
     image,
     /// A heading.
     header,
+    /// A pop-up button: a menu-style picker, its value the chosen option.
+    popUpButton,
+    /// A set of choices of which one is chosen: a segmented picker, its value
+    /// the chosen option, its segments the `radioButton`s after it.
+    radioGroup,
+    /// One choice of a `radioGroup`: a segment, `selected` while chosen.
+    radioButton,
 };
 
 // -----------------------------------------------------------------------------

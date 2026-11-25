@@ -349,6 +349,21 @@ pub const Context = struct {
         });
     }
 
+    /// Appends the accessibility node of a part of a view (a segmented
+    /// picker's segment), which takes none of the view's accessibility
+    /// modifiers: they name the view's own node, emitted before its parts.
+    ///
+    /// - `self`: the context.
+    /// - `rect`: the part's frame.
+    /// - `role`: what the part is.
+    /// - `label`: what it says.
+    /// - `selected`: whether it is the chosen one of its group.
+    /// - Returns: nothing; propagates allocation failure.
+    pub fn emitAccessibilityPart(self: *const Self, rect: renderer.Rect, role: mod.A11yRole, label: []const u8, selected: bool) std.mem.Allocator.Error!void {
+        const list = self.a11y orelse return;
+        try list.append(self.arena, .{ .rect = rect, .role = role, .label = label, .selected = selected });
+    }
+
     /// Tail-truncates `string` to fit `max_width` at `pixel_size`, appending an
     /// ellipsis (returns `string` unchanged when it already fits, and nothing
     /// when not even the ellipsis fits). The clipped string is built in the

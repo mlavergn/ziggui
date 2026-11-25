@@ -367,9 +367,10 @@ pub const ControlPainter = struct {
         }
         const pixel_size = context.theme.typography.body.size;
         const line_height = renderer.TextShaper.init(context.cache.face).lineHeight(pixel_size);
-        const last: i64 = @as(i64, @intCast(picker.options.len)) - 1;
-        const selected = picker.selection.get();
-        const title = if (selected >= 0 and selected <= last) picker.options[@intCast(selected)] else "";
+        // With nothing chosen, the prompt (if any), dimmed as a field's placeholder.
+        const chosen = picker.chosenTitle();
+        const title = chosen orelse picker.prompt;
+        if (chosen == null) label_color = context.theme.colors.secondary_label;
         const title_x = rect.x + mod.ControlMetrics.control_horizontal_padding;
         const room = mark_box.x - mod.ControlMetrics.popup_chevron_gap - title_x;
         const shown = try context.truncateToWidth(title, pixel_size, room);
@@ -440,6 +441,9 @@ pub const ControlPainter = struct {
                 .action = .{ .select = .{ .binding = picker.selection, .value = @intCast(index) } },
                 .disabled = context.disabled,
             });
+            // Each segment a choice of the group `ViewPainter` emitted for the
+            // picker, named by its own title (the picker's label is the group's).
+            try context.emitAccessibilityPart(segment, .radioButton, option, is_selected);
         }
     }
 

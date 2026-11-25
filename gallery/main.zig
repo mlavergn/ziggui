@@ -919,6 +919,13 @@ const Window = struct {
     /// Whether the appearance should still be seeded from the OS, on the first frame.
     var follow_os = false;
 
+    /// What macOS's Open Recent entries are made with, while the loop runs.
+    var menu_allocator: std.mem.Allocator = undefined;
+
+    /// Holds macOS's Open Recent entries since the last swap
+    /// (`syncRecentMenu`); null before the first.
+    var recents_arena: ?std.heap.ArenaAllocator = null;
+
     /// Runs the window until it closes.
     ///
     /// - `allocator`: allocator for the loop.
@@ -950,6 +957,9 @@ const Window = struct {
         // The Files section's Open and Save buttons show the system's panels.
         target.kit.platform = platform;
         defer target.kit.platform = .{};
+        // The recent-projects card's Window menu (macOS) minimizes, zooms and closes.
+        target.recents.platform = platform;
+        defer target.recents.platform = .{};
         // The Media Native section shows a real AppKit view in a window.
         // The Media Video panel's full-screen button takes the window with it.
         target.media.set_full_screen_fn = Self.setFullScreen;
@@ -982,8 +992,20 @@ const Window = struct {
             WindowSettings.flush();
             EditorSettings.flush();
         }
+        // On macOS the recent-projects card's table is the menu bar (after
+        // the app menu): its entries' actions live as long as the bar, and
+        // Open Recent's until the next swap (`syncRecentMenu`).
+        var menu_arena = std.heap.ArenaAllocator.init(allocator);
+        defer menu_arena.deinit();
+        Self.menu_allocator = allocator;
+        defer if (Self.recents_arena) |*arena| {
+            arena.deinit();
+            Self.recents_arena = null;
+        };
+        const menus: []const ziggui.CommandMenu = if (comptime gallery.is_macos) try gallery.RecentMenus.table.commandMenus(menu_arena.allocator(), &target.recents) else &.{};
+        _ = target.recents.takeChange();
         const config: ziggui.AppConfig = .{
-            .title = "ziggui — Gallery",
+            .title = "Zig GUI Gallery",
             .width = 980,
             .height = 660,
             .min_width = 640,
@@ -997,6 +1019,7 @@ const Window = struct {
             // slower than the software rasterizer, so the Scenes section
             // still shows its scene.
             .warp_fallback = true,
+            .menus = menus,
         };
         try app.run(allocator, gallery.Gallery, target, config.restoring(WindowSettings.saved), gallery.Gallery.body, null);
     }
@@ -1006,6 +1029,26 @@ const Window = struct {
     fn frameHook() void {
         WindowSettings.note();
         EditorSettings.note();
+        Self.syncRecentMenu();
+    }
+
+    /// Swaps macOS's Open Recent for the recent-projects card's list once it
+    /// changed: the new entries are made in an arena of their own, and the
+    /// old one, whose actions the swap drops, freed after.
+    fn syncRecentMenu() void {
+        if (comptime !gallery.is_macos) return;
+        const target = Self.shown orelse return;
+        if (!target.recents.takeChange()) return;
+        const entry = gallery.RecentMenus.table.find(gallery.RecentMenus.open_recent) orelse return;
+        var fresh = std.heap.ArenaAllocator.init(Self.menu_allocator);
+        const items = gallery.RecentMenus.Table.listedCommands(entry, fresh.allocator(), &target.recents) catch |err| {
+            fresh.deinit();
+            log.warn("the recent projects were not listed [{t}]", .{err});
+            return;
+        };
+        ziggui.App.shared().replaceSubmenu(gallery.RecentMenus.open_recent, items);
+        if (Self.recents_arena) |*old| old.deinit();
+        Self.recents_arena = fresh;
     }
 
     /// Makes the Media Native section's platform view: on macOS a layer-hosting
