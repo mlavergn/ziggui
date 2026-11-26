@@ -8,7 +8,7 @@ const log = std.log.scoped(.ziggui_text);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 
-/// The helpers `HighlightedText` lays its runs out with.
+/// The helper `HighlightedText` makes its line with.
 const Highlight = struct {
     const Self = @This();
 
@@ -25,35 +25,6 @@ const Highlight = struct {
             if (byte.* == '\n' or byte.* == '\r') byte.* = ' ';
         }
         return copy;
-    }
-
-    /// The first byte of the character holding byte `index`, stepping
-    /// forward from `from` as the text is drawn.
-    ///
-    /// - `characters`: the text.
-    /// - `from`: a character's first byte at or before `index`.
-    /// - `index`: a byte inside the text.
-    /// - Returns: the character's first byte, at least `from`.
-    fn characterStart(characters: *const mod.TextLines, from: usize, index: usize) usize {
-        var boundary = from;
-        while (boundary < index) {
-            const next = characters.nextCodepointEnd(boundary);
-            if (next > index) break;
-            boundary = next;
-        }
-        return boundary;
-    }
-
-    /// The first character boundary at or past byte `index`.
-    ///
-    /// - `characters`: the text.
-    /// - `from`: a character's first byte at or before `index`.
-    /// - `index`: a byte index, at most the text's length.
-    /// - Returns: the boundary.
-    fn characterEnd(characters: *const mod.TextLines, from: usize, index: usize) usize {
-        var boundary = from;
-        while (boundary < index) boundary = characters.nextCodepointEnd(boundary);
-        return boundary;
     }
 };
 
@@ -124,29 +95,12 @@ pub fn HighlightedText(string: []const u8, ranges: []const mod.TextRange, weight
     const scope = mod.BuildScope.shared();
     const tokens = scope.tokens();
     const line = Highlight.oneLine(scope.allocator(), string);
-    const characters = mod.TextLines.init(line);
-    // At most a gap before each run, the run, and the rest after the last.
-    const spans = scope.allocator().alloc(mod.Span, 2 * ranges.len + 1) catch @panic("oom");
-    var count: usize = 0;
-    var cursor: usize = 0;
-    for (ranges) |range| {
-        if (range.start < cursor or range.start >= range.end or range.end > line.len) continue;
-        const start = Highlight.characterStart(&characters, cursor, range.start);
-        const end = Highlight.characterEnd(&characters, start, range.end);
-        if (start > cursor) {
-            spans[count] = .{ .text = line[cursor..start], .weight = weight };
-            count += 1;
-        }
-        spans[count] = .{ .text = line[start..end], .weight = .bold, .background = tokens.accent_soft };
-        count += 1;
-        cursor = end;
-    }
-    if (cursor < line.len or count == 0) {
-        spans[count] = .{ .text = line[cursor..], .weight = weight };
-        count += 1;
-    }
+    const spans = mod.HighlightSpans.build(scope.allocator(), line, ranges, null, .{
+        .plain = .{ .text = "", .weight = weight },
+        .marked = .{ .text = "", .weight = .bold, .background = tokens.accent_soft },
+    }) catch @panic("oom");
     // Built in the build arena already, so not copied again as `RichText` would.
-    const view: mod.View = .{ .kind = .{ .richText = .{ .spans = spans[0..count], .line_multiple = 1, .preformatted = true } } };
+    const view: mod.View = .{ .kind = .{ .richText = .{ .spans = spans, .line_multiple = 1, .preformatted = true } } };
     return view.clipped();
 }
 

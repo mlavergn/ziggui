@@ -128,6 +128,10 @@ pub const ResizeSettle = @import("resize_settle.zig").ResizeSettle;
 pub const WebBackend = @import("web_backend.zig").WebBackend;
 /// The macOS web view: a `WKWebView` per `WebPage`, placed by the native-view host.
 pub const WkWebViewBackend = @import("macos/module.zig").WkWebViewBackend;
+/// This OS's device-owner authentication for `AuthenticationContext`, installed as the loop starts.
+pub const LocalAuthenticationBackend = @import("local_authentication_backend.zig").LocalAuthenticationBackend;
+/// The macOS device-owner authentication: LocalAuthentication's `LAContext` (Touch ID).
+pub const LaContextBackend = @import("macos/module.zig").LaContextBackend;
 /// The Linux web view: a WebKitGTK `WebKitWebView` per `WebPage`, placed by the native-view host.
 pub const WebKitGtkBackend = @import("linux/module.zig").WebKitGtkBackend;
 /// GTK 3, WebKitGTK and the Xlib calls around them (Linux), loaded at run time.
@@ -191,6 +195,10 @@ pub const CGRect = @import("macos/module.zig").CGRect;
 pub const CMTime = @import("macos/module.zig").CMTime;
 /// Core Media's `CMTimeRange`.
 pub const CMTimeRange = @import("macos/module.zig").CMTimeRange;
+/// A global Objective-C block, laid out by hand, a framework calls back through.
+pub const ObjectiveCBlock = @import("macos/module.zig").ObjectiveCBlock;
+/// The descriptor an `ObjectiveCBlock` points at.
+pub const ObjectiveCBlockDescriptor = @import("macos/module.zig").ObjectiveCBlockDescriptor;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -212,7 +220,7 @@ test {
         /// declarations: every struct's, except `sdl_c` (all of SDL's C API)
         /// and the structs built for one OS (`Cocoa`, `AvFoundationPlayer`,
         /// `AppKitNativeHost`, `WkWebViewBackend`, `CoreAudioOutputs`,
-        /// `ObjectiveC`, `MetalInterop` and `MetalSceneRayTracer` on macOS,
+        /// `ObjectiveC`, `MetalInterop`, `MetalSceneRayTracer` and `LaContextBackend` on macOS,
         /// `Win32`, `Win32NativeHost`, `Com`, `WebView2Backend` and
         /// `MediaFoundationPlayer` and `MmDeviceAudioOutputs` on Windows, `StatusNotifier`, `Gtk`,
         /// `GlibPump`, `GtkNativeHost`, `WebKitGtkBackend`, `Gstreamer`,
@@ -226,7 +234,7 @@ test {
         /// - Returns: true when the test references its declarations.
         fn descends(comptime name: []const u8) bool {
             if (std.mem.eql(u8, name, "sdl_c")) return false;
-            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "CoreAudioOutputs") or std.mem.eql(u8, name, "ObjectiveC") or std.mem.eql(u8, name, "MetalInterop") or std.mem.eql(u8, name, "MetalSceneRayTracer")) return os_tag == .macos;
+            if (std.mem.eql(u8, name, "Cocoa") or std.mem.eql(u8, name, "AvFoundationPlayer") or std.mem.eql(u8, name, "AppKitNativeHost") or std.mem.eql(u8, name, "WkWebViewBackend") or std.mem.eql(u8, name, "CoreAudioOutputs") or std.mem.eql(u8, name, "ObjectiveC") or std.mem.eql(u8, name, "MetalInterop") or std.mem.eql(u8, name, "MetalSceneRayTracer") or std.mem.eql(u8, name, "LaContextBackend")) return os_tag == .macos;
             if (std.mem.eql(u8, name, "Win32") or std.mem.eql(u8, name, "Win32NativeHost") or std.mem.eql(u8, name, "Com") or std.mem.eql(u8, name, "WebView2Backend") or std.mem.eql(u8, name, "MediaFoundationPlayer") or std.mem.eql(u8, name, "MmDeviceAudioOutputs")) return os_tag == .windows;
             if (std.mem.eql(u8, name, "VulkanInterop") or std.mem.eql(u8, name, "VulkanFunctions") or std.mem.eql(u8, name, "VulkanBuffer") or std.mem.eql(u8, name, "VulkanSceneRayTracer")) return has_vulkan_interop;
             if (std.mem.eql(u8, name, "SceneRayTracer")) return os_tag == .macos or has_vulkan_interop;

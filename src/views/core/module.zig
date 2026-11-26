@@ -133,6 +133,8 @@ pub const DragCallback = @import("drag_callback.zig").DragCallback;
 // -----------------------------------------------------------------------------
 // Scrolling
 
+/// A span of rows `ScrollState.revealAfterLayout` brings into view once the viewport is measured.
+pub const ScrollReveal = @import("scroll_state.zig").ScrollReveal;
 /// A scroll view's app-owned offsets and extents.
 pub const ScrollState = @import("scroll_state.zig").ScrollState;
 /// A scroll view's frame and state, collected while painting.

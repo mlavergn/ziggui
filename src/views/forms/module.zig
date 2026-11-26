@@ -36,6 +36,10 @@ pub const FindCount = @import("find_count.zig").FindCount;
 pub const FindActions = @import("find_actions.zig").FindActions;
 /// A find bar's replace row: its field and its buttons.
 pub const FindReplace = @import("find_actions.zig").FindReplace;
+/// What a find's matches were found for: the source, its version, the query and the options.
+pub const FindMatchesKey = @import("find_matches.zig").FindMatchesKey;
+/// A find's matches, kept until what was searched, the query or the options change.
+pub const FindMatches = @import("find_matches.zig").FindMatches;
 /// A text editor's find and replace, which `View.findNavigator` attaches.
 pub const TextFindState = @import("text_find_state.zig").TextFindState;
 /// A find bar: a search field, the count, and Previous, Next and Done.
@@ -135,5 +139,6 @@ test {
     _ = @import("file_browser.zig");
     _ = @import("search_field.zig");
     _ = @import("field_chrome.zig");
+    _ = @import("find_matches.zig");
     _ = @import("text_find_state.zig");
 }

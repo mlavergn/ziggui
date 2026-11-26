@@ -35,6 +35,8 @@ pub const Media = @import("media.zig").Media;
 pub const SceneDemo = @import("scene_demo.zig").SceneDemo;
 /// The Charts section's cards: `LineChart` and its options.
 pub const ChartsDemo = @import("charts_demo.zig").ChartsDemo;
+/// The Forms & Settings section's Touch ID card: an `AuthenticationContext` and its prompt.
+pub const AuthenticationDemo = @import("authentication_demo.zig").AuthenticationDemo;
 /// The Menus & Commands section's recent-projects card: a `MenuTable` with File → Open Recent.
 pub const RecentMenus = @import("recent_menus.zig").RecentMenus;
 /// What an entry of the recent-projects card's table does.

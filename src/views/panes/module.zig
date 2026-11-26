@@ -32,12 +32,20 @@ pub const SelectableDiffViewWithActions = @import("panes.zig").SelectableDiffVie
 pub const HunkAction = @import("hunk_action.zig").HunkAction;
 /// The lines selected in a `SelectableDiffView`, kept by the app.
 pub const DiffSelection = @import("diff_selection.zig").DiffSelection;
+/// A `SelectableDiffViewWithActions` with a find bar and its matches marked (`DiffFindState`).
+pub const FindableDiffView = @import("panes.zig").FindableDiffView;
+/// A diff's find, kept by the app: the query, the options, the matches and the current one.
+pub const DiffFindState = @import("diff_find_state.zig").DiffFindState;
+/// One match of a diff find: a row and a byte range of its text.
+pub const DiffMatch = @import("diff_find_state.zig").DiffMatch;
 
 // -----------------------------------------------------------------------------
 // From the views module
 
 /// The build arena, published theme and tokens, viewport, wrap cache and link handler (`BuildScope.shared()`), from the views module.
 pub const BuildScope = @import("../module.zig").BuildScope;
+/// Which window drew which frame (`BuildScope.stamp`), from the views module.
+pub const FrameStamp = @import("../module.zig").FrameStamp;
 /// Text made safe to draw: each invalid UTF-8 byte becomes U+FFFD (from the views module).
 pub const DisplayText = @import("../module.zig").DisplayText;
 /// The build-time theme colors: ziggui's, plus ziggui's `label`, `separator`, `added`, `removed` (from the views module).
@@ -72,6 +80,34 @@ pub const Text = @import("../module.zig").Text;
 pub const TextLines = @import("../module.zig").TextLines;
 /// A node of the view tree (from the views module).
 pub const View = @import("../module.zig").View;
+/// A two-way handle to a value (from the views module).
+pub const Binding = @import("../module.zig").Binding;
+/// One styled run of a rich paragraph (from the views module).
+pub const Span = @import("../module.zig").Span;
+/// A text field's text, caret and selection (from the views module).
+pub const TextFieldState = @import("../module.zig").TextFieldState;
+/// Plain-text search over a buffer (from the views module).
+pub const TextSearch = @import("../module.zig").TextSearch;
+/// How a `TextSearch` matches: case and whole words (from the views module).
+pub const TextSearchOptions = @import("../module.zig").TextSearchOptions;
+/// Which field holds the keyboard (`Focus.shared()`), from the views module.
+pub const Focus = @import("../module.zig").Focus;
+/// A key press, as apps and menus handle it (from the views module).
+pub const Key = @import("../module.zig").Key;
+/// A find bar: a search field, the count, and Previous, Next and Done (from the views module).
+pub const FindBar = @import("../module.zig").FindBar;
+/// What a `FindBar`'s field, buttons and keys do (from the views module).
+pub const FindActions = @import("../module.zig").FindActions;
+/// A byte range of a text (a match), from the views module.
+pub const TextRange = @import("../module.zig").TextRange;
+/// A line with byte ranges marked, as preformatted spans, from the views module.
+pub const HighlightSpans = @import("../module.zig").HighlightSpans;
+/// What a find's matches were found for, from the views module.
+pub const FindMatchesKey = @import("../module.zig").FindMatchesKey;
+/// A find's matches, from the views module.
+pub const FindMatches = @import("../module.zig").FindMatches;
+/// Where a find stands: which match is current, of how many (from the views module).
+pub const FindCount = @import("../module.zig").FindCount;
 
 // -----------------------------------------------------------------------------
 // Unit Tests
@@ -86,5 +122,6 @@ test {
     _ = @import("diff_layout.zig");
     _ = @import("diff_selection.zig");
     _ = @import("hunk_action.zig");
+    _ = @import("diff_find_state.zig");
     _ = @import("panes.zig");
 }

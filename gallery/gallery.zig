@@ -209,14 +209,14 @@ pub const Section = enum {
             .menus => &.{ "ziggui.MenuBar", "ziggui.MenuTable · Entry.listing · ziggui.ListedMenuItem · App.replaceSubmenu", "ziggui.Menu", "ziggui.ContextMenu", "ziggui.MenuList · ziggui.MenuItem", "ziggui.App.setKeyUpHandler · ziggui.Toggle" },
             .windows => &.{ "ziggui.TitleBar · ziggui.MenuBar · ziggui.WindowButtons", "ziggui.WindowChrome.topBar", "ziggui.WindowChrome.topBarLeading · ziggui.IconSegmentedControl", "ziggui.WindowChrome.topBarLeading", "ziggui.Canvas · Theme.drawTitleBar · .modalPassthrough", "ziggui.StatusLine", "ziggui.KeyHintBar", "ziggui.NoticeBar" },
             .effects => &.{ "ziggui.Animator · ziggui.ProgressView", ".glassEffect", ".opacity · .border · .cornerRadius", ".backgroundMaterial(.regular)" },
-            .forms => &.{ "ziggui.SettingRow", "ziggui.LabeledField · ziggui.FieldChrome", "ziggui.KeyValueEditor", "ziggui.TokenField", "ziggui.ThemeFamilyPicker", "ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker · ziggui.ThemePicker" },
+            .forms => &.{ "ziggui.SettingRow", "ziggui.LabeledField · ziggui.FieldChrome", "ziggui.KeyValueEditor", "ziggui.TokenField", "ziggui.ThemeFamilyPicker", "ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker · ziggui.ThemePicker", "ziggui.AuthenticationContext · ziggui.AuthenticationPolicy · ziggui.BiometryType" },
             .files => &.{ "ziggui.FileBrowser · FileBrowserState.shows_file", "ziggui.FileDialog.openFile · .saveFile · .takeResult" },
             .mediaAudio => &.{ "ziggui.AudioPlayerControls · ziggui.AudioPlayerControlsState · ziggui.Player", "ziggui.AudioRecorder · ziggui.AudioClipPlayer · ziggui.AudioClip · ziggui.AudioDevices", "ziggui.AudioInfoView · ziggui.AudioOutputs" },
             .mediaVideo => &.{ "ziggui.VideoPlayer · ziggui.VideoPlayerControls · ziggui.Player", "ziggui.VideoPlayerControlsWith · ziggui.VideoPlayerControlButton · ziggui.VideoPlayerControlMenu", "ziggui.VideoInfoView · ziggui.SystemInfo", "ziggui.SystemInfoView · ziggui.SystemReport" },
             .mediaWeb => &.{"ziggui.WebView · ziggui.WebPage · ziggui.WebPageMessageCallback"},
             .mediaNative => &.{"ziggui.NativeView"},
             .chat => &.{ "ziggui.StatusMark", "ziggui.Chip", "ziggui.Bubble · ziggui.CodeBlock · ziggui.Quote" },
-            .diffs => &.{ "ziggui.DiffView · ziggui.DiffLine", "ziggui.SelectableDiffView", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection" },
+            .diffs => &.{ "ziggui.DiffView · ziggui.DiffLine", "ziggui.SelectableDiffView", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection · ziggui.FindableDiffView · ziggui.DiffFindState" },
             .scenes => &.{"ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput · Scene.lighting_technique"},
             .charts => &.{ "ziggui.LineChart · ziggui.ChartSeries · ziggui.ChartEmphasis", "ziggui.ChartDomain · LineChartOptions.x_domain · .y_domain · .baseline", "ziggui.ChartScaleType · LineChartOptions.y_scale_type", "ChartSeries.points · LineChartOptions.caption · .x_start_label · .x_end_label", "ChartSeries in the build arena", "ziggui.LineChartOptions", "ziggui.BarChart · ziggui.BarMark · ziggui.BarChartOptions", "BarMark.color · a value below zero" },
         };
@@ -448,6 +448,8 @@ pub const Gallery = struct {
     scene_demo: gallery.SceneDemo,
     /// The Charts section's cards and the state of its sliders' chart.
     charts_demo: gallery.ChartsDemo,
+    /// The Forms & Settings section's Touch ID card and its prompt.
+    authentication_demo: gallery.AuthenticationDemo,
 
     /// The Media Video panel and its player.
     media: gallery.Media,
@@ -499,6 +501,10 @@ pub const Gallery = struct {
     diff_scroll: ziggui.ScrollState = .{},
     /// The Diffs section's selected lines.
     diff_selection: ziggui.DiffSelection = .{},
+    /// The hunk-links diff's find (⌘F while the Diffs section shows).
+    diff_find: ziggui.DiffFindState,
+    /// Whether that find's bar shows.
+    diff_find_shown: ziggui.State(bool),
 
     /// The Diffs section's selected hunk.
     hunk_selected: usize = 0,
@@ -566,12 +572,15 @@ pub const Gallery = struct {
             .kit = kit,
             .scene_demo = scene_demo,
             .charts_demo = gallery.ChartsDemo.init(allocator),
+            .authentication_demo = gallery.AuthenticationDemo.init(),
             .media = gallery.Media.init(allocator),
             .pickers = gallery.Pickers.init(allocator),
             .settings = gallery.SettingsPanel.init(allocator),
             .web = web,
             .search = gallery.SectionSearch.init(allocator),
             .files = ziggui.TableState.init(allocator),
+            .diff_find = ziggui.DiffFindState.init(allocator),
+            .diff_find_shown = ziggui.State(bool).init(allocator, false),
         };
         // The third file starts selected, so the card shows a selection.
         try self.files.ids.put(allocator, 2, {});
@@ -583,6 +592,8 @@ pub const Gallery = struct {
     ///
     /// - `self`: the gallery to tear down.
     pub fn deinit(self: *Self) void {
+        self.diff_find_shown.deinit();
+        self.diff_find.deinit();
         self.files.deinit();
         self.search.deinit();
         self.web.deinit();
@@ -590,6 +601,7 @@ pub const Gallery = struct {
         self.pickers.deinit();
         self.media.deinit();
         self.charts_demo.deinit();
+        self.authentication_demo.deinit();
         self.scene_demo.deinit();
         self.kit.deinit();
         self.editor.deinit();
@@ -627,6 +639,8 @@ pub const Gallery = struct {
         self.media.syncFullScreen();
         // Voice memos record and play on whatever section shows.
         self.media.memos.update();
+        // And the Touch ID card's prompt answers whatever section shows.
+        self.authentication_demo.update();
         if (self.media.expanded) return self.showcase.presentations(self.media.expandedView(), active_theme);
         const root = ziggui.VStack(.{
             self.topBar(active_theme),
@@ -648,7 +662,7 @@ pub const Gallery = struct {
     /// - `active_theme`: the theme this frame draws with.
     /// - Returns: the band.
     fn topBar(self: *Self, active_theme: ziggui.Theme) ziggui.View {
-        const title = ziggui.Text("Zig GUI Gallery").font(.headline).foregroundStyle(active_theme.colors.label).truncated();
+        const title = ziggui.Text("Zig Gallery").font(.headline).foregroundStyle(active_theme.colors.label).truncated();
         return ziggui.WindowChrome.topBarLeading(
             ziggui.IconSegmentedControl(self.listingBinding(), &listing_segments),
             ziggui.IconSegment.controlWidth(listing_segments.len),
@@ -750,6 +764,7 @@ pub const Gallery = struct {
             .lists => self.kit.editableKeyDown(keycode, modifiers) or self.sidebarKeyDown(keycode, modifiers),
             .mediaAudio => self.media.memos.keyDown(keycode, modifiers) or self.sidebarKeyDown(keycode, modifiers),
             .table => self.tableKeyDown(keycode, modifiers) or self.sidebarKeyDown(keycode, modifiers),
+            .diffs => self.diffKeyDown(keycode, modifiers) or self.sidebarKeyDown(keycode, modifiers),
             else => self.sidebarKeyDown(keycode, modifiers),
         };
     }
@@ -981,7 +996,7 @@ pub const Gallery = struct {
             .menus => Self.cards(.{ self.menuBarPanel(active_theme), self.recents.card(active_theme), self.showcase.menuCard(active_theme), self.showcase.contextMenuCard(active_theme), self.showcase.menuListCard(active_theme), self.showcase.keyUpsCard(active_theme) }),
             .windows => Self.cards(.{ self.titleBarPanel(active_theme), self.topBarPanel(active_theme), self.showcase.customTitleBarCard(active_theme), Self.statusLinePanel(active_theme), self.kit.keyHintBarCard(active_theme), self.noticeBarCard(active_theme) }),
             .effects => Self.cards(.{ self.showcase.effectsPanel(active_theme), self.showcase.materialCard(active_theme) }),
-            .forms => Self.cards(.{ self.kit.settingRowCard(active_theme), self.kit.labeledFieldCard(active_theme), self.kit.keyValueEditorCard(active_theme), self.kit.tokenFieldCard(active_theme), self.themeFamilyCard(active_theme), self.settings.panel(active_theme, self.theme_family.binding(), self.accent.binding()) }),
+            .forms => Self.cards(.{ self.kit.settingRowCard(active_theme), self.kit.labeledFieldCard(active_theme), self.kit.keyValueEditorCard(active_theme), self.kit.tokenFieldCard(active_theme), self.themeFamilyCard(active_theme), self.settings.panel(active_theme, self.theme_family.binding(), self.accent.binding()), self.authentication_demo.card(active_theme) }),
             .files => self.kit.filesPanel(active_theme),
             .mediaAudio => self.media.audioPanel(active_theme),
             .mediaVideo => self.media.videoPanel(active_theme),
@@ -1129,9 +1144,24 @@ pub const Gallery = struct {
             .{ .label = "Select", .callback = on_hunk },
             .{ .label = "Disabled", .callback = on_hunk, .disabled = true },
         }) catch @panic("oom");
-        return gallery.Card.view(active_theme, "SelectableDiffView with hunk links (tap a row for its hunk and line, drag for more, ⌘C copies)", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection", ziggui.VStack(.{
-            ziggui.SelectableDiffViewWithActions(&sample_diff, self.hunk_selected, &self.diff_scroll, on_hunk, &self.diff_selection, actions),
+        return gallery.Card.view(active_theme, "SelectableDiffView with hunk links (tap a row for its hunk and line, drag for more, ⌘C copies)", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection · ziggui.FindableDiffView · ziggui.DiffFindState", ziggui.VStack(.{
+            // ⌘F opens its find (`diffKeyDown`); closed, it draws as a SelectableDiffViewWithActions.
+            ziggui.FindableDiffView(&sample_diff, self.hunk_selected, &self.diff_scroll, on_hunk, &self.diff_selection, actions, &self.diff_find, self.diff_find_shown.binding()),
         }).spacing(0).frameHeight(diff_rows_shown * ziggui.diff_row_height));
+    }
+
+    /// A key for the hunk-links diff's find while the Diffs section shows:
+    /// ⌘F (Ctrl+F) opens it, then its bar's keys.
+    ///
+    /// - `self`: the gallery.
+    /// - `keycode`: the event's `SDL_Keycode`.
+    /// - `modifiers`: the event's `SDL_Keymod`.
+    /// - Returns: whether the find took the key.
+    fn diffKeyDown(self: *Self, keycode: u32, modifiers: u16) bool {
+        const focused = ziggui.Focus.shared().focused();
+        if (focused != null and focused != &self.diff_find.query) return false;
+        const key = ziggui.Key.fromSdl(keycode, modifiers, gallery.is_macos) orelse return false;
+        return self.diff_find.handleKey(key);
     }
 
     /// The read-only diff card.

@@ -159,6 +159,9 @@ const DiffModel = struct {
     /// The links on every hunk header, for a `SelectableDiffViewWithActions`.
     actions: []const mod.HunkAction = &.{},
 
+    /// The find whose matches the rows mark while its bar shows, for a `FindableDiffView`.
+    find: ?*mod.DiffFindState = null,
+
     /// How wide a hunk header's text is drawn before its links, so they end
     /// at the pane's right edge however far it scrolled sideways; null while
     /// the pane's width is unknown (the first frame), the links then
@@ -189,8 +192,16 @@ const DiffModel = struct {
     /// - `self`: the model.
     /// - `range`: the rows in view.
     fn indexHunks(self: *Self, range: mod.RowRange) void {
+        DiffIndex.shared().update(self.lines);
+        self.indexRows(range);
+    }
+
+    /// `indexHunks` over a `DiffIndex` already updated for `lines`.
+    ///
+    /// - `self`: the model.
+    /// - `range`: the rows in view.
+    fn indexRows(self: *Self, range: mod.RowRange) void {
         const index = DiffIndex.shared();
-        index.update(self.lines);
         self.first = range.start;
         self.hunk_of = index.hunks(range);
         self.digits = index.digits;
@@ -213,7 +224,7 @@ const DiffModel = struct {
         const gutter_width = mod.DiffLayout.gutterWidth(self.digits);
         const body: mod.View = switch (line.kind) {
             .hunkHeader, .fileHeader, .note => blk: {
-                const text = mod.Text(Self.expandTabs(line.text)).monospaced().font(.system(mod.DiffLayout.font_size))
+                const text = self.lineText(index, line, if (line.kind == .fileHeader) .semibold else null).monospaced().font(.system(mod.DiffLayout.font_size))
                     .foregroundStyle(if (line.kind == .fileHeader) tokens.label else tokens.secondary_label)
                     .fontWeight(if (line.kind == .fileHeader) .semibold else .regular);
                 if (line.kind != .hunkHeader or line.continued or self.actions.len == 0) break :blk text;
@@ -228,7 +239,7 @@ const DiffModel = struct {
                     .removed => "-",
                     else => " ",
                 }).monospaced().font(.system(mod.DiffLayout.font_size)).foregroundStyle(Self.lineColor(line.kind, tokens)).frameWidth(mod.DiffLayout.marker_width),
-                mod.Text(Self.expandTabs(line.text)).monospaced().font(.system(mod.DiffLayout.font_size)).foregroundStyle(Self.lineColor(line.kind, tokens)),
+                self.lineText(index, line, null).monospaced().font(.system(mod.DiffLayout.font_size)).foregroundStyle(Self.lineColor(line.kind, tokens)),
             }).spacing(mod.DiffLayout.cell_spacing),
         };
         var row_view = mod.HStack(.{ bar, body.frameMaxWidth().frameAlign(.leading) }).spacing(mod.DiffLayout.bar_spacing).frameMaxWidth();
@@ -246,6 +257,49 @@ const DiffModel = struct {
         if (selection.contains(index)) row_view = row_view.background(tokens.selection.withAlpha(0.28));
         // Beneath the row's own tap, so a press both picks the hunk and starts the selection.
         return mod.HStack(.{row_view}).spacing(0).frameMaxWidth().onDrag(selection.dragCallback(index));
+    }
+
+    /// A row's text, tabs expanded: a plain `Text`, or, while a find's bar
+    /// shows and the row holds matches, spans marking each match on the
+    /// accent's soft ground and the current one on the accent in its
+    /// on-accent color, in the monospaced face (the caller sets the size and
+    /// color, as for the plain text).
+    ///
+    /// - `self`: the model.
+    /// - `index`: the row.
+    /// - `line`: its line.
+    /// - `weight`: the marked spans' weight, or null for the row's.
+    /// - Returns: the text.
+    fn lineText(self: *const Self, index: usize, line: mod.DiffLine, weight: ?renderer.FontWeight) mod.View {
+        const expanded = Self.expandTabs(line.text);
+        const find = self.find orelse return mod.Text(expanded);
+        if (!find.shown()) return mod.Text(expanded);
+        const found = find.matchesOn(index);
+        if (found.len == 0) return mod.Text(expanded);
+        const first = find.firstOn(index);
+        const tokens = self.tokens;
+        const arena = mod.BuildScope.shared().allocator();
+        // Byte offsets in the row's text, moved past each tab expanded before them.
+        const ranges = arena.alloc(mod.TextRange, found.len) catch @panic("oom");
+        for (found, ranges) |match, *range| range.* = .{ .start = Self.expandedOffset(line.text, match.start), .end = Self.expandedOffset(line.text, match.end) };
+        const current: ?usize = if (find.current) |at| (if (at >= first and at - first < found.len) at - first else null) else null;
+        const spans = mod.HighlightSpans.build(arena, expanded, ranges, current, .{
+            .plain = .{ .text = "", .mono = true, .weight = weight },
+            .marked = .{ .text = "", .mono = true, .weight = weight, .background = tokens.accent_soft },
+            .current = .{ .text = "", .mono = true, .weight = weight, .background = tokens.accent, .color = tokens.on_accent },
+        }) catch @panic("oom");
+        // Built in the build arena already, so not copied again as `RichText` would.
+        return .{ .kind = .{ .richText = .{ .spans = spans, .line_multiple = 1, .preformatted = true } } };
+    }
+
+    /// Where a byte of a row's text lands once its tabs are expanded (`DiffLayout.tab`).
+    ///
+    /// - `text`: the row's text.
+    /// - `byte`: the byte, at most its length.
+    /// - Returns: the byte's offset in the expanded text.
+    fn expandedOffset(text: []const u8, byte: usize) usize {
+        const upto = @min(byte, text.len);
+        return upto + std.mem.count(u8, text[0..upto], "\t") * (mod.DiffLayout.tab.len - 1);
     }
 
     /// A hunk header's text, cut where its links begin, then the links. A
@@ -527,6 +581,41 @@ pub fn SelectableDiffViewWithActions(lines: []const mod.DiffLine, selected: ?usi
     return diffList(lines, selected, scroll, on_hunk, selection, actions);
 }
 
+/// A diff find attached to a `FindableDiffView`: its state and whether its bar shows.
+const DiffFinding = struct {
+    const Self = @This();
+
+    /// The find.
+    state: *mod.DiffFindState,
+    /// Whether its bar shows.
+    is_presented: mod.Binding(bool),
+};
+
+/// A `SelectableDiffViewWithActions` with a find (`DiffFindState`, app-owned
+/// beside `scroll`): while `is_presented` is true a `FindBar` (match case and
+/// whole words, no replace row) shows above the diff and the rows mark every
+/// match on the accent's soft ground, the current one on the accent; Next
+/// and Previous scroll it into view, sideways too. The app hands the find its
+/// keys (`DiffFindState.handleKey`) while the pane or the query has them.
+/// Closed, it draws as `SelectableDiffViewWithActions` does.
+///
+/// - `lines`: the diff.
+/// - `selected`: the hunk to mark, if any.
+/// - `scroll`: the diff's scroll position, both ways.
+/// - `on_hunk`: when set, called with the hunk a tapped row belongs to.
+/// - `selection`: the selected lines, kept by the app beside `scroll`.
+/// - `actions`: the links, in order, on every hunk header; empty for none.
+/// - `find`: the find, kept by the app beside `scroll`.
+/// - `is_presented`: whether its bar shows; the find sets it as it opens and closes.
+/// - Returns: the diff, with the bar above it while it shows.
+pub fn FindableDiffView(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback, selection: *mod.DiffSelection, actions: []const mod.HunkAction, find: *mod.DiffFindState, is_presented: mod.Binding(bool)) mod.View {
+    selection.track(lines);
+    const diff = findableList(lines, selected, scroll, on_hunk, selection, actions, .{ .state = find, .is_presented = is_presented });
+    if (!is_presented.get()) return diff;
+    const bar = mod.FindBar("Find", &find.query, find.count(), find.actions());
+    return mod.StackBuilder.make(.vertical, 0, .leading, .{ bar, diff });
+}
+
 /// The diff's rows over a `VirtualListBoth`, selectable when `selection` is set.
 ///
 /// - `lines`: the diff.
@@ -537,14 +626,37 @@ pub fn SelectableDiffViewWithActions(lines: []const mod.DiffLine, selected: ?usi
 /// - `actions`: the links on every hunk header; empty for none.
 /// - Returns: the diff.
 fn diffList(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback, selection: ?*mod.DiffSelection, actions: []const mod.HunkAction) mod.View {
+    return findableList(lines, selected, scroll, on_hunk, selection, actions, null);
+}
+
+/// The diff's rows over a `VirtualListBoth`, selectable when `selection` is
+/// set, a find's matches marked when `find` is set and shows.
+///
+/// - `lines`: the diff.
+/// - `selected`: the hunk to mark, if any.
+/// - `scroll`: the diff's scroll position, both ways.
+/// - `on_hunk`: the hunk tap handler, if any.
+/// - `selection`: the selected lines, or null for none.
+/// - `actions`: the links on every hunk header; empty for none.
+/// - `find`: the find attached and its presented flag, or null for none.
+/// - Returns: the diff.
+fn findableList(lines: []const mod.DiffLine, selected: ?usize, scroll: *mod.ScrollState, on_hunk: ?mod.IndexCallback, selection: ?*mod.DiffSelection, actions: []const mod.HunkAction, find: ?DiffFinding) mod.View {
+    const index = DiffIndex.shared();
+    index.update(lines);
+    // Attached before the rows in view are read: a match chosen as the query is typed scrolls to it.
+    if (find) |finding| {
+        // A match on a header is revealed clear of the links that cover the pane's right edge.
+        finding.state.header_reserve = mod.HunkAction.groupWidth(actions);
+        finding.state.attach(lines, index.key, index.digits, scroll, finding.is_presented);
+    }
     const model = mod.BuildScope.shared().allocator().create(DiffModel) catch @panic("oom");
-    model.* = .{ .lines = lines, .selected = selected, .on_hunk = on_hunk, .selection = selection, .actions = actions, .tokens = mod.BuildScope.shared().tokens() };
+    model.* = .{ .lines = lines, .selected = selected, .on_hunk = on_hunk, .selection = selection, .actions = actions, .find = if (find) |finding| finding.state else null, .tokens = mod.BuildScope.shared().tokens() };
     if (actions.len > 0 and scroll.viewport_width > 0) {
         // The pane's right edge, in the row's coordinates, less the links and the row's bar.
         const edge = scroll.offset_x + scroll.viewport_width - mod.HunkAction.groupWidth(actions);
         model.pin = @max(0, edge - mod.DiffLayout.bar_width - mod.DiffLayout.bar_spacing);
     }
-    model.indexHunks(mod.RowRange.visible(lines.len, mod.diff_row_height, scroll));
+    model.indexRows(mod.RowRange.visible(lines.len, mod.diff_row_height, scroll));
     return VirtualListBoth(DiffModel, model, lines.len, mod.diff_row_height, scroll, DiffModel.row, if (lines.len > 0) model.widest else null);
 }
 
@@ -588,6 +700,54 @@ test "a DiffView builds only the rows in view, and taps name the hunk" {
     // Row 60 is at the top, in hunk 1 (rows 50..99).
     try std.testing.expect(window.tap(.{ .x = 150, .y = 5 }));
     try std.testing.expectEqual(@as(?usize, 1), probe.hunk);
+}
+
+test "a FindableDiffView marks its find's matches while the bar shows, and draws as before while it does not" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    const lines = [_]mod.DiffLine{
+        .{ .kind = .hunkHeader, .text = "@@ -1,2 +1,2 @@" },
+        .{ .kind = .removed, .text = "\tneedle = 1;", .old = 1 },
+        .{ .kind = .added, .text = "\tneedle = needle;", .new = 1 },
+    };
+    var selection: mod.DiffSelection = .{};
+    defer selection.clear();
+    var scroll: mod.ScrollState = .{ .viewport_height = 4 * mod.diff_row_height };
+    var find = mod.DiffFindState.init(std.testing.allocator);
+    defer find.deinit();
+    var presented = renderer.State(bool).init(std.testing.allocator, false);
+    defer presented.deinit();
+    defer mod.Focus.shared().clear();
+    try find.query.setText("needle");
+
+    // Closed: the diff alone, no row marked.
+    window.begin(renderer.MacosTheme.light);
+    const closed = FindableDiffView(&lines, 0, &scroll, null, &selection, &.{}, &find, presented.binding());
+    const model: DiffModel = .{ .lines = &lines, .selected = null, .on_hunk = null, .find = &find, .tokens = mod.BuildScope.shared().tokens() };
+    try std.testing.expect(model.lineText(1, lines[1], null).kind == .text);
+    window.end();
+    try std.testing.expect(closed.kind != .stack);
+
+    // Open: the bar above, the query typed choosing the first match.
+    find.open();
+    try std.testing.expect(mod.Focus.shared().focused() == &find.query);
+    window.begin(renderer.MacosTheme.light);
+    const open = FindableDiffView(&lines, 0, &scroll, null, &selection, &.{}, &find, presented.binding());
+    // Row 2 holds two matches, the tab before them expanded: text, match, text, match, text.
+    const marked = model.lineText(2, lines[2], null);
+    window.end();
+    try std.testing.expect(open.kind == .stack);
+    try std.testing.expectEqual(@as(?mod.FindCount, .{ .current = 0, .total = 3 }), find.count());
+    const spans = marked.kind.richText.spans;
+    try std.testing.expectEqual(@as(usize, 5), spans.len);
+    try std.testing.expectEqualStrings("    ", spans[0].text);
+    try std.testing.expectEqualStrings("needle", spans[1].text);
+    try std.testing.expect(spans[1].background != null and spans[3].background != null and spans[2].background == null);
+    var frame = try window.render(open, 400, 200);
+    defer frame.deinit();
+    // The current match is row 1's, on the accent.
+    find.findNext();
+    try std.testing.expectEqual(@as(?usize, 1), find.current);
 }
 
 test "a SelectableDiffView's press picks the hunk and selects the line; a drag and a shift-press extend it" {
@@ -1066,4 +1226,40 @@ test "a DiffView reads a diff whole once, until the diff changes" {
     lines[8].text = "the longest line of the rebuilt diff";
     model.indexHunks(.{ .start = 0, .end = lines.len });
     try std.testing.expectEqual(@as(usize, 8), model.widest);
+}
+
+test "a FindableDiffView keeps a match chosen as its bar appears inside the rows left under the bar" {
+    const window = try mod.TestWindow.create(std.testing.allocator);
+    defer window.destroy();
+    var lines: [200]mod.DiffLine = undefined;
+    for (&lines, 0..) |*line, index| line.* = .{ .kind = .context, .text = if (index == 40) "needle" else "hay", .old = @intCast(index + 1), .new = @intCast(index + 1) };
+    var selection: mod.DiffSelection = .{};
+    defer selection.clear();
+    var scroll: mod.ScrollState = .{};
+    var find = mod.DiffFindState.init(std.testing.allocator);
+    defer find.deinit();
+    var presented = renderer.State(bool).init(std.testing.allocator, false);
+    defer presented.deinit();
+    defer mod.Focus.shared().clear();
+
+    // A frame without the bar measures the whole pane.
+    window.begin(renderer.MacosTheme.light);
+    const closed = FindableDiffView(&lines, null, &scroll, null, &selection, &.{}, &find, presented.binding());
+    window.end();
+    var first = try window.render(closed, 400, 300);
+    first.deinit();
+    const whole = scroll.viewport_height;
+
+    // The bar opens with a query in the same frame: the match is chosen before the rows' viewport shrinks.
+    find.open();
+    try find.query.setText("needle");
+    window.begin(renderer.MacosTheme.light);
+    const open = FindableDiffView(&lines, null, &scroll, null, &selection, &.{}, &find, presented.binding());
+    window.end();
+    var second = try window.render(open, 400, 300);
+    second.deinit();
+    try std.testing.expect(scroll.viewport_height < whole);
+    try std.testing.expectEqual(@as(?usize, 0), find.current);
+    try std.testing.expect(41 * mod.diff_row_height <= scroll.offset + scroll.viewport_height);
+    try std.testing.expect(40 * mod.diff_row_height >= scroll.offset);
 }

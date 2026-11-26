@@ -17,6 +17,24 @@ pub const SystemInfoView = @import("system_info_view.zig").SystemInfoView;
 pub const VideoInfoView = @import("system_info_view.zig").VideoInfoView;
 /// The audio output in use and the devices, as a columned form.
 pub const AudioInfoView = @import("system_info_view.zig").AudioInfoView;
+/// What the owner must prove: biometrics, or biometrics else the login password (`LAPolicy`).
+pub const AuthenticationPolicy = @import("authentication_backend.zig").AuthenticationPolicy;
+/// The biometry a device has: none, Touch ID, Face ID, Optic ID (`LABiometryType`).
+pub const BiometryType = @import("authentication_backend.zig").BiometryType;
+/// Whether a policy can be evaluated now, or why not.
+pub const AuthenticationAvailability = @import("authentication_backend.zig").AuthenticationAvailability;
+/// Why an evaluation did not succeed (`LAError`).
+pub const AuthenticationFailure = @import("authentication_backend.zig").AuthenticationFailure;
+/// How an evaluation ended: succeeded, or failed and why.
+pub const AuthenticationResult = @import("authentication_backend.zig").AuthenticationResult;
+/// The platform's device-owner authentication, installed by the runtime.
+pub const AuthenticationBackend = @import("authentication_backend.zig").AuthenticationBackend;
+/// Where an `AuthenticationContext`'s evaluation stands.
+pub const AuthenticationStatus = @import("authentication_context.zig").AuthenticationStatus;
+/// Device-owner authentication (Touch ID) modeled on `LAContext`, app-owned and polled.
+pub const AuthenticationContext = @import("authentication_context.zig").AuthenticationContext;
+/// A fake authentication backend for tests.
+pub const TestAuthentication = @import("test_authentication.zig").TestAuthentication;
 
 // -----------------------------------------------------------------------------
 // From the views module
@@ -56,4 +74,7 @@ test {
     _ = @import("system_report.zig");
     _ = @import("system_info.zig");
     _ = @import("system_info_view.zig");
+    _ = @import("authentication_backend.zig");
+    _ = @import("authentication_context.zig");
+    _ = @import("test_authentication.zig");
 }

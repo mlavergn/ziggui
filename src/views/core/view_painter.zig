@@ -366,6 +366,8 @@ pub const ViewPainter = struct {
         const state = scroll.state;
         state.content_height = content_size.height;
         state.viewport_height = rect.height;
+        // A row chosen this frame, revealed again now the viewport is known.
+        state.applyPendingReveal();
         state.offset = std.math.clamp(state.offset, 0, state.maxOffset());
         var content_rect = renderer.Rect{ .x = rect.x, .y = rect.y - state.offset, .width = rect.width, .height = content_size.height };
         if (scroll.horizontal) {

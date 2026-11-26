@@ -130,6 +130,8 @@ pub const Callback = @import("core/module.zig").Callback;
 pub const HoverCallback = @import("core/module.zig").HoverCallback;
 /// What `View.onDrag` calls.
 pub const DragCallback = @import("core/module.zig").DragCallback;
+/// A span of rows `ScrollState.revealAfterLayout` brings into view once the viewport is measured.
+pub const ScrollReveal = @import("core/module.zig").ScrollReveal;
 /// A scroll view's app-owned offset and extents.
 pub const ScrollState = @import("core/module.zig").ScrollState;
 /// A scroll view's frame and state, collected while painting.
@@ -628,6 +630,12 @@ pub const SelectableDiffViewWithActions = @import("panes/module.zig").Selectable
 pub const HunkAction = @import("panes/module.zig").HunkAction;
 /// The lines selected in a `SelectableDiffView`, kept by the app.
 pub const DiffSelection = @import("panes/module.zig").DiffSelection;
+/// A `SelectableDiffViewWithActions` with a find bar and its matches marked (`DiffFindState`).
+pub const FindableDiffView = @import("panes/module.zig").FindableDiffView;
+/// A diff's find, kept by the app: the query, the options, the matches and the current one.
+pub const DiffFindState = @import("panes/module.zig").DiffFindState;
+/// One match of a diff find: a row and a byte range of its text.
+pub const DiffMatch = @import("panes/module.zig").DiffMatch;
 
 // -----------------------------------------------------------------------------
 // Split views (split/)
@@ -716,6 +724,14 @@ pub const FindCount = @import("forms/module.zig").FindCount;
 pub const FindActions = @import("forms/module.zig").FindActions;
 /// A find bar's replace row: its field and its buttons.
 pub const FindReplace = @import("forms/module.zig").FindReplace;
+/// What a find's matches were found for: the source, its version, the query and the options.
+pub const FindMatchesKey = @import("forms/module.zig").FindMatchesKey;
+/// A find's matches, kept until what was searched, the query or the options change.
+pub const FindMatches = @import("forms/module.zig").FindMatches;
+/// How a highlighted line's plain text, marked ranges and current range are drawn.
+pub const HighlightStyle = @import("text/module.zig").HighlightStyle;
+/// A line with byte ranges marked, as preformatted spans (`HighlightedText`, a diff find's rows).
+pub const HighlightSpans = @import("text/module.zig").HighlightSpans;
 /// A text editor's find and replace, which `View.findNavigator` attaches.
 pub const TextFindState = @import("forms/module.zig").TextFindState;
 /// A find bar: a search field, the count, and Previous, Next and Done.
@@ -818,6 +834,24 @@ pub const SystemInfoView = @import("system/module.zig").SystemInfoView;
 pub const VideoInfoView = @import("system/module.zig").VideoInfoView;
 /// The audio output in use and the devices, as a columned form.
 pub const AudioInfoView = @import("system/module.zig").AudioInfoView;
+/// What the owner must prove: biometrics, or biometrics else the login password (`LAPolicy`).
+pub const AuthenticationPolicy = @import("system/module.zig").AuthenticationPolicy;
+/// The biometry a device has: none, Touch ID, Face ID, Optic ID (`LABiometryType`).
+pub const BiometryType = @import("system/module.zig").BiometryType;
+/// Whether a policy can be evaluated now, or why not.
+pub const AuthenticationAvailability = @import("system/module.zig").AuthenticationAvailability;
+/// Why an evaluation did not succeed (`LAError`).
+pub const AuthenticationFailure = @import("system/module.zig").AuthenticationFailure;
+/// How an evaluation ended: succeeded, or failed and why.
+pub const AuthenticationResult = @import("system/module.zig").AuthenticationResult;
+/// The platform's device-owner authentication, installed by the runtime.
+pub const AuthenticationBackend = @import("system/module.zig").AuthenticationBackend;
+/// Where an `AuthenticationContext`'s evaluation stands.
+pub const AuthenticationStatus = @import("system/module.zig").AuthenticationStatus;
+/// Device-owner authentication (Touch ID) modeled on `LAContext`, app-owned and polled.
+pub const AuthenticationContext = @import("system/module.zig").AuthenticationContext;
+/// A fake authentication backend for tests.
+pub const TestAuthentication = @import("system/module.zig").TestAuthentication;
 
 // -----------------------------------------------------------------------------
 // Unit Tests

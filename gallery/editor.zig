@@ -711,7 +711,7 @@ pub const Editor = struct {
             log.warn("the find field was not filled [{t}]", .{err});
             return;
         };
-        self.find.followed_query = self.find.query.revision;
+        self.find.found.followed_query = self.find.query.revision;
         self.find.findNext();
     }
 

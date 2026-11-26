@@ -371,6 +371,8 @@ pub const Callback = views.Callback;
 pub const HoverCallback = views.HoverCallback;
 /// What `View.onDrag` and `PointerInput.armDrag` call as the pointer moves.
 pub const DragCallback = views.DragCallback;
+/// A span of rows `ScrollState.revealAfterLayout` brings into view once the viewport is measured.
+pub const ScrollReveal = views.ScrollReveal;
 /// A scroll view's app-owned offset and extents.
 pub const ScrollState = views.ScrollState;
 /// A scroll view's frame and state, collected while painting.
@@ -1020,6 +1022,12 @@ pub const SelectableDiffViewWithActions = views.SelectableDiffViewWithActions;
 pub const HunkAction = views.HunkAction;
 /// The lines selected in a `SelectableDiffView`, kept by the app beside the diff's `ScrollState`.
 pub const DiffSelection = views.DiffSelection;
+/// A `SelectableDiffViewWithActions` with a find bar and its matches marked (`DiffFindState`).
+pub const FindableDiffView = views.FindableDiffView;
+/// A diff's find, kept by the app beside the diff's `ScrollState`: the query, the options, the matches and the current one.
+pub const DiffFindState = views.DiffFindState;
+/// One match of a diff find: a row and a byte range of its text.
+pub const DiffMatch = views.DiffMatch;
 
 // -----------------------------------------------------------------------------
 // Split views
@@ -1106,6 +1114,14 @@ pub const FindCount = views.FindCount;
 pub const FindActions = views.FindActions;
 /// A find bar's replace row: its field and its buttons.
 pub const FindReplace = views.FindReplace;
+/// What a find's matches were found for: the source, its version, the query and the options.
+pub const FindMatchesKey = views.FindMatchesKey;
+/// A find's matches, kept until what was searched, the query or the options change.
+pub const FindMatches = views.FindMatches;
+/// How a highlighted line's plain text, marked ranges and current range are drawn.
+pub const HighlightStyle = views.HighlightStyle;
+/// A line with byte ranges marked, as preformatted spans (`HighlightedText`, a diff find's rows).
+pub const HighlightSpans = views.HighlightSpans;
 /// A text editor's find and replace, which `View.findNavigator` attaches.
 pub const TextFindState = views.TextFindState;
 /// A find bar: a search field, the count, and Previous, Next and Done.
@@ -1208,6 +1224,24 @@ pub const SystemInfoView = views.SystemInfoView;
 pub const VideoInfoView = views.VideoInfoView;
 /// The audio output in use and the devices, as a columned form.
 pub const AudioInfoView = views.AudioInfoView;
+/// What the owner must prove: biometrics, or biometrics else the login password (`LAPolicy`).
+pub const AuthenticationPolicy = views.AuthenticationPolicy;
+/// The biometry a device has: none, Touch ID, Face ID, Optic ID (`LABiometryType`).
+pub const BiometryType = views.BiometryType;
+/// Whether a policy can be evaluated now, or why not.
+pub const AuthenticationAvailability = views.AuthenticationAvailability;
+/// Why an evaluation did not succeed (`LAError`).
+pub const AuthenticationFailure = views.AuthenticationFailure;
+/// How an evaluation ended: succeeded, or failed and why.
+pub const AuthenticationResult = views.AuthenticationResult;
+/// The platform's device-owner authentication, installed by the runtime.
+pub const AuthenticationBackend = views.AuthenticationBackend;
+/// Where an `AuthenticationContext`'s evaluation stands.
+pub const AuthenticationStatus = views.AuthenticationStatus;
+/// Device-owner authentication (Touch ID) modeled on `LAContext`, app-owned and polled.
+pub const AuthenticationContext = views.AuthenticationContext;
+/// A fake authentication backend for tests.
+pub const TestAuthentication = views.TestAuthentication;
 
 // -----------------------------------------------------------------------------
 // Testing

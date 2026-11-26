@@ -40,6 +40,18 @@ pub const FindActions = struct {
     /// The replace row under the find row; null for none.
     replace: ?FindReplace = null,
 
+    /// The letter a ⌘ (Ctrl off macOS) shortcut names, lowercased: only an
+    /// ASCII letter is a find's shortcut, whatever character the app hands.
+    ///
+    /// - `key`: the key.
+    /// - Returns: the letter, or null for a key without ⌘ or with no ASCII letter.
+    pub fn commandLetter(key: mod.Key) ?u8 {
+        if (!key.command) return null;
+        const char = key.char orelse return null;
+        if (char >= 0x80) return null;
+        return std.ascii.toLower(@intCast(char));
+    }
+
     /// Handles a key meant for the bar: call it from the app's key handler
     /// while the bar shows, before a focused field takes the key.
     ///
@@ -70,7 +82,7 @@ pub const FindActions = struct {
             self.on_previous.call();
             return true;
         }
-        if (key.command and !key.alt and (key.char == 'g' or key.char == 'G')) {
+        if (!key.alt and Self.commandLetter(key) == 'g') {
             if (key.shift or key.char == 'G') self.on_previous.call() else self.on_next.call();
             return true;
         }
@@ -194,4 +206,10 @@ test "find actions leave Esc to an open text context menu" {
     mod.TextContextMenu.shared().close();
     try std.testing.expect(actions.handleKey(.{ .name = .escape }, &field));
     try std.testing.expectEqualStrings("done", probe.last);
+}
+
+test "find actions: a command letter is the ASCII letter a ⌘ key names, lowercased" {
+    try std.testing.expectEqual(@as(?u8, 'g'), FindActions.commandLetter(.{ .char = 'G', .command = true }));
+    try std.testing.expectEqual(@as(?u8, null), FindActions.commandLetter(.{ .char = 'g' }));
+    try std.testing.expectEqual(@as(?u8, null), FindActions.commandLetter(.{ .char = 0xe9, .command = true }));
 }

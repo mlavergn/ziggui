@@ -10,6 +10,12 @@ const log = std.log.scoped(.ziggui_find_bar);
 const mod = @import("module.zig");
 const renderer = @import("renderer");
 
+/// The search and replace fields' width when the bar has room for it.
+const field_width: f32 = 300;
+
+/// The least the fields shrink to in a bar too narrow for `field_width`.
+const min_field_width: f32 = 120;
+
 /// A toggle of the bar's search options, made in the build arena.
 const FindOptionToggle = struct {
     const Self = @This();
@@ -40,9 +46,11 @@ const FindOptionToggle = struct {
     }
 };
 
-/// A find bar: a `SearchField` 300pt wide, the count ("3 of 40"), then
-/// Previous, Next and Done at the trailing edge, on the bar ground. Pass the
-/// app's keys through `actions.handleKey(key, field)` while it shows.
+/// A find bar: a `SearchField` 300pt wide (narrower, down to 120pt, when the
+/// bar is too narrow for it and the buttons: a find over a narrow pane), the
+/// count ("3 of 40"), then Previous, Next and Done at the trailing edge, on
+/// the bar ground. Pass the app's keys through `actions.handleKey(key, field)`
+/// while it shows.
 ///
 /// - `placeholder`: the field's hint while it is empty.
 /// - `field`: the field's text; app-owned.
@@ -51,12 +59,13 @@ const FindOptionToggle = struct {
 ///   `search_options`, Aa and ab| toggles follow the field, and with
 ///   `replace`, a second row holds the replacement field (Enter replaces),
 ///   Replace and Replace All.
-/// - Returns: the bar, as wide as it is given.
+/// - Returns: the bar, as wide as it is given; narrower than its buttons
+///   need, it keeps its leading edge and cuts what does not fit.
 pub fn FindBar(placeholder: []const u8, field: *mod.TextFieldState, count: ?mod.FindCount, actions: mod.FindActions) mod.View {
     const scope = mod.BuildScope.shared();
     const tokens = scope.tokens();
     const status: []const u8 = if (count) |found| found.textAlloc(scope.allocator()) catch @panic("oom") else "";
-    const search = mod.SearchField(placeholder, field, actions.on_submit, null).frameWidth(300);
+    const search = mod.SearchField(placeholder, field, actions.on_submit, null).frameMaxWidth().frameCap(field_width).frameMinWidth(min_field_width);
     const words = mod.Text(status).font(.footnote).foregroundStyle(tokens.secondary_label);
     const find_row = if (actions.search_options) |options| mod.StackBuilder.make(.horizontal, 8, .center, .{
         search,
@@ -84,13 +93,14 @@ pub fn FindBar(placeholder: []const u8, field: *mod.TextFieldState, count: ?mod.
                 .textFieldStyle(.plain)
                 .onSubmit(replace.on_replace)
                 .frameMaxWidth()
-                .paddingInsets(.{ .top = 2, .leading = 8, .bottom = 2, .trailing = 8 })).frameWidth(300),
+                .paddingInsets(.{ .top = 2, .leading = 8, .bottom = 2, .trailing = 8 })).frameMaxWidth().frameCap(field_width).frameMinWidth(min_field_width),
             mod.Spacer(),
             mod.ButtonRoled("Replace", .normal, replace.on_replace),
             mod.ButtonRoled("Replace All", .normal, replace.on_replace_all),
         }),
     }) else find_row;
-    return rows.paddingInsets(.{ .top = 6, .leading = 10, .bottom = 6, .trailing = 10 }).frameMaxWidth().background(tokens.bar_background);
+    // Too narrow for even the shrunk fields, it keeps its leading edge and cuts the trailing buttons (their keys still work).
+    return rows.paddingInsets(.{ .top = 6, .leading = 10, .bottom = 6, .trailing = 10 }).frameMaxWidth().frameAlign(.leading).clipped().background(tokens.bar_background);
 }
 
 // -----------------------------------------------------------------------------

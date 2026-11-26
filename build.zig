@@ -181,7 +181,7 @@ const Modules = struct {
         if (options.target.result.os.tag == .macos) {
             if (options.macos_sdk) |sdk| Self.addMacosSdk(b, sdl, sdk);
             sdl.linkSystemLibrary("objc", .{});
-            for ([_][]const u8{ "AVFoundation", "CoreMedia", "CoreGraphics", "QuartzCore", "CoreAudio", "WebKit" }) |framework| sdl.linkFramework(framework, .{});
+            for ([_][]const u8{ "AVFoundation", "CoreMedia", "CoreGraphics", "QuartzCore", "CoreAudio", "WebKit", "LocalAuthentication" }) |framework| sdl.linkFramework(framework, .{});
         }
 
         const barrel = b.createModule(.{
@@ -423,8 +423,8 @@ const Gallery = struct {
     const Self = @This();
 
     /// The gallery's name as an app (its window's title): the macOS bundle
-    /// `Zig GUI Gallery.app`, its menu bar's and Dock's name.
-    const app_name = "Zig GUI Gallery";
+    /// `Zig Gallery.app`, its menu bar's and Dock's name.
+    const app_name = "Zig Gallery";
     /// The gallery app's bundle identifier.
     const app_identifier = "com.marclavergne.ziggui.gallery";
 
@@ -449,7 +449,7 @@ const Gallery = struct {
     /// The executable builds the gallery on the app `ziggui`, which links SDL3.
     /// `gallery` installs it as `bin/ziggui-gallery` (the headless checks run
     /// it there); `gallery-app` installs it as its platform's app, laid out by
-    /// `zigbuildx.App`: on macOS `Zig GUI Gallery.app` at the top of the prefix
+    /// `zigbuildx.App`: on macOS `Zig Gallery.app` at the top of the prefix
     /// (`Info.plist` from build.zig.zon, the `.icns` icon, unsigned), on Linux
     /// the executable with a desktop entry and icon. No step is part of the
     /// default install.

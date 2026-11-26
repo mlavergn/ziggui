@@ -1,10 +1,10 @@
 //! The macOS platform code: the Objective-C runtime bridge and what is built
 //! on it (AppKit window chrome, AVFoundation video, the AppKit native-view
-//! host, WebKit web pages). Other targets reach none of it but through the
-//! compile-time selectors in the parent module (`VideoBackend`,
-//! `NativeBackend`, `WebBackend`) and the macOS branches of `App` and the
+//! host, WebKit web pages, LocalAuthentication's Touch ID). Other targets
+//! reach none of it but through the compile-time selectors in the parent
+//! module (`VideoBackend`, `NativeBackend`, `WebBackend`,
+//! `LocalAuthenticationBackend`) and the macOS branches of `App` and the
 //! event loop, so their builds never link the Objective-C runtime.
-
 const std = @import("std");
 const log = std.log.scoped(.ziggui_macos_module);
 
@@ -24,6 +24,10 @@ pub const CGRect = @import("objective_c.zig").CGRect;
 pub const CMTime = @import("objective_c.zig").CMTime;
 /// Core Media's `CMTimeRange`: a start and a duration.
 pub const CMTimeRange = @import("objective_c.zig").CMTimeRange;
+/// A global Objective-C block, laid out by hand, a framework calls back through.
+pub const ObjectiveCBlock = @import("objective_c_block.zig").ObjectiveCBlock;
+/// The descriptor an `ObjectiveCBlock` points at.
+pub const ObjectiveCBlockDescriptor = @import("objective_c_block.zig").ObjectiveCBlockDescriptor;
 /// AppKit through the Objective-C runtime: the unified title bar, the menu bar, template tray icons.
 pub const Cocoa = @import("cocoa.zig").Cocoa;
 /// The macOS media player: AVFoundation, its pictures behind the Metal view.
@@ -38,6 +42,8 @@ pub const WkWebViewBackend = @import("wk_web_view_backend.zig").WkWebViewBackend
 pub const MetalInterop = @import("metal_interop.zig").MetalInterop;
 /// The Metal ray tracing behind a scene's ray-traced shadows and reflections: its shapes' acceleration structures.
 pub const MetalSceneRayTracer = @import("metal_scene_ray_tracer.zig").MetalSceneRayTracer;
+/// The macOS device-owner authentication: LocalAuthentication's `LAContext` (Touch ID).
+pub const LaContextBackend = @import("la_context_backend.zig").LaContextBackend;
 
 // -----------------------------------------------------------------------------
 // From the sdl module

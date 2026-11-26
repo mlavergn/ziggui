@@ -87,8 +87,8 @@ const Navigators = struct {
 pub const TextFindState = struct {
     const Self = @This();
 
-    /// The most matches counted and marked.
-    pub const max_matches: usize = 10_000;
+    /// The most matches counted and marked (`FindMatches.limit`).
+    pub const max_matches: usize = mod.FindMatches(mod.TextRange).limit;
 
     /// What the fields and the match list come from.
     allocator: std.mem.Allocator,
@@ -114,19 +114,10 @@ pub const TextFindState = struct {
     /// The frame that last attached it, so keys reach only a find on show.
     attached_in: ?mod.FrameStamp = null,
 
-    /// The matches, kept until the text, the query or the options change.
-    matches: std.ArrayList(mod.TextRange) = .empty,
-
-    /// Whether `matches` stopped at `max_matches`.
-    more: bool = false,
-
-    /// What `matches` was found for: the document, its revision, the
-    /// query's revision and the options.
-    matched: ?struct { document: *const mod.TextFieldState, revision: u64, query: u64, options: mod.TextSearchOptions } = null,
-
-    /// The query's revision the last time a match was chosen for it, so
-    /// typing in the field finds as it goes.
-    followed_query: u64 = 0,
+    /// The matches, kept until the document (its address and revision), the
+    /// query or the options change, and the query a match was last chosen
+    /// for, so typing in the field finds as it goes.
+    found: mod.FindMatches(mod.TextRange),
 
     /// Where the caret was when the find opened: typing finds from there.
     origin: usize = 0,
@@ -141,6 +132,7 @@ pub const TextFindState = struct {
             .allocator = allocator,
             .query = mod.TextFieldState.init(allocator),
             .replacement = mod.TextFieldState.init(allocator),
+            .found = mod.FindMatches(mod.TextRange).init(allocator),
         };
         return self;
     }
@@ -150,7 +142,7 @@ pub const TextFindState = struct {
     /// - `self`: the find.
     pub fn deinit(self: *Self) void {
         Navigators.shared_navigators.forget(self);
-        self.matches.deinit(self.allocator);
+        self.found.deinit();
         self.replacement.deinit();
         self.query.deinit();
     }
@@ -193,7 +185,7 @@ pub const TextFindState = struct {
             const selected = document.selectedText();
             if (selected.len > 0 and std.mem.findScalar(u8, selected, '\n') == null) {
                 self.query.setText(selected) catch |err| log.warn("the find was not seeded: {s}", .{@errorName(err)});
-                self.followed_query = self.query.revision;
+                self.found.followed_query = self.query.revision;
             }
         }
         if (self.is_presented) |presented| presented.set(true);
@@ -221,7 +213,7 @@ pub const TextFindState = struct {
             log.warn("the selection was not taken: {s}", .{@errorName(err)});
             return;
         };
-        self.followed_query = self.query.revision;
+        self.found.followed_query = self.query.revision;
     }
 
     /// The matches in the document, found again if the text, query or options changed.
@@ -230,27 +222,9 @@ pub const TextFindState = struct {
     /// - Returns: the matches, valid until the next change.
     pub fn matchList(self: *Self) []const mod.TextRange {
         const document = self.document orelse return &.{};
-        if (self.matched) |key| {
-            if (key.document == document and key.revision == document.revision and key.query == self.query.revision and std.meta.eql(key.options, self.options)) return self.matches.items;
-        }
-        self.matches.clearRetainingCapacity();
-        self.more = false;
-        self.matched = .{ .document = document, .revision = document.revision, .query = self.query.revision, .options = self.options };
-        const search = mod.TextSearch.init(document.text(), self.query.text(), self.options);
-        var from: usize = 0;
-        while (search.next(from)) |range| {
-            if (self.matches.items.len == max_matches) {
-                self.more = true;
-                break;
-            }
-            self.matches.append(self.allocator, range) catch |err| {
-                log.warn("matches cut short: {s}", .{@errorName(err)});
-                self.more = true;
-                break;
-            };
-            from = range.end;
-        }
-        return self.matches.items;
+        const key: mod.FindMatchesKey = .{ .source = @intFromPtr(document), .version = document.revision, .query = self.query.revision, .options = self.options };
+        if (!self.found.holds(key)) _ = self.found.collect(document.text(), self.query.text(), self.options, 0, Self.rangeMatch);
+        return self.found.items.items;
     }
 
     /// The match the document's selection is, if it is one.
@@ -272,8 +246,8 @@ pub const TextFindState = struct {
     /// - Returns: the count, or null while the query is empty.
     pub fn count(self: *Self) ?mod.FindCount {
         if (self.query.text().len == 0) return null;
-        const found = self.matchList();
-        return .{ .current = self.currentIndex(), .total = found.len, .more = self.more };
+        _ = self.matchList();
+        return self.found.count(self.currentIndex());
     }
 
     /// Selects the next match after the selection or caret, wrapping to the first.
@@ -306,7 +280,7 @@ pub const TextFindState = struct {
     pub fn replaceCurrent(self: *Self) void {
         const document = self.document orelse return;
         const index = self.currentIndex() orelse return self.findNext();
-        const range = self.matches.items[index];
+        const range = self.found.items.items[index];
         document.replaceRange(range.start, range.end, self.replacement.text()) catch |err| {
             log.warn("not replaced: {s}", .{@errorName(err)});
             return;
@@ -393,18 +367,16 @@ pub const TextFindState = struct {
     /// - `mac`: whether this is macOS.
     /// - Returns: whether it took the key.
     pub fn handleKey(self: *Self, key: mod.Key, mac: bool) bool {
-        // Only ASCII letters are the find's shortcuts; an app may hand any character.
-        const letter: ?u21 = if (key.char) |char| (if (char < 0x80) std.ascii.toLower(@intCast(char)) else null) else null;
-        if (key.command and letter != null) {
-            if (letter.? == 'f' and !key.shift) {
+        if (mod.FindActions.commandLetter(key)) |letter| {
+            if (letter == 'f' and !key.shift) {
                 self.open(mac and key.alt);
                 return true;
             }
-            if (letter.? == 'h' and !mac) {
+            if (letter == 'h' and !mac) {
                 self.open(true);
                 return true;
             }
-            if (letter.? == 'e' and mac) {
+            if (letter == 'e' and mac) {
                 self.useSelection();
                 self.findNext();
                 return true;
@@ -439,13 +411,22 @@ pub const TextFindState = struct {
         return low;
     }
 
+    /// The match a range found in the document is: the range itself.
+    ///
+    /// - `range`: the range found.
+    /// - `tag`: ignored (a document is one text).
+    /// - Returns: the range.
+    fn rangeMatch(range: mod.TextRange, tag: usize) mod.TextRange {
+        _ = tag;
+        return range;
+    }
+
     /// Chooses a match for a query that changed as it was typed: the first
     /// at or after where the find opened, so the editor shows it.
     ///
     /// - `self`: the find.
     fn follow(self: *Self) void {
-        if (self.query.revision == self.followed_query) return;
-        self.followed_query = self.query.revision;
+        if (!self.found.takeQueryChange(self.query.revision)) return;
         if (self.query.text().len == 0) return;
         self.selectFrom(self.origin);
     }

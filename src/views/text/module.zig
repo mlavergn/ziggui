@@ -23,6 +23,10 @@ pub const TextFieldState = @import("text_field_state.zig").TextFieldState;
 pub const DisplayText = @import("display_text.zig").DisplayText;
 /// The last thing an action said, kept for the notice strip.
 pub const NoticeText = @import("notice_text.zig").NoticeText;
+/// How a highlighted line's plain text, marked ranges and current range are drawn.
+pub const HighlightStyle = @import("highlight_spans.zig").HighlightStyle;
+/// A line with byte ranges marked, as preformatted spans.
+pub const HighlightSpans = @import("highlight_spans.zig").HighlightSpans;
 /// Line and column geometry over a UTF-8 buffer.
 pub const TextLines = @import("text_lines.zig").TextLines;
 /// Tab-aware widths of edited text.
@@ -67,6 +71,7 @@ test {
     // Nothing here does I/O to trace.
     _ = log;
     _ = @import("span.zig");
+    _ = @import("highlight_spans.zig");
     _ = @import("rich_run.zig");
     _ = @import("rich_line.zig");
     _ = @import("rich_layout.zig");

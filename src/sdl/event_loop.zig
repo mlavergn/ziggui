@@ -1108,6 +1108,8 @@ pub fn EventLoop(comptime AppState: type) type {
             mod.SdlAudioDevices.install();
             // And `WebPage`s with its web view.
             mod.WebBackend.install();
+            // `AuthenticationContext`s ask its Touch ID.
+            mod.LocalAuthenticationBackend.install();
             app.hide_on_close = config.hide_on_close;
 
             self.frame = .{
@@ -1183,6 +1185,7 @@ pub fn EventLoop(comptime AppState: type) type {
             mod.AudioBackend.uninstall();
             mod.SdlAudioDevices.uninstall();
             mod.WebBackend.uninstall();
+            mod.LocalAuthenticationBackend.uninstall();
             // And the app's platform views leave it; the app still owns them.
             mod.NativeBackend.detachAll();
             app.window = null;

@@ -119,6 +119,8 @@ pub const Binding = @import("../module.zig").Binding;
 pub const ButtonRole = @import("../module.zig").ButtonRole;
 /// A text field's buffer, caret and selection (from the views module).
 pub const TextFieldState = @import("../module.zig").TextFieldState;
+/// A line with byte ranges marked, as preformatted spans, from the views module.
+pub const HighlightSpans = @import("../module.zig").HighlightSpans;
 /// Line and character stepping over UTF-8 text (from the views module).
 pub const TextLines = @import("../module.zig").TextLines;
 /// A scroll view's app-owned offsets (from the views module).
