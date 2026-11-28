@@ -306,7 +306,10 @@ const Arguments = struct {
         if (self.path_entry) shown.kit.path_entry_on_show = true;
         if (self.search) |text| shown.search.field.setText(text) catch |err| log.err("search not typed: {s}", .{@errorName(err)});
         if (self.video) |video| shown.media.sample = video;
-        if (self.ray_traced) shown.scene_demo.ray_traced.set(true);
+        if (self.ray_traced) {
+            shown.scene_demo.ray_traced.set(true);
+            shown.sky_demo.ray_traced.set(true);
+        }
         if (self.memos) {
             ziggui.TestAudioDevices.install();
             shown.media.memos.showSample();
@@ -1221,21 +1224,21 @@ const Window = struct {
     /// File Browser's list hands it the arrow keys; over the Images & Drawing
     /// section's picture a pinch or a ⌘- or Ctrl-scroll zooms it about the
     /// pointer, and a left press on its zoom chip fits it again, consumed
-    /// before it can start the picture's pan drag. A plain scroll is left to
-    /// the page, which scrolls.
+    /// before it can start the picture's pan drag; over either of the Scenes
+    /// section's scenes the same gestures zoom its camera. A plain scroll is
+    /// left to the page, which scrolls.
     ///
     /// - `event`: the event.
-    /// - Returns: true when the picture took it; otherwise ziggui handles it as usual.
+    /// - Returns: true when the picture or a scene took it; otherwise ziggui handles it as usual.
     fn onMouse(event: ziggui.MouseEvent) bool {
         const target = Self.shown orelse return false;
         const point = ziggui.Point{ .x = event.x, .y = event.y };
         if (event.kind == .down) target.menu_bar.pointerDown();
         if (event.kind == .down and event.button == 1) target.pointerDown(point);
-        if (target.shownScene()) |scene| return switch (event.kind) {
-            .pinch => ziggui.SceneCameraInput.pinch(scene, point, event.scale),
-            .wheel => event.commandOrControl() and ziggui.SceneCameraInput.wheel(scene, point, event.delta_y),
-            else => false,
-        };
+        if (target.shownScenes()) |scenes| {
+            for (scenes) |scene| if (Self.zoomScene(scene, event, point)) return true;
+            return false;
+        }
         const zoom = target.pictureZoom() orelse return false;
         if (event.kind == .down and event.button == 1 and zoom.chipContains(point)) {
             zoom.fit();
@@ -1244,6 +1247,20 @@ const Window = struct {
         return switch (event.kind) {
             .pinch => zoom.pinch(point, event.scale),
             .wheel => event.commandOrControl() and zoom.wheel(point, event.delta_x, event.delta_y, true),
+            else => false,
+        };
+    }
+
+    /// Hands a pinch, or a ⌘-scroll, to a scene's camera.
+    ///
+    /// - `scene`: the scene.
+    /// - `event`: the event.
+    /// - `point`: the pointer, in points.
+    /// - Returns: true when the scene's view took it.
+    fn zoomScene(scene: *ziggui.Scene, event: ziggui.MouseEvent, point: ziggui.Point) bool {
+        return switch (event.kind) {
+            .pinch => ziggui.SceneCameraInput.pinch(scene, point, event.scale),
+            .wheel => event.commandOrControl() and ziggui.SceneCameraInput.wheel(scene, point, event.delta_y),
             else => false,
         };
     }

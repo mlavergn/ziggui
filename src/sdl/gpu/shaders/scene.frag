@@ -26,6 +26,7 @@ layout(set = 3, binding = 0) uniform SceneLights {
 layout(set = 3, binding = 1) uniform SceneSurface {
     vec4 base_color; // linear rgb; a the alpha
     vec4 surface;    // x the specular; y the shininess; z 1 when it receives shadows
+    vec4 emission;   // x the share of its color it gives off itself
 } surface;
 
 layout(location = 0) in vec3 v_world;
@@ -74,6 +75,13 @@ void main() {
     vec4 texel = texture(base_texture, v_uv);
     vec3 albedo = surface.base_color.rgb * texel.rgb;
     float alpha = surface.base_color.a * texel.a;
+    // Wholly emissive: its own color, without the lighting it would discard.
+    if (surface.emission.x >= 1.0) {
+        vec3 shown = clamp(albedo, 0.0, 1.0);
+        if (lights.shadow_parameters.z > 0.5) shown = encodeSrgb(shown);
+        out_color = vec4(shown, alpha);
+        return;
+    }
     float specular = surface.surface.x;
     float shininess = max(surface.surface.y, 1.0);
     bool receives = surface.surface.z > 0.5;
@@ -105,6 +113,8 @@ void main() {
         color += (albedo * diffuse + highlight) * lights.point_color[index].rgb * fade * fade;
     }
 
+    // An emissive surface shows its own color, unlit, by its share.
+    color = mix(color, albedo, surface.emission.x);
     color = clamp(color, 0.0, 1.0);
     if (lights.shadow_parameters.z > 0.5) color = encodeSrgb(color);
     out_color = vec4(color, alpha);

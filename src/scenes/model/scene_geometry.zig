@@ -75,6 +75,11 @@ pub const SceneMesh = struct {
     indices: []const u32,
     /// Changes when the data changes in place.
     generation: u64 = 0,
+    /// The box the mesh fills, when the app knows it: null measures every
+    /// position each frame the mesh draws, which a large mesh feels. Give it
+    /// for a static mesh, and with room to spare for one a geometry modifier
+    /// moves (its positions are then not where it draws).
+    bounds: ?mod.SceneBounds = null,
 
     /// Checks the mesh can be drawn: normals (and uvs) for every position,
     /// whole triangles, and every index in range.
@@ -149,6 +154,27 @@ pub const SceneGeometry = union(enum) {
         return hasher.final();
     }
 
+    /// What identifies a mesh's arrays (positions, normals, uvs and indices)
+    /// whatever their generation, so a
+    /// renderer can let a mesh's earlier uploads go once a new generation
+    /// replaces them (a surface animated every frame); 0 for a primitive.
+    /// The ray tracers still keep each generation's structure a while, so an
+    /// opaque mesh animated every frame is best moved by a geometry modifier.
+    ///
+    /// - `self`: the geometry.
+    /// - Returns: the identity.
+    pub fn source(self: *const Self) u64 {
+        return switch (self.*) {
+            .mesh => |mesh| identity: {
+                // Every array: meshes sharing positions and indices but not normals or uvs are apart.
+                const uvs: []const [2]f32 = mesh.uvs orelse &.{};
+                const arrays = [_]usize{ @intFromPtr(mesh.positions.ptr), mesh.positions.len, @intFromPtr(mesh.normals.ptr), mesh.normals.len, @intFromPtr(uvs.ptr), uvs.len, @intFromPtr(mesh.indices.ptr), mesh.indices.len };
+                break :identity std.hash.Wyhash.hash(0, std.mem.asBytes(&arrays)) | 1;
+            },
+            else => 0,
+        };
+    }
+
     /// The box that holds the geometry, in its node's units.
     ///
     /// - `self`: the geometry.
@@ -160,6 +186,7 @@ pub const SceneGeometry = union(enum) {
             .plane => |plane| Self.centered(plane.width, plane.height, 0),
             .cylinder => |cylinder| Self.centered(cylinder.radius * 2, cylinder.height, cylinder.radius * 2),
             .mesh => |mesh| bounds: {
+                if (mesh.bounds) |known| break :bounds known;
                 var result = mod.SceneBounds.empty;
                 for (mesh.positions) |position| result = result.including(.{ .x = position[0], .y = position[1], .z = position[2] });
                 break :bounds result;
@@ -455,4 +482,32 @@ test "a geometry's key follows its sizes, and a mesh's its generation" {
     var changed = mesh;
     changed.generation = 1;
     try std.testing.expect((SceneGeometry{ .mesh = mesh }).key() != (SceneGeometry{ .mesh = changed }).key());
+}
+
+test "a mesh's source stays across generations while its key changes; a primitive has none" {
+    const positions = [_][3]f32{ .{ 0, 0, 0 }, .{ 1, 0, 0 }, .{ 0, 1, 0 } };
+    const normals = [_][3]f32{ .{ 0, 0, 1 }, .{ 0, 0, 1 }, .{ 0, 0, 1 } };
+    const indices = [_]u32{ 0, 1, 2 };
+    const first = SceneGeometry{ .mesh = .{ .positions = &positions, .normals = &normals, .indices = &indices } };
+    const next = SceneGeometry{ .mesh = .{ .positions = &positions, .normals = &normals, .indices = &indices, .generation = 1 } };
+    try std.testing.expect(first.key() != next.key());
+    try std.testing.expectEqual(first.source(), next.source());
+    try std.testing.expect(first.source() != 0);
+    try std.testing.expectEqual(@as(u64, 0), (SceneGeometry{ .box = .{} }).source());
+    // The same positions and indices with other normals, or with uvs, are another mesh's arrays.
+    const flipped = [_][3]f32{ .{ 0, 0, -1 }, .{ 0, 0, -1 }, .{ 0, 0, -1 } };
+    const uvs = [_][2]f32{ .{ 0, 0 }, .{ 1, 0 }, .{ 0, 1 } };
+    try std.testing.expect((SceneGeometry{ .mesh = .{ .positions = &positions, .normals = &flipped, .indices = &indices } }).source() != first.source());
+    try std.testing.expect((SceneGeometry{ .mesh = .{ .positions = &positions, .normals = &normals, .uvs = &uvs, .indices = &indices } }).source() != first.source());
+}
+
+test "a mesh's known bounds are used as given, else measured" {
+    const positions = [_][3]f32{ .{ 0, 0, 0 }, .{ 1, 2, 0 }, .{ 0, 1, 3 } };
+    const normals = [_][3]f32{ .{ 0, 0, 1 }, .{ 0, 0, 1 }, .{ 0, 0, 1 } };
+    const indices = [_]u32{ 0, 1, 2 };
+    const measured = (SceneGeometry{ .mesh = .{ .positions = &positions, .normals = &normals, .indices = &indices } }).bounds();
+    try std.testing.expectEqual(@as(f32, 3), measured.max.z);
+    const given = mod.SceneBounds.init(mod.Vec3.init(-5, -5, -5), mod.Vec3.init(5, 5, 5));
+    const known = (SceneGeometry{ .mesh = .{ .positions = &positions, .normals = &normals, .indices = &indices, .bounds = given } }).bounds();
+    try std.testing.expectEqual(@as(f32, 5), known.max.z);
 }

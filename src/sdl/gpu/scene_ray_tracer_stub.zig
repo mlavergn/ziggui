@@ -14,6 +14,8 @@ pub const SceneRayTracerStub = struct {
 
     /// Frames a frame's own objects are kept (`MetalSceneRayTracer.retire_frames`).
     pub const retire_frames = 4;
+    /// Whether `bind` reads a light's cookie and the scene's environment (`MetalSceneRayTracer.reads_planes`).
+    pub const reads_planes = false;
 
     /// Never anything.
     primitives: std.ArrayList(void) = .empty,
@@ -83,14 +85,20 @@ pub const SceneRayTracerStub = struct {
     /// - `command_buffer`: unused.
     /// - `pass`: unused.
     /// - `sky`: unused.
+    /// - `cookie`: unused.
+    /// - `environment`: unused.
+    /// - `soft_rays`: unused.
     /// - `blank`: unused.
     /// - `sampler`: unused.
     /// - Returns: false.
-    pub fn bind(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, pass: *sdl_c.SDL_GPURenderPass, sky: scenes.Vec3, blank: *sdl_c.SDL_GPUTexture, sampler: *sdl_c.SDL_GPUSampler) bool {
+    pub fn bind(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, pass: *sdl_c.SDL_GPURenderPass, sky: scenes.Vec3, cookie: ?mod.SceneRayCookie, environment: ?mod.SceneRayEnvironment, soft_rays: u32, blank: *sdl_c.SDL_GPUTexture, sampler: *sdl_c.SDL_GPUSampler) bool {
+        _ = soft_rays;
+        _ = environment;
         _ = self;
         _ = command_buffer;
         _ = pass;
         _ = sky;
+        _ = cookie;
         _ = blank;
         _ = sampler;
         return false;

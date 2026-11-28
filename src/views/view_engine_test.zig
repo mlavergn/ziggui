@@ -378,6 +378,95 @@ test "view: Slider follows mouse drag after press" {
     try std.testing.expectApproxEqAbs(@as(f32, 1.0), value.get(), 0.001);
 }
 
+test "view: sliders over one model drag only the one pressed" {
+    // Two values in one model: their bindings share a context and differ in their functions, as a settings pane's do.
+    const Pair = struct {
+        const Self = @This();
+
+        first: f32 = 0,
+        second: f32 = 0,
+
+        /// Reads the first value.
+        ///
+        /// - `context`: the pair.
+        /// - Returns: the first value.
+        fn getFirst(context: *anyopaque) f32 {
+            return @as(*Self, @ptrCast(@alignCast(context))).first;
+        }
+
+        /// Sets the first value.
+        ///
+        /// - `context`: the pair.
+        /// - `value`: the new value.
+        fn setFirst(context: *anyopaque, value: f32) void {
+            @as(*Self, @ptrCast(@alignCast(context))).first = value;
+        }
+
+        /// Reads the second value.
+        ///
+        /// - `context`: the pair.
+        /// - Returns: the second value.
+        fn getSecond(context: *anyopaque) f32 {
+            return @as(*Self, @ptrCast(@alignCast(context))).second;
+        }
+
+        /// Sets the second value.
+        ///
+        /// - `context`: the pair.
+        /// - `value`: the new value.
+        fn setSecond(context: *anyopaque, value: f32) void {
+            @as(*Self, @ptrCast(@alignCast(context))).second = value;
+        }
+    };
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var pair = Pair{};
+    const tree = mod.VStack(.{
+        mod.Slider(.{ .context = &pair, .get_fn = Pair.getFirst, .set_fn = Pair.setFirst }, 0, 1),
+        mod.Slider(.{ .context = &pair, .get_fn = Pair.getSecond, .set_fn = Pair.setSecond }, 0, 1),
+    });
+    var framebuffer = try environment.renderToFramebuffer(&context, tree, .{ .x = 0, .y = 0, .width = 100, .height = 60 }, 100, 60);
+    defer framebuffer.deinit();
+    // Press the top slider's left end, then drag right: the top one follows, the bottom one stays.
+    var top: ?f32 = null;
+    for (environment.hits.items) |region| switch (region.action) {
+        .slider => |slider| if (slider.binding.set_fn == Pair.setFirst) {
+            top = region.rect.midY();
+        },
+        else => {},
+    };
+    try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 5, .y = top.? }));
+    mod.PointerInput.shared().drag(environment.hits.items, .{ .x = 95, .y = top.? + 25 });
+    mod.PointerInput.shared().endDrag();
+    try std.testing.expect(pair.first > 0.8);
+    try std.testing.expectEqual(@as(f32, 0), pair.second);
+}
+
+test "view: a stepped Slider lands on its steps and tells when a press starts and ends" {
+    var environment = mod.TestEnvironment.init();
+    environment.setup();
+    defer environment.deinit();
+    var context = environment.context();
+    var value = renderer.State(f32).init(std.testing.allocator, 0);
+    defer value.deinit();
+    var editing = renderer.State(bool).init(std.testing.allocator, false);
+    defer editing.deinit();
+    const slider = mod.Slider(value.binding(), 0, 10).sliderStep(2.5).onEditingChanged(editing.binding());
+    var framebuffer = try environment.renderToFramebuffer(&context, slider, .{ .x = 0, .y = 0, .width = 100, .height = 20 }, 100, 20);
+    defer framebuffer.deinit();
+    try std.testing.expect(mod.PointerInput.shared().tap(environment.hits.items, .{ .x = 40, .y = 10 }));
+    try std.testing.expect(editing.get());
+    const landed = value.get();
+    try std.testing.expectApproxEqAbs(@round(landed / 2.5) * 2.5, landed, 1e-5);
+    mod.PointerInput.shared().drag(environment.hits.items, .{ .x = 500, .y = 10 });
+    try std.testing.expectApproxEqAbs(@as(f32, 10), value.get(), 1e-5);
+    try std.testing.expect(editing.get());
+    mod.PointerInput.shared().endDrag();
+    try std.testing.expect(!editing.get());
+}
+
 test "view: Icon paints a glyph from the bundled set" {
     var environment = mod.TestEnvironment.init();
     environment.setup();

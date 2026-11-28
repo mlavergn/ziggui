@@ -529,7 +529,7 @@ pub const ViewPainter = struct {
         try display_list.drawScene(rect, scene_view.scene, ground, colors.tertiary_label.over(ground));
         if (scene_view.options.animating) {
             const clock = mod.FrameClock.shared();
-            clock.requestFrameAt(clock.time() + 16);
+            clock.requestFrameAt(clock.time() + clock.frameInterval());
         }
         try context.emitAccessibility(view, rect, .image, scene_view.options.label, "");
     }

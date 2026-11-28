@@ -179,6 +179,12 @@ pub const SceneRayTracerStub = @import("gpu/scene_ray_tracer_stub.zig").SceneRay
 pub const SceneRayTracer = if (os_tag == .macos) MetalSceneRayTracer else if (has_vulkan_interop) VulkanSceneRayTracer else SceneRayTracerStub;
 /// An opaque shape rays meet, as `SceneRayTracer.prepare` takes it.
 pub const SceneRayShape = @import("gpu/scene_ray_shape.zig").SceneRayShape;
+/// A directional light's cookie, as `SceneRayTracer.bind` takes it.
+pub const SceneRayCookie = @import("gpu/scene_ray_cookie.zig").SceneRayCookie;
+/// A texture on a plane, as `SceneRayTracer.bind` takes a cookie's or an overlay's.
+pub const SceneRayPlane = @import("gpu/scene_ray_plane.zig").SceneRayPlane;
+/// A scene's environment, as `SceneRayTracer.bind` takes it.
+pub const SceneRayEnvironment = @import("gpu/scene_ray_environment.zig").SceneRayEnvironment;
 /// The Objective-C runtime bridge the AVFoundation player uses.
 pub const ObjectiveC = @import("macos/module.zig").ObjectiveC;
 /// An Objective-C object pointer (`id`).

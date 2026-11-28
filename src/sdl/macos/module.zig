@@ -62,6 +62,12 @@ pub const ResizeSettle = @import("../module.zig").ResizeSettle;
 pub const WebOrigin = @import("../module.zig").WebOrigin;
 /// An opaque shape rays meet (the Metal ray tracer takes them), from the sdl module.
 pub const SceneRayShape = @import("../module.zig").SceneRayShape;
+/// A directional light's cookie (the Metal ray tracer binds it), from the sdl module.
+pub const SceneRayCookie = @import("../module.zig").SceneRayCookie;
+/// A texture on a plane (the Metal ray tracer binds a cookie's and overlays'), from the sdl module.
+pub const SceneRayPlane = @import("../module.zig").SceneRayPlane;
+/// A scene's environment (the Metal ray tracer binds it), from the sdl module.
+pub const SceneRayEnvironment = @import("../module.zig").SceneRayEnvironment;
 /// The target OS, from the sdl module.
 pub const os_tag = @import("../module.zig").os_tag;
 /// The target CPU, from the sdl module.

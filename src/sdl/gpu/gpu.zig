@@ -975,12 +975,16 @@ pub const Gpu = struct {
         }, hlsl) else null;
         if (ray_tracing and traced_fragment == null) log.warn("scenes draw rasterized: no traced fragment shader [{s}]", .{sdl_c.SDL_GetError()});
         defer if (traced_fragment) |shader| sdl_c.SDL_ReleaseGPUShader(self.device, shader);
+        // Geometry modifiers compile from source, which only Metal takes here.
+        const metal = formats & sdl_c.SDL_GPU_SHADERFORMAT_MSL != 0 and !spirv and formats & sdl_c.SDL_GPU_SHADERFORMAT_DXBC == 0;
         self.scene_renderer = mod.SceneRenderer.init(self.allocator, self.device, self.target_format, .{
             .lit_vertex = lit_vertex,
             .lit_fragment = lit_fragment,
             .shadow_vertex = shadow_vertex,
             .shadow_fragment = shadow_fragment,
             .traced_fragment = traced_fragment,
+            .msl = if (metal) scene_msl else null,
+            .traced_msl = if (metal and traced_fragment != null) scene_traced_msl else null,
         }) orelse return null;
         // The device traces rays, but this renderer cannot: say so, so a
         // toggle offering it greys out.

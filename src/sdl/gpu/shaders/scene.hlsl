@@ -26,6 +26,7 @@ struct SceneLights {
 struct SceneSurface {
     float4 base_color;
     float4 surface;
+    float4 emission;
 };
 
 ConstantBuffer<SceneVertexUniforms> vertex_uniforms : register(b0, space1);
@@ -100,6 +101,12 @@ float4 scene_fragment(SceneVaryings input) : SV_Target0 {
     float4 texel = base_texture.Sample(base_sampler, input.uv);
     float3 albedo = surface.base_color.rgb * texel.rgb;
     float alpha = surface.base_color.a * texel.a;
+    // Wholly emissive: its own color, without the lighting it would discard.
+    if (surface.emission.x >= 1.0) {
+        float3 shown = saturate(albedo);
+        if (lights.shadow_parameters.z > 0.5) shown = encode_srgb(shown);
+        return float4(shown, alpha);
+    }
     float specular = surface.surface.x;
     float shininess = max(surface.surface.y, 1.0);
     bool receives = surface.surface.z > 0.5;
@@ -135,6 +142,8 @@ float4 scene_fragment(SceneVaryings input) : SV_Target0 {
         color += (albedo * diffuse + highlight) * lights.point_color[light_index].rgb * fade * fade;
     }
 
+    // An emissive surface shows its own color, unlit, by its share.
+    color = lerp(color, albedo, surface.emission.x);
     color = saturate(color);
     if (lights.shadow_parameters.z > 0.5) color = encode_srgb(color);
     return float4(color, alpha);

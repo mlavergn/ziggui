@@ -218,7 +218,7 @@ pub const ControlPainter = struct {
         }
         try context.hit_regions.append(context.arena, .{
             .rect = rect,
-            .action = .{ .slider = .{ .binding = slider.value, .min = slider.min, .max = slider.max, .track = track } },
+            .action = .{ .slider = .{ .binding = slider.value, .min = slider.min, .max = slider.max, .track = track, .step = slider.step, .editing = slider.editing } },
             .disabled = context.disabled,
         });
     }

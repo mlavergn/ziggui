@@ -29,6 +29,15 @@ pub const FrameClock = struct {
     /// The earliest time (ms) a view asked for a frame at (a hover hint's delay), or 0 for none.
     frame_at_ms: u64 = 0,
 
+    /// The display's refresh interval (ms): what a view animating every
+    /// frame asks to wait (`frameInterval`). The SDL runtime sets it from the
+    /// window's display (8 at 120 Hz); 16 headless and in tests.
+    frame_interval_ms: u64 = 16,
+
+    /// The most frames a second the app asks for (`setFrameRateLimit`), 0 for
+    /// as many as the display shows.
+    frame_rate_limit: u32 = 0,
+
     /// The process's clock.
     var shared_clock: Self = .{};
 
@@ -50,6 +59,59 @@ pub const FrameClock = struct {
     /// - `milliseconds`: the frame's time.
     pub fn setTime(self: *Self, milliseconds: u64) void {
         self.time_ms = milliseconds;
+    }
+
+    /// Starts a frame at `milliseconds`: sets the clock, and clears a frame
+    /// request this frame satisfies, one due by then or within half a
+    /// display refresh (a wait wakes a millisecond early; a press or a move
+    /// may bring the frame sooner). Its views ask again as they're built;
+    /// left standing, a request already met would bring a second frame at
+    /// once, doubling an animating view's pace.
+    ///
+    /// - `self`: the clock.
+    /// - `milliseconds`: the frame's time.
+    pub fn beginFrame(self: *Self, milliseconds: u64) void {
+        self.time_ms = milliseconds;
+        if (self.frame_at_ms != 0 and self.frame_at_ms <= milliseconds + self.frame_interval_ms / 2) self.frame_at_ms = 0;
+    }
+
+    /// Sets the display's refresh interval, for views animating every frame.
+    ///
+    /// - `self`: the clock.
+    /// - `milliseconds`: the interval, at least 1.
+    pub fn setFrameInterval(self: *Self, milliseconds: u64) void {
+        self.frame_interval_ms = @max(milliseconds, 1);
+    }
+
+    /// The display's refresh interval: how long a view animating every frame
+    /// (an animating `SceneView`) waits for its next.
+    ///
+    /// - `self`: the clock.
+    /// - Returns: the interval, in milliseconds.
+    pub fn frameInterval(self: *const Self) u64 {
+        if (self.frame_rate_limit == 0) return self.frame_interval_ms;
+        return @max(self.frame_interval_ms, 1000 / @as(u64, self.frame_rate_limit));
+    }
+
+    /// The soonest the next frame may start under the frame-rate cap
+    /// (`setFrameRateLimit`): a frame an event brings (a move, a key) waits
+    /// for it too, the event handled at once.
+    ///
+    /// - `self`: the clock.
+    /// - Returns: the time, on the clock `beginFrame` sets, or null with no cap.
+    pub fn earliestFrame(self: *const Self) ?u64 {
+        if (self.frame_rate_limit == 0) return null;
+        return self.time_ms + 1000 / @as(u64, self.frame_rate_limit);
+    }
+
+    /// Caps how many frames a second a view animating every frame asks for,
+    /// below the display's refresh (to save power and heat), and how soon an
+    /// event's frame follows the last (`earliestFrame`).
+    ///
+    /// - `self`: the clock.
+    /// - `frames_per_second`: the most a second; 0 for as many as the display shows.
+    pub fn setFrameRateLimit(self: *Self, frames_per_second: u32) void {
+        self.frame_rate_limit = frames_per_second;
     }
 
     /// Installs what `wake` calls; the SDL runtime sets it as its loop starts
@@ -150,4 +212,37 @@ test "view: frameTime reads back what setFrameTime set" {
     defer clock.setTime(saved);
     clock.setTime(1234);
     try std.testing.expectEqual(@as(u64, 1234), clock.time());
+}
+
+test "view: frame clock's interval follows what the display sets, never below a millisecond" {
+    var clock = FrameClock{};
+    try std.testing.expectEqual(@as(u64, 16), clock.frameInterval());
+    clock.setFrameInterval(8);
+    try std.testing.expectEqual(@as(u64, 8), clock.frameInterval());
+    clock.setFrameInterval(0);
+    try std.testing.expectEqual(@as(u64, 1), clock.frameInterval());
+    // A cap only ever lengthens the wait.
+    clock.setFrameInterval(8);
+    clock.setFrameRateLimit(30);
+    try std.testing.expectEqual(@as(u64, 33), clock.frameInterval());
+    clock.setFrameRateLimit(240);
+    try std.testing.expectEqual(@as(u64, 8), clock.frameInterval());
+}
+
+test "view: a frame clears the request it satisfies, so an animating view keeps its pace" {
+    var clock = FrameClock{};
+    clock.setFrameInterval(8);
+    clock.setFrameRateLimit(30);
+    clock.beginFrame(1000);
+    clock.requestFrameAt(clock.time() + clock.frameInterval());
+    try std.testing.expectEqual(@as(?u64, 1033), clock.earliestFrame());
+    // The wait woke a millisecond early: this frame meets the request, and no second frame follows at once.
+    clock.beginFrame(1032);
+    try std.testing.expectEqual(@as(?u64, null), clock.frameDueIn(1033));
+    // A request further off than half a refresh stands.
+    clock.requestFrameAt(1500);
+    clock.beginFrame(1100);
+    try std.testing.expectEqual(@as(?u64, 400), clock.frameDueIn(1100));
+    clock.setFrameRateLimit(0);
+    try std.testing.expectEqual(@as(?u64, null), clock.earliestFrame());
 }

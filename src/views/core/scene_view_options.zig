@@ -14,7 +14,8 @@ pub const SceneViewOptions = struct {
     /// a wheel or pinch the app passes to `SceneCameraInput` zooms it.
     allows_camera_control: bool = false,
     /// Whether the scene moves on its own, so the view asks for a frame
-    /// every 16 ms while it shows (the app moves its nodes as it builds).
+    /// every display refresh while it shows (`FrameClock.frameInterval`:
+    /// 8 ms at 120 Hz, 16 at 60; the app moves its nodes as it builds).
     animating: bool = false,
     /// What the view says it shows, to accessibility.
     label: []const u8 = "3D scene",

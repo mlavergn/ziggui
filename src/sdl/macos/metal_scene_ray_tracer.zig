@@ -16,8 +16,10 @@
 //! meshes' upload), then binds them on SDL's render encoder once the lit pass
 //! begins (`bind`), past the slots SDL_GPU binds: the instance structure at
 //! fragment buffer 16 (each primitive structure made resident), the
-//! instances' surfaces at 17, the triangles at 18, the sky at 19, and the
-//! textures at fragment textures 8 to 15.
+//! instances' surfaces at 17, the triangles at 18, the sky (and a light's
+//! cookie's and the environment's overlays' planes) at 19, the textures at
+//! fragment textures 8 to 15, the cookie's texture at 16, and the
+//! environment's at 17 and its overlays' from 18.
 //! Metal orders the builds after the uploads and before the pass, since SDL's
 //! resources are hazard-tracked. The instance structure is built in a command
 //! buffer of its own on SDL's queue, committed at once, so it runs before the
@@ -69,16 +71,24 @@ const HitInstance = extern struct {
     shininess: f32,
     /// Which bound texture it samples, -1 for none.
     texture: i32,
-    /// Padding to the shader's layout.
-    unused: f32 = 0,
+    /// How much of its color it gives off itself (`SceneMaterial.emissionShare`).
+    emission: f32 = 0,
 };
 
 /// What a reflection that meets nothing shows, as `SceneTracing` in the shader.
 const Tracing = extern struct {
     const Self = @This();
 
-    /// The sky, linear (w unused).
+    /// The sky, linear; w the most rays a soft shadow sends.
     sky: [4]f32,
+    /// The environment: bound, max polar, strength, blur (`SceneRayEnvironment.uniforms`).
+    environment: [4]f32,
+    /// x the cookie's light (-1 for none), y how many overlays; z, w unused.
+    planes: [4]f32,
+    /// The cookie's plane's equations (`ScenePlaneTexture.equations`).
+    cookie: [3][4]f32,
+    /// The environment's overlays' planes' equations.
+    overlays: [mod.SceneRayEnvironment.max_overlays][3][4]f32,
 };
 
 /// A mesh's primitive acceleration structure and its triangles' normals.
@@ -211,6 +221,10 @@ pub const MetalSceneRayTracer = struct {
     const reflected_texture_slot = 8;
     /// How many textures reflections sample (`reflected_texture_count`).
     const reflected_texture_count = 8;
+    /// The fragment texture slot a light's cookie is bound at (`[[texture(16)]]`).
+    const cookie_texture_slot = reflected_texture_slot + reflected_texture_count;
+    /// The fragment texture slot the environment's texture is bound at (`[[texture(17)]]`), its overlays' the next.
+    const environment_texture_slot = cookie_texture_slot + 1;
     /// The instance mask bit shadow rays test (`shadow_mask` in the shader).
     const shadow_mask: u32 = 1;
     /// The instance mask bit reflection rays test (`reflection_mask`).
@@ -221,6 +235,8 @@ pub const MetalSceneRayTracer = struct {
     /// Frames a frame's own objects are kept before they are released or
     /// used again: past the frames SDL lets be in flight.
     pub const retire_frames = 4;
+    /// Whether `bind` reads a light's cookie and the scene's environment.
+    pub const reads_planes = true;
     /// The least a pooled buffer is made, in bytes, so small scenes never grow one.
     const least_buffer_length = 4096;
     /// The most pixels a texture's average reads, spread across it.
@@ -410,7 +426,7 @@ pub const MetalSceneRayTracer = struct {
             descriptor.* = .{
                 .transformation_matrix = Self.packedTransform(shape.world),
                 .options = instance_options,
-                .mask = reflection_mask | (if (shape.casts_shadows) shadow_mask else 0),
+                .mask = (if (shape.reflected) reflection_mask else 0) | (if (shape.casts_shadows) shadow_mask else 0),
                 .intersection_function_table_offset = 0,
                 .acceleration_structure_index = place.*,
             };
@@ -443,10 +459,13 @@ pub const MetalSceneRayTracer = struct {
     /// - `command_buffer`: the frame's command buffer, the lit pass open on it.
     /// - `pass`: the lit pass (unused: Metal binds on its encoder).
     /// - `sky`: what a reflection that meets nothing shows, linear.
+    /// - `cookie`: a directional light's cookie, bound at `cookie_texture_slot`; null for none.
+    /// - `environment`: what reflections see where they meet nothing, bound at `environment_texture_slot` and its overlays at the next; null for the sky color alone.
+    /// - `soft_rays`: the most rays a soft shadow sends (`Scene.soft_shadow_rays`), already 4 to 32 in fours (`SceneRenderer.softRays`).
     /// - `blank`: a texture bound in the texture slots no texture fills.
     /// - `sampler`: unused: the shader samples with its own (`reflected_sampler`).
     /// - Returns: false when nothing was prepared or no render pass is open.
-    pub fn bind(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, pass: *sdl_c.SDL_GPURenderPass, sky: scenes.Vec3, blank: *sdl_c.SDL_GPUTexture, sampler: *sdl_c.SDL_GPUSampler) bool {
+    pub fn bind(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, pass: *sdl_c.SDL_GPURenderPass, sky: scenes.Vec3, cookie: ?mod.SceneRayCookie, environment: ?mod.SceneRayEnvironment, soft_rays: u32, blank: *sdl_c.SDL_GPUTexture, sampler: *sdl_c.SDL_GPUSampler) bool {
         _ = pass;
         _ = sampler;
         if (comptime !enabled) return false;
@@ -457,7 +476,24 @@ pub const MetalSceneRayTracer = struct {
         mod.ObjectiveC.send(void, encoder, "setFragmentAccelerationStructure:atBufferIndex:", .{ self.instances, @as(usize, shapes_slot) });
         mod.ObjectiveC.send(void, encoder, "setFragmentBuffer:offset:atIndex:", .{ self.surfaces, @as(usize, 0), @as(usize, shapes_slot + 1) });
         mod.ObjectiveC.send(void, encoder, "setFragmentBuffer:offset:atIndex:", .{ self.triangles, @as(usize, 0), @as(usize, shapes_slot + 2) });
-        const tracing = Tracing{ .sky = .{ sky.x, sky.y, sky.z, 0 } };
+        const rays: f32 = @floatFromInt(soft_rays);
+        var tracing = std.mem.zeroes(Tracing);
+        tracing.sky = .{ sky.x, sky.y, sky.z, rays };
+        tracing.environment = mod.SceneRayEnvironment.uniforms(environment);
+        tracing.planes = .{ mod.SceneRayCookie.lightOf(cookie), mod.SceneRayEnvironment.overlaysOf(environment), 0, 0 };
+        if (cookie) |light_cookie| tracing.cookie = light_cookie.plane.equations;
+        const sky_texture = if (environment) |found| found.texture else blank;
+        mod.ObjectiveC.send(void, encoder, "setFragmentTexture:atIndex:", .{ self.interop.texture(sky_texture), @as(usize, environment_texture_slot) });
+        for (0..mod.SceneRayEnvironment.max_overlays) |index| {
+            var overlay_texture = blank;
+            if (environment) |found| if (index < found.overlay_count) {
+                overlay_texture = found.overlays[index].texture;
+                tracing.overlays[index] = found.overlays[index].equations;
+            };
+            mod.ObjectiveC.send(void, encoder, "setFragmentTexture:atIndex:", .{ self.interop.texture(overlay_texture), @as(usize, environment_texture_slot + 1 + index) });
+        }
+        const cookie_texture = if (cookie) |light_cookie| light_cookie.plane.texture else blank;
+        mod.ObjectiveC.send(void, encoder, "setFragmentTexture:atIndex:", .{ self.interop.texture(cookie_texture), @as(usize, cookie_texture_slot) });
         mod.ObjectiveC.send(void, encoder, "setFragmentBytes:length:atIndex:", .{ @as(*const anyopaque, &tracing), @as(usize, @sizeOf(Tracing)), @as(usize, shapes_slot + 3) });
         for (0..reflected_texture_count) |index| {
             const texture = if (index < self.sampled.items.len) self.sampled.items[index] else blank;
@@ -661,6 +697,7 @@ pub const MetalSceneRayTracer = struct {
                 .first_triangle = self.first_triangles.items[place],
                 .shininess = shape.material.shininess,
                 .texture = sampled,
+                .emission = shape.material.emissionShare(),
             };
         }
         const frame_set = &self.sets.items[set_index];

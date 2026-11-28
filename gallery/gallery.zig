@@ -196,19 +196,19 @@ pub const Section = enum {
     /// - Returns: its lines, each names separated by ` · `.
     pub fn names(self: *const Self) []const []const u8 {
         return switch (self.*) {
-            .text => &.{ "ziggui.Text", "ziggui.WrappedText", "ziggui.RichText · ziggui.RichTextSpaced · ziggui.RichTextPreformatted", "ziggui.HighlightedText · ziggui.TextRange", "ziggui.Label", "ziggui.TextField", "ziggui.SearchField", "ziggui.SecureField" },
+            .text => &.{ "ziggui.Text", "ziggui.Text · .fontWeight · .italic · .monospaced", "ziggui.WrappedText", "ziggui.RichText · ziggui.RichTextSpaced · ziggui.RichTextPreformatted", "ziggui.HighlightedText · ziggui.TextRange", "ziggui.Label", "ziggui.TextField", "ziggui.SearchField", "ziggui.SecureField", ".textFieldStyle(.plain) · .textEditorStyle(.plain) · .contentMargins · .placeholder · .softWrap · .textEditorColors" },
             .textEditor => &.{ "ziggui.TextEditor · ziggui.TextEditorSettings · ziggui.TextEditorColors · .font(.custom)", "ziggui.TextEditor · .findNavigator · ziggui.TextFindState · ziggui.FindBar · ziggui.FindActions" },
-            .controls => &.{ "ziggui.Button · ziggui.ButtonRoled · ziggui.IconButton · ziggui.ButtonIcon · ziggui.ButtonIconRoled", "ziggui.ButtonKeyed", "ziggui.Toggle · .toggleStyle(.checkbox) · .checkboxStyle(.rounded) · .square · .circular · .compact", "ziggui.Slider · ziggui.ProgressView", "ziggui.Spinner · ziggui.LoadingDots", "ziggui.Stepper", "ziggui.Badge", "ziggui.KeyCap" },
+            .controls => &.{ "ziggui.Button · ziggui.ButtonRoled · ziggui.IconButton · ziggui.ButtonIcon · ziggui.ButtonIconRoled", "ziggui.ButtonKeyed", "ziggui.Toggle · .toggleStyle(.checkbox) · .checkboxStyle(.rounded) · .square · .circular · .compact", "ziggui.Slider · .sliderStep · .onEditingChanged · ziggui.ProgressView", "ziggui.Spinner · ziggui.LoadingDots", "ziggui.Stepper", "ziggui.Badge", "ziggui.KeyCap", ".accessibilityIdentifier · .accessibilityHidden · ziggui.A11yNode" },
             .pickers => &.{ "ziggui.Picker · ziggui.Form · .pickerStyle(.automatic)", "ziggui.Picker · .pickerStyle(.segmented) · .pickerStyle(.menu) · .prompt", "ziggui.RadioGroup", "ziggui.SegmentedControl", "ziggui.IconSegmentedControl", "ziggui.ColorPicker" },
             .images => &.{ "ziggui.Image · .scaledToFit()", "ziggui.Canvas · GraphicsContext.verticalGradient · .line · .fill · .text", "CanvasMarkers.crosshair · .ring · .halo · .reticle · .pill · .chip · .callout · .nearest", "ziggui.ZoomableImage · ZoomState (invert_scroll_y, invert_scroll_x) · AnnotationState · CanvasMarkers", "ziggui.Rectangle · ziggui.RoundedRectangle · ziggui.Circle · ziggui.Capsule · ziggui.Ellipse", "ziggui.LinearGradient", "ziggui.Icon · ziggui.LazyVGrid" },
-            .layout => &.{ "ziggui.HStack · ziggui.VStack · ziggui.ZStack · ziggui.Spacer · ziggui.MinSpacer · ziggui.ForEach · ziggui.Empty", "ziggui.FlowStack", "ziggui.LazyVGrid", "ziggui.LazyHGrid", "ziggui.Divider · ziggui.VDivider", "ziggui.GeometryReader", "ziggui.ScrollView · ziggui.ScrollViewState · ziggui.ScrollViewStateBoth · ziggui.ScrollViewOffset", ".scrollIndicators · ziggui.ScrollIndicatorVisibility" },
-            .lists => &.{ "ziggui.PaneHeader", "ziggui.SelectableRow", "ziggui.SelectableLabeledRow", "ziggui.ReorderableRow", "ziggui.OutlineState · ziggui.OutlineRow", "ziggui.DisclosureGroup · ziggui.DisclosureGroupAccessory", "ziggui.EditableText · ziggui.EditableTextState", "ziggui.CheckList · ziggui.CheckRow", "ziggui.List", "ziggui.PaneTitle · ziggui.EmptyState", "ziggui.VirtualListBoth", "ziggui.VirtualList" },
+            .layout => &.{ "ziggui.HStack · ziggui.VStack · ziggui.ZStack · ziggui.Spacer · ziggui.MinSpacer · ziggui.ForEach · ziggui.Empty", "ziggui.FlowStack", "ziggui.LazyVGrid", "ziggui.LazyHGrid", "ziggui.Divider · ziggui.VDivider", ".frameMinWidth · .frameCap · .fixedSize", "ziggui.GeometryReader", "ziggui.ScrollView · ziggui.ScrollViewState · ziggui.ScrollViewStateBoth · ziggui.ScrollViewOffset", ".scrollIndicators · ziggui.ScrollIndicatorVisibility" },
+            .lists => &.{ "ziggui.PaneHeader", "ziggui.SelectableRow", "ziggui.SelectableLabeledRow", "ziggui.ReorderableRow", "ziggui.OutlineState · ziggui.OutlineRow", "ziggui.DisclosureGroup · ziggui.DisclosureGroupAccessory", "ziggui.EditableText · ziggui.EditableTextState", "ziggui.CheckList · ziggui.CheckRow", "ziggui.List", "ziggui.PaneTitle · ziggui.EmptyState", "ziggui.VirtualListBoth", "ziggui.VirtualList", ".hoverFill · .hoverScope · .revealOnHover · .onSecondaryTap", "ziggui.VirtualList · .textSelection(.enabled) · .selectionId" },
             .table => &.{ "ziggui.Table · ziggui.TableColumn", "ziggui.TableState · ziggui.TableOptions · ziggui.SortColumn", "TableOptions.header_accessory · .empty", "TableOptions.highlighted · .row_height", "ziggui.TableRows · ziggui.TableLayout", "ziggui.Visibility · TableOptions.column_headers", "ziggui.TableSelectionMode · ziggui.TableCell" },
             .navigation => &.{ "ziggui.TabView", "ziggui.HSplitView · ziggui.VSplitView", "ziggui.NavigationLinkIcon · ziggui.NavigationPath", "ziggui.NavigationLink · ziggui.NavigationBackButton", "ziggui.NavigationSplitView · ziggui.Sidebar", "ziggui.NavigationSplitViewInset · ziggui.SidebarStyled" },
             .presentations => &.{ ".sheet · .alert", "ziggui.ConfirmAlert · ziggui.Confirm", ".popover", ".popover · .popoverPassthrough", ".onHover", "ziggui.HoverPopover" },
             .menus => &.{ "ziggui.MenuBar", "ziggui.MenuTable · Entry.listing · ziggui.ListedMenuItem · App.replaceSubmenu", "ziggui.Menu", "ziggui.ContextMenu", "ziggui.MenuList · ziggui.MenuItem", "ziggui.App.setKeyUpHandler · ziggui.Toggle" },
             .windows => &.{ "ziggui.TitleBar · ziggui.MenuBar · ziggui.WindowButtons", "ziggui.WindowChrome.topBar", "ziggui.WindowChrome.topBarLeading · ziggui.IconSegmentedControl", "ziggui.WindowChrome.topBarLeading", "ziggui.Canvas · Theme.drawTitleBar · .modalPassthrough", "ziggui.StatusLine", "ziggui.KeyHintBar", "ziggui.NoticeBar" },
-            .effects => &.{ "ziggui.Animator · ziggui.ProgressView", ".glassEffect", ".opacity · .border · .cornerRadius", ".backgroundMaterial(.regular)" },
+            .effects => &.{ "ziggui.Animator · ziggui.ProgressView", ".glassEffect", ".opacity · .border · .cornerRadius", ".backgroundMaterial(.regular)", ".backgroundFill · ziggui.Fill · ziggui.GradientFill" },
             .forms => &.{ "ziggui.SettingRow", "ziggui.LabeledField · ziggui.FieldChrome", "ziggui.KeyValueEditor", "ziggui.TokenField", "ziggui.ThemeFamilyPicker", "ziggui.Settings · ziggui.Form · ziggui.Section · ziggui.LabeledContent · ziggui.Toggle · ziggui.AppearancePicker · ziggui.ThemePicker", "ziggui.AuthenticationContext · ziggui.AuthenticationPolicy · ziggui.BiometryType" },
             .files => &.{ "ziggui.FileBrowser · FileBrowserState.shows_file", "ziggui.FileDialog.openFile · .saveFile · .takeResult" },
             .mediaAudio => &.{ "ziggui.AudioPlayerControls · ziggui.AudioPlayerControlsState · ziggui.Player", "ziggui.AudioRecorder · ziggui.AudioClipPlayer · ziggui.AudioClip · ziggui.AudioDevices", "ziggui.AudioInfoView · ziggui.AudioOutputs" },
@@ -217,7 +217,7 @@ pub const Section = enum {
             .mediaNative => &.{"ziggui.NativeView"},
             .chat => &.{ "ziggui.StatusMark", "ziggui.Chip", "ziggui.Bubble · ziggui.CodeBlock · ziggui.Quote" },
             .diffs => &.{ "ziggui.DiffView · ziggui.DiffLine", "ziggui.SelectableDiffView", "ziggui.SelectableDiffViewWithActions · ziggui.HunkAction · ziggui.DiffSelection · ziggui.FindableDiffView · ziggui.DiffFindState" },
-            .scenes => &.{"ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput · Scene.lighting_technique"},
+            .scenes => &.{ "ziggui.SceneView · ziggui.Scene · ziggui.SceneNode · ziggui.SceneCameraInput · Scene.lighting_technique", "ziggui.SceneShaderModifier · ziggui.ScenePlaneTexture · ziggui.SceneEnvironment · ziggui.SceneToneMapping · SceneMaterial.emission · SceneNode.shadow_only · .reflected · .rendering_order · FrameClock.setFrameRateLimit" },
             .charts => &.{ "ziggui.LineChart · ziggui.ChartSeries · ziggui.ChartEmphasis", "ziggui.ChartDomain · LineChartOptions.x_domain · .y_domain · .baseline", "ziggui.ChartScaleType · LineChartOptions.y_scale_type", "ChartSeries.points · LineChartOptions.caption · .x_start_label · .x_end_label", "ChartSeries in the build arena", "ziggui.LineChartOptions", "ziggui.BarChart · ziggui.BarMark · ziggui.BarChartOptions", "BarMark.color · a value below zero" },
         };
     }
@@ -446,6 +446,10 @@ pub const Gallery = struct {
     kit: gallery.Kit,
     /// The Scenes section's 3D scene.
     scene_demo: gallery.SceneDemo,
+    /// The Scenes section's sky scene.
+    sky_demo: gallery.SkyDemo,
+    /// The modifier cards spread over several sections, and their state.
+    modifiers_demo: gallery.ModifiersDemo,
     /// The Charts section's cards and the state of its sliders' chart.
     charts_demo: gallery.ChartsDemo,
     /// The Forms & Settings section's Touch ID card and its prompt.
@@ -559,6 +563,8 @@ pub const Gallery = struct {
         errdefer kit.deinit();
         var scene_demo = try gallery.SceneDemo.init(allocator);
         errdefer scene_demo.deinit();
+        var sky_demo = try gallery.SkyDemo.init(allocator);
+        errdefer sky_demo.deinit();
         const web = try gallery.WebPanel.init(allocator);
         var self = Self{
             .allocator = allocator,
@@ -571,6 +577,8 @@ pub const Gallery = struct {
             .editor = editor,
             .kit = kit,
             .scene_demo = scene_demo,
+            .sky_demo = sky_demo,
+            .modifiers_demo = gallery.ModifiersDemo.init(allocator),
             .charts_demo = gallery.ChartsDemo.init(allocator),
             .authentication_demo = gallery.AuthenticationDemo.init(),
             .media = gallery.Media.init(allocator),
@@ -602,6 +610,8 @@ pub const Gallery = struct {
         self.media.deinit();
         self.charts_demo.deinit();
         self.authentication_demo.deinit();
+        self.modifiers_demo.deinit();
+        self.sky_demo.deinit();
         self.scene_demo.deinit();
         self.kit.deinit();
         self.editor.deinit();
@@ -641,6 +651,8 @@ pub const Gallery = struct {
         self.media.memos.update();
         // And the Touch ID card's prompt answers whatever section shows.
         self.authentication_demo.update();
+        // The sky card's frame-rate cap holds only while the Scenes section shows.
+        self.sky_demo.applyFrameRate(Section.at(self.section.get()) == .scenes);
         if (self.media.expanded) return self.showcase.presentations(self.media.expandedView(), active_theme);
         const root = ziggui.VStack(.{
             self.topBar(active_theme),
@@ -786,15 +798,16 @@ pub const Gallery = struct {
         }
     }
 
-    /// The Scenes section's scene, for the event loop's pinches and
-    /// ⌘-scrolls, while that section shows with nothing modal over it.
+    /// The Scenes section's scenes, for the event loop's pinches and
+    /// ⌘-scrolls, while that section shows with nothing modal over it (each
+    /// takes a gesture only over the part of its view on screen).
     ///
     /// - `self`: the gallery.
-    /// - Returns: the scene, or null when it is not showing.
-    pub fn shownScene(self: *Self) ?*ziggui.Scene {
+    /// - Returns: the scenes, or null when they are not showing.
+    pub fn shownScenes(self: *Self) ?[2]*ziggui.Scene {
         if (self.presentsModal()) return null;
         if (Section.at(self.section.get()) != .scenes) return null;
-        return &self.scene_demo.scene;
+        return .{ &self.scene_demo.scene, &self.sky_demo.scene };
     }
 
     /// The Images & Drawing section's picture zoom, for the event loop's pinches
@@ -983,19 +996,19 @@ pub const Gallery = struct {
     /// - Returns: the panel's view.
     fn panel(self: *Self, section: Section, active_theme: ziggui.Theme) ziggui.View {
         return switch (section) {
-            .text => Self.cards(.{ self.showcase.typeScaleCard(active_theme), self.showcase.wrappedTextCard(active_theme), self.showcase.richTextCard(active_theme), self.showcase.highlightedTextCard(active_theme), self.showcase.labelCard(active_theme), self.showcase.textFieldCard(active_theme), self.kit.searchFieldCard(active_theme), self.showcase.secureFieldCard(active_theme) }),
+            .text => Self.cards(.{ self.showcase.typeScaleCard(active_theme), self.modifiers_demo.textStyleCard(active_theme), self.showcase.wrappedTextCard(active_theme), self.showcase.richTextCard(active_theme), self.showcase.highlightedTextCard(active_theme), self.showcase.labelCard(active_theme), self.showcase.textFieldCard(active_theme), self.kit.searchFieldCard(active_theme), self.showcase.secureFieldCard(active_theme), self.modifiers_demo.plainFieldsCard(active_theme) }),
             .textEditor => self.editor.body(active_theme),
-            .controls => Self.cards(.{ self.showcase.buttonsCard(active_theme), self.kit.buttonKeyedCard(active_theme), self.showcase.togglesCard(active_theme), self.showcase.sliderCard(active_theme), self.showcase.progressCard(active_theme), self.showcase.stepperCard(active_theme), self.kit.badgeCard(active_theme), self.kit.keyCapCard(active_theme) }),
+            .controls => Self.cards(.{ self.showcase.buttonsCard(active_theme), self.kit.buttonKeyedCard(active_theme), self.showcase.togglesCard(active_theme), self.showcase.sliderCard(active_theme), self.showcase.progressCard(active_theme), self.showcase.stepperCard(active_theme), self.kit.badgeCard(active_theme), self.kit.keyCapCard(active_theme), self.modifiers_demo.accessibilityCard(active_theme) }),
             .pickers => Self.cards(.{ self.pickers.panel(active_theme), self.showcase.radioGroupCard(active_theme), self.kit.segmentedControlCard(active_theme), self.kit.iconSegmentedControlCard(active_theme), self.pickers.colorCard(active_theme) }),
             .images => Self.cards(.{ self.showcase.canvasPanel(active_theme), self.showcase.shapesCard(active_theme), self.showcase.gradientCard(active_theme), self.showcase.iconGalleryCard(active_theme) }),
-            .layout => Self.cards(.{ self.showcase.stacksCard(active_theme), self.showcase.flowStackCard(active_theme), self.showcase.verticalGridCard(active_theme), self.showcase.horizontalGridCard(active_theme), self.showcase.dividersCard(active_theme), self.showcase.geometryPanel(active_theme), self.showcase.scrollViewsCard(active_theme), self.showcase.scrollIndicatorsCard(active_theme) }),
-            .lists => Self.cards(.{ self.kit.rowsPanel(active_theme), self.kit.reorderPanel(active_theme), self.kit.outlinePanel(active_theme), self.kit.disclosureCard(active_theme), self.kit.editablePanel(active_theme), self.kit.checkListCard(active_theme), self.kit.listCard(active_theme), self.kit.paneCard(active_theme), self.wideListCard(active_theme), self.virtualListCard(active_theme) }),
+            .layout => Self.cards(.{ self.showcase.stacksCard(active_theme), self.showcase.flowStackCard(active_theme), self.showcase.verticalGridCard(active_theme), self.showcase.horizontalGridCard(active_theme), self.showcase.dividersCard(active_theme), self.modifiers_demo.framesCard(active_theme), self.showcase.geometryPanel(active_theme), self.showcase.scrollViewsCard(active_theme), self.showcase.scrollIndicatorsCard(active_theme) }),
+            .lists => Self.cards(.{ self.kit.rowsPanel(active_theme), self.kit.reorderPanel(active_theme), self.kit.outlinePanel(active_theme), self.kit.disclosureCard(active_theme), self.kit.editablePanel(active_theme), self.kit.checkListCard(active_theme), self.kit.listCard(active_theme), self.kit.paneCard(active_theme), self.wideListCard(active_theme), self.virtualListCard(active_theme), self.modifiers_demo.hoverRowsCard(active_theme), self.modifiers_demo.logCard(active_theme) }),
             .table => Self.cards(.{ self.showcase.tableCard(active_theme), self.manyRowsTableCard(active_theme), self.showcase.filterTableCard(active_theme), self.showcase.highlightTableCard(active_theme), self.showcase.fittedTableCard(active_theme), self.showcase.headerlessTableCard(active_theme), self.showcase.cellTableCard(active_theme) }),
             .navigation => self.showcase.navigationPanel(active_theme, section.label(), Self.cards(.{ self.showcase.tabViewCard(active_theme), self.splitPanel(active_theme) })),
             .presentations => Self.cards(.{ self.showcase.modalCard(active_theme), self.showcase.confirmAlertCard(active_theme), self.showcase.popoverCard(active_theme), self.showcase.passthroughCard(active_theme), self.showcase.onHoverCard(active_theme), self.hoverPanel(active_theme) }),
             .menus => Self.cards(.{ self.menuBarPanel(active_theme), self.recents.card(active_theme), self.showcase.menuCard(active_theme), self.showcase.contextMenuCard(active_theme), self.showcase.menuListCard(active_theme), self.showcase.keyUpsCard(active_theme) }),
             .windows => Self.cards(.{ self.titleBarPanel(active_theme), self.topBarPanel(active_theme), self.showcase.customTitleBarCard(active_theme), Self.statusLinePanel(active_theme), self.kit.keyHintBarCard(active_theme), self.noticeBarCard(active_theme) }),
-            .effects => Self.cards(.{ self.showcase.effectsPanel(active_theme), self.showcase.materialCard(active_theme) }),
+            .effects => Self.cards(.{ self.showcase.effectsPanel(active_theme), self.showcase.materialCard(active_theme), self.modifiers_demo.fillCard(active_theme) }),
             .forms => Self.cards(.{ self.kit.settingRowCard(active_theme), self.kit.labeledFieldCard(active_theme), self.kit.keyValueEditorCard(active_theme), self.kit.tokenFieldCard(active_theme), self.themeFamilyCard(active_theme), self.settings.panel(active_theme, self.theme_family.binding(), self.accent.binding()), self.authentication_demo.card(active_theme) }),
             .files => self.kit.filesPanel(active_theme),
             .mediaAudio => self.media.audioPanel(active_theme),
@@ -1004,7 +1017,7 @@ pub const Gallery = struct {
             .mediaNative => self.media.nativePanel(active_theme),
             .chat => self.chatPanel(active_theme),
             .diffs => Self.cards(.{ self.diffViewCard(active_theme), self.selectableDiffCard(active_theme), self.diffCard(active_theme) }),
-            .scenes => self.scene_demo.card(active_theme),
+            .scenes => Self.cards(.{ self.scene_demo.card(active_theme), self.sky_demo.card(active_theme) }),
             .charts => self.charts_demo.panel(active_theme),
         };
     }

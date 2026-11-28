@@ -35,18 +35,29 @@ struct SceneLights {
     float4 point_color[8];
     float4x4 shadow[4];
     float4 shadow_parameters;
+    // x the exposure, y the tone curve (0 clamped, 1 filmic); appended, so
+    // the other backends' shaders, which don't read it, keep their layout.
+    float4 tone;
+    // Each point light's shadow range (x) and soft rays (y), when traced.
+    float4 point_shadow[8];
 };
 
 struct SceneSurface {
     float4 base_color;
     float4 surface;
+    float4 emission;
 };
 
+// `tint` multiplies the surface's color and alpha: white but where a
+// geometry modifier sets it; `custom` is what a modifier's geometry body
+// hands its surface body (zero otherwise).
 struct SceneVaryings {
     float4 position [[position]];
     float3 world;
     float3 normal;
     float2 uv;
+    float4 tint;
+    float4 custom;
 };
 
 vertex SceneVaryings scene_vertex(SceneVertexIn in [[stage_in]],
@@ -57,6 +68,8 @@ vertex SceneVaryings scene_vertex(SceneVertexIn in [[stage_in]],
     float3x3 normal_matrix = float3x3(u.normal_matrix[0].xyz, u.normal_matrix[1].xyz, u.normal_matrix[2].xyz);
     out.normal = normal_matrix * in.normal;
     out.uv = in.uv;
+    out.tint = float4(1.0);
+    out.custom = float4(0.0);
     out.position = u.view_projection * world;
     return out;
 }
@@ -77,6 +90,14 @@ static float soft_shadow(depth2d<float> map, sampler smp, float4x4 projection, f
         }
     }
     return lit / 9.0;
+}
+
+// The light shown: exposed, then brought into the display's range (ACES,
+// Narkowicz's fit, for the filmic curve), clamped.
+static float3 tone_map(float3 color, float4 tone) {
+    float3 exposed = max(color * tone.x, 0.0);
+    if (tone.y > 0.5) exposed = (exposed * (2.51 * exposed + 0.03)) / (exposed * (2.43 * exposed + 0.59) + 0.14);
+    return clamp(exposed, 0.0, 1.0);
 }
 
 static float3 encode_srgb(float3 linear) {
@@ -119,7 +140,8 @@ struct MappedLighting {
 // The light a point of a surface sends toward the eye from the scene's
 // lights, unclamped: ambient, then each directional and point light's
 // diffuse and highlight, each dimmed by its shadow (`lighting.directional`,
-// `lighting.point`) where the surface `receives` shadows. `normal` faces
+// a share or a color a cookie tints, and `lighting.point`) where the
+// surface `receives` shadows. `normal` faces
 // the eye; `pixel` turns the samples of a soft ray-traced shadow.
 template <typename Lighting>
 static float3 light_point(constant SceneLights &lights, thread const Lighting &lighting, float3 albedo,
@@ -133,8 +155,8 @@ static float3 light_point(constant SceneLights &lights, thread const Lighting &l
         float diffuse = max(dot(normal, to_light), 0.0);
         if (diffuse <= 0.0) continue;
         float highlight = pow(max(dot(normal, normalize(to_light + to_eye)), 0.0), shininess) * specular;
-        float lit = 1.0;
-        if (receives) lit = lighting.directional(lights, index, to_light, world, normal, pixel);
+        float3 lit = float3(1.0);
+        if (receives) lit = float3(lighting.directional(lights, index, to_light, world, normal, pixel));
         color += (albedo * diffuse + highlight) * lights.directional_color[index].rgb * lit;
     }
     int point_count = int(lights.ambient.w);
@@ -168,8 +190,14 @@ static float4 shade(SceneVaryings in, constant SceneLights &lights, constant Sce
     // Lit from the side the camera sees, so a plane seen from behind is lit too.
     if (dot(normal, to_eye) < 0.0) normal = -normal;
     float4 texel = base_texture.sample(base_sampler, in.uv);
-    float3 albedo = surface.base_color.rgb * texel.rgb;
-    float alpha = surface.base_color.a * texel.a;
+    float3 albedo = surface.base_color.rgb * texel.rgb * in.tint.rgb;
+    float alpha = surface.base_color.a * texel.a * in.tint.a;
+    // Wholly emissive: its own color, without the lighting it would discard.
+    if (surface.emission.x >= 1.0) {
+        float3 shown = tone_map(albedo * surface.emission.y, lights.tone);
+        if (lights.shadow_parameters.z > 0.5) shown = encode_srgb(shown);
+        return float4(shown, alpha);
+    }
     float specular = surface.surface.x;
     float shininess = max(surface.surface.y, 1.0);
     bool receives = surface.surface.z > 0.5;
@@ -177,7 +205,9 @@ static float4 shade(SceneVaryings in, constant SceneLights &lights, constant Sce
     float3 color = light_point(lights, lighting, albedo, in.world, normal, to_eye, specular, shininess, receives, in.position.xy);
     color = lighting.reflected(lights, surface, color, in.world, normal, to_eye, in.position.xy);
 
-    color = clamp(color, 0.0, 1.0);
+    // An emissive surface shows its own color, unlit, by its share.
+    color = mix(color, albedo * surface.emission.y, surface.emission.x);
+    color = tone_map(color, lights.tone);
     if (lights.shadow_parameters.z > 0.5) color = encode_srgb(color);
     return float4(color, alpha);
 }

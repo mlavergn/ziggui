@@ -21,7 +21,13 @@ pub const SliderTrack = struct {
     /// The track.
     track: renderer.Rect,
 
-    /// Maps an x-coordinate within the track to a value.
+    /// The step its values land on (`SliderData.step`); 0 for any.
+    step: f32 = 0,
+
+    /// Told when a press starts and ends changing it (`SliderData.editing`), or null.
+    editing: ?mod.Binding(bool) = null,
+
+    /// Maps an x-coordinate within the track to a value, on a step if it has one.
     ///
     /// - `self`: the track.
     /// - `x`: the pointer's x.
@@ -29,7 +35,13 @@ pub const SliderTrack = struct {
     pub fn valueForX(self: *const Self, x: f32) f32 {
         if (self.track.width <= 0) return self.min;
         const fraction = std.math.clamp((x - self.track.x) / self.track.width, 0, 1);
-        return self.min + (self.max - self.min) * fraction;
+        const value = self.min + (self.max - self.min) * fraction;
+        if (!(self.step > 0) or !std.math.isFinite(self.step)) return value;
+        // The nearest whole step from `min`, within the range (one not a whole number of steps ends short of `max`).
+        const span = self.max - self.min;
+        const most = @floor(@abs(span) / self.step + 1e-4);
+        const steps = std.math.clamp(@round(@abs(value - self.min) / self.step), 0, most);
+        return self.min + std.math.sign(span) * steps * self.step;
     }
 };
 
@@ -102,4 +114,17 @@ test {
     std.testing.refAllDecls(@This());
     // Nothing here does I/O to trace.
     _ = log;
+}
+
+test "a stepped slider's track lands on whole steps and stays in its range" {
+    const pixels = renderer.Rect{ .x = 0, .y = 0, .width = 100, .height = 4 };
+    var track = SliderTrack{ .binding = undefined, .min = 0, .max = 10, .track = pixels, .step = 2.5 };
+    try std.testing.expectEqual(@as(f32, 2.5), track.valueForX(30));
+    try std.testing.expectEqual(@as(f32, 10), track.valueForX(100));
+    // A range of 0 to 9 by 4: the trailing end is the last whole step, 8.
+    track.max = 9;
+    track.step = 4;
+    try std.testing.expectEqual(@as(f32, 8), track.valueForX(100));
+    track.step = 0;
+    try std.testing.expectApproxEqAbs(@as(f32, 4.5), track.valueForX(50), 1e-5);
 }

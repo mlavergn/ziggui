@@ -23,10 +23,15 @@ pub const PointerInput = struct {
     /// stays correct).
     text_drag: ?*mod.TextFieldState = null,
 
-    /// The `Binding.context` of a slider being dragged (mouse held after a
-    /// knob/track press). Identifies the slider's hit region across rebuilds, the
-    /// way `text_drag` uses the `*TextFieldState` pointer for a text drag.
-    slider_drag: ?*anyopaque = null,
+    /// The binding of a slider being dragged (mouse held after a knob/track
+    /// press). Identifies the slider's hit region across rebuilds, the way
+    /// `text_drag` uses the `*TextFieldState` pointer for a text drag: by its
+    /// context and its functions both, since sliders over one model (a
+    /// settings pane's) share a context and differ only in their functions.
+    slider_drag: ?mod.Binding(f32) = null,
+
+    /// The dragged slider's editing binding, told false when the drag ends.
+    slider_editing: ?mod.Binding(bool) = null,
 
     /// A drag-area handler armed by a press.
     area_drag: ?mod.DragCallback = null,
@@ -102,6 +107,9 @@ pub const PointerInput = struct {
             if (armed.end) |end| end(armed.context);
             if (self.drag_end) |hook| hook();
         }
+        // A slider let go: its editing ends, once.
+        if (self.slider_editing) |editing| editing.set(false);
+        self.slider_editing = null;
         self.text_drag = null;
         self.slider_drag = null;
         self.area_drag = null;
@@ -158,13 +166,24 @@ pub const PointerInput = struct {
                     click.state.preferred_column = null;
                     return;
                 },
-                .slider => |slider| if (slider.binding.context == self.slider_drag) {
+                .slider => |slider| if (Self.isDragged(self.slider_drag, slider.binding)) {
                     slider.binding.set(slider.valueForX(point.x));
                     return;
                 },
                 else => {},
             }
         }
+    }
+
+    /// Whether a slider's binding is the one being dragged: the same context
+    /// and the same functions.
+    ///
+    /// - `dragged`: the dragged slider's binding, or null.
+    /// - `binding`: a slider's binding.
+    /// - Returns: true when they're one.
+    fn isDragged(dragged: ?mod.Binding(f32), binding: mod.Binding(f32)) bool {
+        const held = dragged orelse return false;
+        return held.context == binding.context and held.get_fn == binding.get_fn and held.set_fn == binding.set_fn;
     }
 
     /// Dispatches a tap at `point` to the top-most enabled hit region containing
@@ -525,8 +544,11 @@ pub const PointerInput = struct {
             .callback => |callback| callback.call(),
             .toggle, .dismiss => |binding| binding.set(!binding.get()),
             .slider => |slider| {
+                // Editing begins before the press's value lands, as SwiftUI's `onEditingChanged`.
+                if (slider.editing) |editing| editing.set(true);
+                self.slider_editing = slider.editing;
                 slider.binding.set(slider.valueForX(point.x));
-                self.slider_drag = slider.binding.context; // arm a drag so mouse-move tracks the knob
+                self.slider_drag = slider.binding; // arm a drag so mouse-move tracks the knob
             },
             .step => |step| {
                 const next = std.math.clamp(step.binding.get() + step.delta, step.min, step.max);

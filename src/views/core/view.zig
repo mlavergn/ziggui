@@ -699,6 +699,39 @@ pub const View = struct {
         return view;
     }
 
+    /// Makes a `Slider` land on steps, as SwiftUI's `Slider(value:in:step:)`:
+    /// its values are its least value plus whole multiples of `step`. Other
+    /// views ignore it.
+    ///
+    /// - `self`: the view.
+    /// - `step`: the step, above 0; 0 for any value.
+    /// - Returns: the view.
+    pub fn sliderStep(self: *const Self, step: f32) Self {
+        var view = self.*;
+        switch (view.kind) {
+            .slider => |*slider| slider.step = step,
+            else => {},
+        }
+        return view;
+    }
+
+    /// Tells a `Slider`'s app when a press starts and stops changing it, as
+    /// SwiftUI's `onEditingChanged`: `editing` is set true as the press lands
+    /// (before its value) and false as it lets go, so a costly change can
+    /// wait for the release. Other views ignore it.
+    ///
+    /// - `self`: the view.
+    /// - `editing`: what is told.
+    /// - Returns: the view.
+    pub fn onEditingChanged(self: *const Self, editing: mod.Binding(bool)) Self {
+        var view = self.*;
+        switch (view.kind) {
+            .slider => |*slider| slider.editing = editing,
+            else => {},
+        }
+        return view;
+    }
+
     /// Sets how the `Toggle`s in this subtree draw, as SwiftUI's
     /// `.toggleStyle()`: `.checkbox` puts a box before the label, `.switch` a
     /// switch after it; `.automatic` (the default) is a checkbox in a `Form`.

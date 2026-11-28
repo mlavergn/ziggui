@@ -646,12 +646,22 @@ pub const SceneBounds = scenes.SceneBounds;
 pub const SceneMaterial = scenes.SceneMaterial;
 /// A material's base-color texture.
 pub const SceneTexture = scenes.SceneTexture;
+/// How a texture's pixels are stored.
+pub const SceneTextureFormat = scenes.SceneTextureFormat;
+/// GPU code that moves a material's vertices, or shades its pixels, as it is drawn (SceneKit's shader modifiers).
+pub const SceneShaderModifier = scenes.SceneShaderModifier;
 /// A light a node carries (SceneKit's `SCNLight`).
 pub const SceneLight = scenes.SceneLight;
 /// What kind of light it is.
 pub const SceneLightKind = scenes.SceneLightKind;
 /// A directional light's settings.
 pub const SceneDirectionalLight = scenes.SceneDirectionalLight;
+/// A texture laid on a plane: a light's cookie, an environment's overlay.
+pub const ScenePlaneTexture = scenes.ScenePlaneTexture;
+/// How a scene's light is brought into the display's range.
+pub const SceneToneMapping = scenes.SceneToneMapping;
+/// What a scene's reflections see where they meet nothing.
+pub const SceneEnvironment = scenes.SceneEnvironment;
 /// A point light's settings.
 pub const ScenePointLight = scenes.ScenePointLight;
 /// A camera a node carries (SceneKit's `SCNCamera`).

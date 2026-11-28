@@ -120,6 +120,12 @@ pub const SliderData = struct {
 
     /// The value at the trailing end.
     max: f32 = 1,
+
+    /// The values it lands on are `min` plus whole multiples of this; 0 for any (`View.sliderStep`).
+    step: f32 = 0,
+
+    /// Set true as a press starts changing it and false as the press ends, or null (`View.onEditingChanged`).
+    editing: ?mod.Binding(bool) = null,
 };
 
 /// A stepper.

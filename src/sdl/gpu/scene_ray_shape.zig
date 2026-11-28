@@ -35,6 +35,8 @@ pub const SceneRayShape = struct {
     texture: ?*sdl_c.SDL_GPUTexture,
     /// Whether shadow rays meet it.
     casts_shadows: bool,
+    /// Whether reflection rays meet it.
+    reflected: bool = true,
 };
 
 // -----------------------------------------------------------------------------

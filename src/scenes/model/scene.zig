@@ -76,6 +76,18 @@ pub const Scene = struct {
     /// How shadows and reflections are drawn: `rayTraced` where the GPU can
     /// trace rays, else `rasterized` whatever this asks.
     lighting_technique: mod.SceneLightingTechnique = .rasterized,
+    /// The most rays a soft ray-traced shadow sends a light (4 to 32, in
+    /// fours: a quarter first, the rest only in a penumbra): fewer is
+    /// quicker, more is smoother. Metal; Vulkan's shader sends 16.
+    soft_shadow_rays: u32 = 16,
+    /// What reflections see where they meet nothing, or null for `background`'s color.
+    environment: ?mod.SceneEnvironment = null,
+    /// What the scene's light is multiplied by before it's shown: a camera's
+    /// or an eye's exposure. Metal; elsewhere 1.
+    exposure: f32 = 1,
+    /// How the exposed light is brought into the display's range. Metal;
+    /// elsewhere clamped.
+    tone_mapping: mod.SceneToneMapping = .none,
 
     /// What the nodes are kept with.
     allocator: std.mem.Allocator,

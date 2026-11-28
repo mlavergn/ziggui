@@ -273,6 +273,10 @@ pub const Showcase = struct {
 
     /// The Controls panel's slider, and the progress bar under it.
     slider: ziggui.State(f32),
+    /// The Controls panel's stepped slider (`.sliderStep`).
+    stepped_slider: ziggui.State(f32),
+    /// Whether a press is changing the stepped slider (`.onEditingChanged`).
+    stepped_editing: ziggui.State(bool),
 
     /// The Controls panel's stepper.
     stepper: ziggui.State(i64),
@@ -400,6 +404,8 @@ pub const Showcase = struct {
             .picture_invert_x = ziggui.State(bool).init(allocator, false),
             .picture_grid = ziggui.State(bool).init(allocator, true),
             .slider = ziggui.State(f32).init(allocator, 0.5),
+            .stepped_slider = ziggui.State(f32).init(allocator, 50),
+            .stepped_editing = ziggui.State(bool).init(allocator, false),
             .stepper = ziggui.State(i64).init(allocator, 2),
             .radio = ziggui.State(i64).init(allocator, 0),
             .name = ziggui.TextFieldState.init(allocator),
@@ -452,6 +458,8 @@ pub const Showcase = struct {
         self.name.deinit();
         self.radio.deinit();
         self.stepper.deinit();
+        self.stepped_editing.deinit();
+        self.stepped_slider.deinit();
         self.slider.deinit();
         self.remember.deinit();
         self.picture_grid.deinit();
@@ -582,15 +590,23 @@ pub const Showcase = struct {
         return Self.row(style.title, ziggui.HStack(.{ pair[0], pair[1] }).spacing(14).toggleStyle(.checkbox).checkboxStyle(style.style));
     }
 
-    /// The Slider card: a slider and the progress bar it drives.
+    /// The Slider card: a slider and the progress bar it drives, then a
+    /// slider landing on steps of 10 that says while a press changes it.
     ///
     /// - `self`: the showcase.
     /// - `theme`: the theme this frame draws with.
     /// - Returns: the card.
     pub fn sliderCard(self: *Self, theme: ziggui.Theme) ziggui.View {
-        return gallery.Card.view(theme, "Slider & Progress", "ziggui.Slider · ziggui.ProgressView", ziggui.VStack(.{
+        const allocator = ziggui.BuildScope.shared().allocator();
+        const editing = if (self.stepped_editing.get()) "editing" else "let go";
+        const stepped = allocator.print("{d:.0} ({s})", .{ self.stepped_slider.get(), editing }) catch @panic("oom");
+        return gallery.Card.view(theme, "Slider & Progress", "ziggui.Slider · .sliderStep · .onEditingChanged · ziggui.ProgressView", ziggui.VStack(.{
             ziggui.Slider(self.slider.binding(), 0, 1).frameMaxWidth(),
             ziggui.ProgressView(self.slider.get()).frameMaxWidth(),
+            ziggui.HStack(.{
+                ziggui.Slider(self.stepped_slider.binding(), 0, 100).sliderStep(10).onEditingChanged(self.stepped_editing.binding()).frameMaxWidth(),
+                ziggui.Text(stepped).monospaced().foregroundStyle(theme.colors.secondary_label).frameWidth(110).frameAlign(.leading),
+            }).spacing(12),
         }).spacing(12));
     }
 

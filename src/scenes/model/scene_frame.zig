@@ -25,6 +25,12 @@ pub const SceneDraw = struct {
     casts_shadows: bool,
     /// Whether it shows the shadows cast onto it.
     receives_shadows: bool,
+    /// Whether it only casts its shadow (`SceneNode.shadow_only`): not drawn, nor reflected.
+    shadow_only: bool = false,
+    /// Whether reflection rays meet it (`SceneNode.reflected`, and never a shadow-only shape).
+    reflected: bool = true,
+    /// When it draws among the others (`SceneNode.rendering_order`): lower first.
+    rendering_order: i32 = 0,
 };
 
 /// A directional light as the shaders read it.
@@ -42,6 +48,8 @@ pub const SceneFrameDirectionalLight = struct {
     /// Half the angle its source spans, in radians (`angular_diameter`), for
     /// soft ray-traced shadows; 0 for hard ones.
     angular_radius: f32 = 0,
+    /// The texture it shines through, or null (one that is not usable, `ScenePlaneTexture.isUsable`, is dropped).
+    cookie: ?mod.ScenePlaneTexture = null,
 };
 
 /// A point light as the shaders read it.
@@ -58,6 +66,10 @@ pub const SceneFramePointLight = struct {
     casts_shadows: bool = false,
     /// Its source's radius, for soft ray-traced shadows; 0 for hard ones.
     radius: f32 = 0,
+    /// How far from it its shadows are traced (`ScenePointLight.shadow_range`), at most `range`.
+    shadow_range: f32 = 0,
+    /// The most rays a soft shadow of its sends, or null for the scene's.
+    shadow_rays: ?u32 = null,
 };
 
 /// One frame of a scene, gathered from its graph: the opaque shapes first,
@@ -77,6 +89,12 @@ pub const SceneFrame = struct {
     opaque_count: usize,
     /// The directional lights, at most `max_directional_lights`.
     directional_lights: []SceneFrameDirectionalLight,
+    /// What reflections see where they meet nothing (`Scene.environment`).
+    environment: ?mod.SceneEnvironment = null,
+    /// What the light is multiplied by before it's shown (`Scene.exposure`).
+    exposure: f32 = 1,
+    /// How it's brought into the display's range (`Scene.tone_mapping`).
+    tone_mapping: mod.SceneToneMapping = .none,
     /// The point lights, at most `max_point_lights`.
     point_lights: []SceneFramePointLight,
     /// The ambient light's color times its intensity, linear.
@@ -125,6 +143,9 @@ pub const SceneFrame = struct {
                     .bounds = geometry.bounds().transformed(visit.world),
                     .casts_shadows = node.casts_shadows and !material.isTranslucent(),
                     .receives_shadows = node.receives_shadows,
+                    .shadow_only = node.shadow_only,
+                    .reflected = node.reflected and !node.shadow_only,
+                    .rendering_order = node.rendering_order,
                 };
                 if (material.isTranslucent()) try translucent_draws.append(allocator, draw) else try opaque_draws.append(allocator, draw);
             };
@@ -139,6 +160,7 @@ pub const SceneFrame = struct {
                         .shadow = if (directional.casts_shadows) mod.Mat4.identity else null,
                         // NaN or negative is 0 (`clamp` would make NaN 90).
                         .angular_radius = if (directional.angular_diameter > 0) std.math.degreesToRadians(@min(directional.angular_diameter, 90)) / 2 else 0,
+                        .cookie = Self.usableCookie(directional.cookie),
                     });
                 },
                 .point => |point| if (point_lights.items.len < max_point_lights) try point_lights.append(allocator, .{
@@ -147,6 +169,9 @@ pub const SceneFrame = struct {
                     .range = @max(point.range, 0),
                     .casts_shadows = point.casts_shadows,
                     .radius = if (point.radius > 0) point.radius else 0,
+                    // NaN or below 0 is 0; null is its whole range.
+                    .shadow_range = if (point.shadow_range) |reach| (if (reach > 0) @min(reach, @max(point.range, 0)) else 0) else @max(point.range, 0),
+                    .shadow_rays = point.shadow_rays,
                 }),
             };
             if (scene.point_of_view) |point_of_view| if (std.meta.eql(point_of_view, visit.id)) if (node.camera) |node_camera| {
@@ -156,6 +181,8 @@ pub const SceneFrame = struct {
             };
         }
 
+        // Opaque by order alone, keeping the walk's order within one.
+        std.sort.block(SceneDraw, opaque_draws.items, {}, Self.drawsBefore);
         Self.sortBackToFront(translucent_draws.items, eye);
         const opaque_count = opaque_draws.items.len;
         const draws = try allocator.alloc(SceneDraw, opaque_count + translucent_draws.items.len);
@@ -173,6 +200,9 @@ pub const SceneFrame = struct {
             .draws = draws,
             .opaque_count = opaque_count,
             .directional_lights = directional,
+            .environment = scene.environment,
+            .exposure = if (std.math.isFinite(scene.exposure) and scene.exposure > 0) scene.exposure else 1,
+            .tone_mapping = scene.tone_mapping,
             .point_lights = points,
             .ambient = Self.linear(scene.ambient).scale(scene.ambient_intensity),
             .view = view,
@@ -190,6 +220,15 @@ pub const SceneFrame = struct {
         allocator.free(self.draws);
         allocator.free(self.directional_lights);
         allocator.free(self.point_lights);
+    }
+
+    /// A light's cookie, if it can be drawn (`ScenePlaneTexture.isUsable`).
+    ///
+    /// - `cookie`: the light's cookie, or null.
+    /// - Returns: the cookie, or null.
+    fn usableCookie(cookie: ?mod.ScenePlaneTexture) ?mod.ScenePlaneTexture {
+        const value = cookie orelse return null;
+        return if (value.isUsable()) value else null;
     }
 
     /// A color's red, green and blue in linear light, from sRGB.
@@ -240,22 +279,35 @@ pub const SceneFrame = struct {
         return std.math.pow(f32, (clamped + 0.055) / 1.055, 2.4);
     }
 
-    /// Sorts translucent shapes from the farthest to the nearest, by their
-    /// centers' distance from the eye.
+    /// Sorts translucent shapes by their rendering order, then from the
+    /// farthest to the nearest by their centers' distance from the eye.
     ///
     /// - `draws`: the shapes.
     /// - `eye`: where the camera is.
     fn sortBackToFront(draws: []SceneDraw, eye: mod.Vec3) void {
-        std.mem.sort(SceneDraw, draws, eye, Self.isFarther);
+        std.mem.sort(SceneDraw, draws, eye, Self.translucentDrawsBefore);
     }
 
-    /// Whether one shape's center is farther from the eye than another's.
+    /// Whether one shape draws before another by rendering order alone.
+    ///
+    /// - `context`: unused.
+    /// - `first`: one shape.
+    /// - `second`: the other.
+    /// - Returns: true when the first's order is lower.
+    fn drawsBefore(context: void, first: SceneDraw, second: SceneDraw) bool {
+        _ = context;
+        return first.rendering_order < second.rendering_order;
+    }
+
+    /// Whether one shape draws before another: a lower rendering order, or
+    /// within one, a center farther from the eye.
     ///
     /// - `eye`: where the camera is.
     /// - `first`: one shape.
     /// - `second`: the other.
-    /// - Returns: true when the first is farther.
-    fn isFarther(eye: mod.Vec3, first: SceneDraw, second: SceneDraw) bool {
+    /// - Returns: true when the first draws first.
+    fn translucentDrawsBefore(eye: mod.Vec3, first: SceneDraw, second: SceneDraw) bool {
+        if (first.rendering_order != second.rendering_order) return first.rendering_order < second.rendering_order;
         const first_distance = first.bounds.center().sub(eye).length();
         const second_distance = second.bounds.center().sub(eye).length();
         return first_distance > second_distance;
@@ -371,6 +423,27 @@ test "sRGB colors turn linear: black and white stay, mid gray darkens" {
     try std.testing.expectApproxEqAbs(@as(f32, 0.2140), SceneFrame.linear(renderer.Color.rgb(0.5, 0.5, 0.5)).x, 1e-3);
 }
 
+test "translucent shapes draw by rendering order, then back to front; opaque ones by order" {
+    const allocator = std.testing.allocator;
+    var scene = try mod.Scene.init(allocator);
+    defer scene.deinit();
+    const glass = mod.SceneMaterial{ .base_color = renderer.Color.white.withAlpha(0.5) };
+    // The camera is 5 back along +Z: the near pane is at z 4, the far ones at z -20.
+    _ = try scene.addChild(scene.root(), .{ .name = "near", .geometry = .{ .box = .{} }, .material = glass, .transform = .{ .position = mod.Vec3.init(0, 0, 4) } });
+    _ = try scene.addChild(scene.root(), .{ .name = "far", .geometry = .{ .box = .{} }, .material = glass, .transform = .{ .position = mod.Vec3.init(0, 0, -20) } });
+    _ = try scene.addChild(scene.root(), .{ .name = "late", .geometry = .{ .box = .{} }, .material = glass, .rendering_order = 1, .transform = .{ .position = mod.Vec3.init(0, 0, -30) } });
+    _ = try scene.addChild(scene.root(), .{ .name = "backdrop", .geometry = .{ .box = .{} }, .rendering_order = -1 });
+    _ = try scene.addChild(scene.root(), .{ .name = "ground", .geometry = .{ .box = .{} } });
+    var frame = try SceneFrame.gather(allocator, &scene, 1);
+    defer frame.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 2), frame.opaque_count);
+    try std.testing.expectEqual(@as(i32, -1), frame.draws[0].rendering_order);
+    // Back to front within order 0, and the later order last though it's farthest.
+    try std.testing.expectEqual(@as(f32, -20), frame.draws[2].world.transformPoint(mod.Vec3.zero).z);
+    try std.testing.expectEqual(@as(f32, 4), frame.draws[3].world.transformPoint(mod.Vec3.zero).z);
+    try std.testing.expectEqual(@as(i32, 1), frame.draws[4].rendering_order);
+}
+
 test "a node's opacity multiplies down the tree into its shapes' alpha; at 0 nothing draws, its light still shines" {
     const allocator = std.testing.allocator;
     var scene = try mod.Scene.init(allocator);
@@ -390,4 +463,19 @@ test "a node's opacity multiplies down the tree into its shapes' alpha; at 0 not
     try std.testing.expectApproxEqAbs(@as(f32, 0.5), alphas[1], 1e-6);
     for (frame.draws) |draw| try std.testing.expect(!draw.casts_shadows);
     try std.testing.expectEqual(@as(usize, 1), frame.point_lights.len);
+}
+
+test "a light's cookie is carried to the frame, and one spanning no plane is dropped" {
+    const allocator = std.testing.allocator;
+    var scene = try mod.Scene.init(allocator);
+    defer scene.deinit();
+    const pixels = [_]u8{ 255, 255, 255, 255 };
+    const texture = mod.SceneTexture{ .image = .{ .width = 1, .height = 1, .pixels = &pixels } };
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .directional = .{ .cookie = mod.ScenePlaneTexture.level(texture, mod.Vec3.init(12, 1600, 0), 4000) } } } });
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .directional = .{ .cookie = mod.ScenePlaneTexture.level(texture, mod.Vec3.init(0, 10, 0), 0) } } } });
+    var frame = try SceneFrame.gather(allocator, &scene, 1);
+    defer frame.deinit(allocator);
+    try std.testing.expectEqual(@as(f32, 1600), frame.directional_lights[0].cookie.?.origin.y);
+    try std.testing.expectEqual(@as(f32, 12), frame.directional_lights[0].cookie.?.origin.x);
+    try std.testing.expect(frame.directional_lights[1].cookie == null);
 }

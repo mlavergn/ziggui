@@ -41,7 +41,169 @@ pub const SceneShaders = struct {
     /// (`scene_traced_fragment`), only where rays can be traced; null draws
     /// every scene's shadows from shadow maps.
     traced_fragment: ?*sdl_c.SDL_GPUShader = null,
+    /// The lit shaders' Metal source (`scene.metal`), where the device takes
+    /// Metal: what a geometry modifier's shaders are compiled from. Null
+    /// elsewhere, where modifiers are not applied.
+    msl: ?[]const u8 = null,
+    /// The traced fragment shader's Metal source, where rays can be traced on Metal.
+    traced_msl: ?[]const u8 = null,
 };
+
+/// The fragment shaders a geometry modifier's pipelines pair its vertex
+/// shader with, compiled once from the Metal sources.
+const ModifierFragments = struct {
+    const Self = @This();
+
+    /// The lit fragment shader.
+    lit: *sdl_c.SDL_GPUShader,
+    /// The traced fragment shader, where rays can be traced.
+    traced: ?*sdl_c.SDL_GPUShader = null,
+};
+
+/// The pipelines drawing the shapes of one geometry modifier's code; all
+/// null when they could not be made (then drawn unmodified).
+const ModifiedPipelines = struct {
+    const Self = @This();
+
+    /// `SceneShaderModifier.key`.
+    key: u64,
+    /// Opaque shapes, rasterized lighting.
+    lit: ?*sdl_c.SDL_GPUGraphicsPipeline = null,
+    /// Translucent shapes, rasterized lighting.
+    blended: ?*sdl_c.SDL_GPUGraphicsPipeline = null,
+    /// Both, ray traced.
+    traced: ?TracedPipelines = null,
+};
+
+/// The scene vertex's attributes: position, normal and texture coordinates.
+const vertex_attributes = [_]sdl_c.SDL_GPUVertexAttribute{
+    .{ .location = 0, .buffer_slot = 0, .format = sdl_c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = @offsetOf(scenes.SceneVertex, "position") },
+    .{ .location = 1, .buffer_slot = 0, .format = sdl_c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = @offsetOf(scenes.SceneVertex, "normal") },
+    .{ .location = 2, .buffer_slot = 0, .format = sdl_c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(scenes.SceneVertex, "uv") },
+};
+
+/// The scene vertex buffer's layout.
+const vertex_buffer_description = sdl_c.SDL_GPUVertexBufferDescription{
+    .slot = 0,
+    .pitch = @sizeOf(scenes.SceneVertex),
+    .input_rate = sdl_c.SDL_GPU_VERTEXINPUTRATE_VERTEX,
+    .instance_step_rate = 0,
+};
+
+/// What a geometry modifier's body is spliced between, after `scene.metal`:
+/// a vertex function that hands the modifier the vertex, then places it as
+/// `scene_vertex` does.
+const modifier_prefix =
+    \\
+    \\// A shader modifier (SceneShaderModifier), its bodies spliced in.
+    \\struct SceneModifierValues {
+    \\    float4 values[32];
+    \\};
+    \\
+    \\// A modifier's textures (`SceneShaderModifier.textures`), each with its sampler.
+    \\typedef array<texture2d<float>, 4> SceneModifierTextures;
+    \\typedef array<sampler, 4> SceneModifierSamplers;
+    \\
+    \\static void scene_geometry_modifier(thread float3 &position, thread float3 &normal, thread float2 &uv, thread float4 &tint, thread float4 &custom, constant float4 *values, SceneModifierTextures textures, SceneModifierSamplers samplers) {
+    \\
+;
+/// What follows a geometry modifier's body.
+const modifier_suffix =
+    \\
+    \\}
+    \\
+    \\vertex SceneVaryings scene_vertex_modified(SceneVertexIn in [[stage_in]],
+    \\                                           constant SceneVertexUniforms &u [[buffer(0)]],
+    \\                                           constant SceneModifierValues &modifier [[buffer(1)]],
+    \\                                           SceneModifierTextures textures [[texture(0)]],
+    \\                                           SceneModifierSamplers samplers [[sampler(0)]]) {
+    \\    float3 position = in.position;
+    \\    float3 normal = in.normal;
+    \\    float2 uv = in.uv;
+    \\    float4 tint = float4(1.0);
+    \\    float4 custom = float4(0.0);
+    \\    scene_geometry_modifier(position, normal, uv, tint, custom, modifier.values, textures, samplers);
+    \\    SceneVaryings out;
+    \\    float4 world = u.model * float4(position, 1.0);
+    \\    out.world = world.xyz;
+    \\    float3x3 normal_matrix = float3x3(u.normal_matrix[0].xyz, u.normal_matrix[1].xyz, u.normal_matrix[2].xyz);
+    \\    out.normal = normal_matrix * normal;
+    \\    out.uv = uv;
+    \\    out.tint = tint;
+    \\    out.custom = custom;
+    \\    out.position = u.view_projection * world;
+    \\    return out;
+    \\}
+    \\
+;
+
+/// What a modifier's surface body is spliced between, after its vertex
+/// function: the function it is the body of.
+const surface_prefix =
+    \\
+    \\static void scene_surface_modifier(float3 world, float3 eye, float4 custom, thread float3 &normal, thread float2 &uv, thread float4 &tint, constant float4 *values, SceneModifierTextures textures, SceneModifierSamplers samplers) {
+    \\
+;
+/// What follows a surface body: the lit fragment function that runs it,
+/// then shades as `scene_fragment` does, its values at uniform slot 2.
+const surface_suffix =
+    \\
+    \\}
+    \\
+    \\static SceneVaryings scene_surface_modified(SceneVaryings in, constant SceneLights &lights, constant SceneModifierValues &modifier, SceneModifierTextures textures, SceneModifierSamplers samplers) {
+    \\    SceneVaryings modified = in;
+    \\    scene_surface_modifier(in.world, lights.eye.xyz, in.custom, modified.normal, modified.uv, modified.tint, modifier.values, textures, samplers);
+    \\    return modified;
+    \\}
+    \\
+    \\fragment float4 scene_fragment_modified(SceneVaryings in [[stage_in]],
+    \\                                        constant SceneLights &lights [[buffer(0)]],
+    \\                                        constant SceneSurface &surface [[buffer(1)]],
+    \\                                        constant SceneModifierValues &modifier [[buffer(2)]],
+    \\                                        texture2d<float> base_texture [[texture(0)]],
+    \\                                        sampler base_sampler [[sampler(0)]],
+    \\                                        depth2d<float> shadow_map0 [[texture(1)]],
+    \\                                        sampler shadow_sampler0 [[sampler(1)]],
+    \\                                        depth2d<float> shadow_map1 [[texture(2)]],
+    \\                                        sampler shadow_sampler1 [[sampler(2)]],
+    \\                                        depth2d<float> shadow_map2 [[texture(3)]],
+    \\                                        sampler shadow_sampler2 [[sampler(3)]],
+    \\                                        depth2d<float> shadow_map3 [[texture(4)]],
+    \\                                        sampler shadow_sampler3 [[sampler(4)]],
+    \\                                        SceneModifierTextures textures [[texture(5)]],
+    \\                                        SceneModifierSamplers samplers [[sampler(5)]]) {
+    \\    MappedLighting lighting = { shadow_map0, shadow_sampler0, shadow_map1, shadow_sampler1,
+    \\                                shadow_map2, shadow_sampler2, shadow_map3, shadow_sampler3 };
+    \\    return shade(scene_surface_modified(in, lights, modifier, textures, samplers), lights, surface, base_texture, base_sampler, lighting);
+    \\}
+    \\
+;
+/// What follows `surface_suffix` where rays are traced: the traced
+/// fragment function that runs the surface body, then shades as
+/// `scene_traced_fragment` does.
+const surface_traced_suffix =
+    \\
+    \\fragment float4 scene_traced_fragment_modified(SceneVaryings in [[stage_in]],
+    \\                                               constant SceneLights &lights [[buffer(0)]],
+    \\                                               constant SceneSurface &surface [[buffer(1)]],
+    \\                                               constant SceneModifierValues &modifier [[buffer(2)]],
+    \\                                               texture2d<float> base_texture [[texture(0)]],
+    \\                                               sampler base_sampler [[sampler(0)]],
+    \\                                               SceneModifierTextures modifier_textures [[texture(1)]],
+    \\                                               SceneModifierSamplers modifier_samplers [[sampler(1)]],
+    \\                                               raytracing::instance_acceleration_structure shapes [[buffer(16)]],
+    \\                                               device const SceneHitInstance *instances [[buffer(17)]],
+    \\                                               device const SceneHitTriangle *triangles [[buffer(18)]],
+    \\                                               constant SceneTracing &tracing [[buffer(19)]],
+    \\                                               array<texture2d<float>, reflected_texture_count> textures [[texture(8)]],
+    \\                                               texture2d<float> cookie [[texture(16)]],
+    \\                                               texture2d<float> environment [[texture(17)]],
+    \\                                               array<texture2d<float>, 4> overlays [[texture(18)]]) {
+    \\    TracedLighting lighting = { shapes, instances, triangles, &tracing, textures, cookie, environment, overlays };
+    \\    return shade(scene_surface_modified(in, lights, modifier, modifier_textures, modifier_samplers), lights, surface, base_texture, base_sampler, lighting);
+    \\}
+    \\
+;
 
 /// The lit and blended pipelines over the traced fragment shader.
 const TracedPipelines = struct {
@@ -59,6 +221,8 @@ const MeshEntry = struct {
 
     /// `SceneGeometry.key`.
     key: u64,
+    /// `SceneGeometry.source`: the mesh's arrays, whatever their generation.
+    source: u64 = 0,
     /// The vertices.
     vertex_buffer: *sdl_c.SDL_GPUBuffer,
     /// The indices.
@@ -75,6 +239,8 @@ const TextureEntry = struct {
 
     /// `SceneTexture.key`.
     key: u64,
+    /// `SceneTexture.source`: its pixels, whatever their generation.
+    source: u64 = 0,
     /// The texture.
     texture: *sdl_c.SDL_GPUTexture,
     /// The frame it last drew in.
@@ -111,6 +277,10 @@ const LightUniforms = extern struct {
     point_color: [scenes.SceneFrame.max_point_lights][4]f32,
     shadow: [scenes.SceneFrame.max_directional_lights]scenes.Mat4,
     shadow_parameters: [4]f32,
+    /// The exposure, and the tone curve (0 none, 1 filmic); z, w unused.
+    tone: [4]f32,
+    /// Each point light's shadow range and soft rays (traced scenes); z, w unused.
+    point_shadow: [scenes.SceneFrame.max_point_lights][4]f32,
 };
 
 /// The lit fragment shader's surface; layout as `SceneSurface`.
@@ -119,6 +289,33 @@ const SurfaceUniforms = extern struct {
 
     base_color: [4]f32,
     surface: [4]f32,
+    /// x the emission (`SceneMaterial.emissionShare`), y its strength; z, w unused.
+    emission: [4]f32,
+};
+
+/// A texture's first level as an upload's destination.
+const TextureDestination = struct {
+    const Self = @This();
+
+    /// The texture.
+    texture: *sdl_c.SDL_GPUTexture,
+    /// Its width.
+    width: u32,
+    /// Its height.
+    height: u32,
+    /// Whether the GPU may swap in fresh memory for it, rather than wait
+    /// for frames still reading it (a texture refreshed in place).
+    cycle: bool = false,
+};
+
+/// Where an upload goes.
+const UploadDestination = union(enum) {
+    const Self = @This();
+
+    /// A buffer, from its start.
+    buffer: *sdl_c.SDL_GPUBuffer,
+    /// A texture's first level.
+    texture: TextureDestination,
 };
 
 /// Draws 3D scenes on a GPU device. Made by `Gpu` on the first scene step,
@@ -187,6 +384,18 @@ pub const SceneRenderer = struct {
     traced_pipelines: ?TracedPipelines = null,
     /// Builds and binds the opaque shapes' acceleration structures, beside `traced_pipelines`.
     ray_tracer: ?mod.SceneRayTracer = null,
+    /// The format of the texture scenes are drawn into.
+    target_format: sdl_c.SDL_GPUTextureFormat,
+    /// The Metal sources geometry modifiers are compiled with; null off Metal.
+    msl: ?[]const u8 = null,
+    /// The traced fragment shader's Metal source.
+    traced_msl: ?[]const u8 = null,
+    /// The fragment shaders the modifiers' pipelines share, once made.
+    modifier_fragments: ?ModifierFragments = null,
+    /// Pipelines for each geometry modifier's code drawn so far.
+    modified: std.ArrayList(ModifiedPipelines) = .empty,
+    /// Whether a modifier that cannot apply here was logged.
+    modifier_warned: bool = false,
     /// Counts the frames (`nextFrame`).
     frame_counter: u64 = 0,
     /// The frame a scene last drew in.
@@ -211,51 +420,8 @@ pub const SceneRenderer = struct {
             return null;
         };
 
-        const attributes = [_]sdl_c.SDL_GPUVertexAttribute{
-            .{ .location = 0, .buffer_slot = 0, .format = sdl_c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = @offsetOf(scenes.SceneVertex, "position") },
-            .{ .location = 1, .buffer_slot = 0, .format = sdl_c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = @offsetOf(scenes.SceneVertex, "normal") },
-            .{ .location = 2, .buffer_slot = 0, .format = sdl_c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(scenes.SceneVertex, "uv") },
-        };
-        const vertex_buffer = sdl_c.SDL_GPUVertexBufferDescription{
-            .slot = 0,
-            .pitch = @sizeOf(scenes.SceneVertex),
-            .input_rate = sdl_c.SDL_GPU_VERTEXINPUTRATE_VERTEX,
-            .instance_step_rate = 0,
-        };
-        const vertex_input = sdl_c.SDL_GPUVertexInputState{
-            .vertex_buffer_descriptions = &vertex_buffer,
-            .num_vertex_buffers = 1,
-            .vertex_attributes = &attributes,
-            .num_vertex_attributes = attributes.len,
-        };
-        // Neither face is culled: a plane shows from both sides, and the
-        // winding then never depends on a backend's clip-space flips.
-        const rasterizer_state = sdl_c.SDL_GPURasterizerState{
-            .fill_mode = sdl_c.SDL_GPU_FILLMODE_FILL,
-            .cull_mode = sdl_c.SDL_GPU_CULLMODE_NONE,
-            .front_face = sdl_c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
-        };
         var color_target = sdl_c.SDL_GPUColorTargetDescription{ .format = target_format, .blend_state = .{} };
-        var create_info = sdl_c.SDL_GPUGraphicsPipelineCreateInfo{
-            .vertex_shader = shaders.lit_vertex,
-            .fragment_shader = shaders.lit_fragment,
-            .vertex_input_state = vertex_input,
-            .primitive_type = sdl_c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-            .rasterizer_state = rasterizer_state,
-            .multisample_state = .{},
-            .depth_stencil_state = .{
-                .compare_op = sdl_c.SDL_GPU_COMPAREOP_LESS,
-                .enable_depth_test = true,
-                .enable_depth_write = true,
-            },
-            .target_info = .{
-                .color_target_descriptions = &color_target,
-                .num_color_targets = 1,
-                .depth_stencil_format = depth_format,
-                .has_depth_stencil_target = true,
-            },
-            .props = 0,
-        };
+        var create_info = Self.litPipelineInfo(shaders.lit_vertex, shaders.lit_fragment, &color_target, depth_format);
         const lit_pipeline = sdl_c.SDL_CreateGPUGraphicsPipeline(device, &create_info) orelse {
             log.warn("no lit pipeline for 3D scenes [{s}]", .{sdl_c.SDL_GetError()});
             return null;
@@ -327,6 +493,9 @@ pub const SceneRenderer = struct {
             .encode_srgb = target_format != sdl_c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB and target_format != sdl_c.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB,
             .traced_pipelines = traced_pipelines,
             .ray_tracer = ray_tracer,
+            .target_format = target_format,
+            .msl = shaders.msl,
+            .traced_msl = shaders.traced_msl,
         };
         return self;
     }
@@ -338,6 +507,16 @@ pub const SceneRenderer = struct {
         const device = self.device;
         if (self.ray_tracer) |*ray_tracer| ray_tracer.deinit();
         if (self.traced_pipelines) |pipelines| Self.releaseTracedPipelines(device, pipelines);
+        for (self.modified.items) |entry| {
+            if (entry.lit) |pipeline| sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+            if (entry.blended) |pipeline| sdl_c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+            if (entry.traced) |pipelines| Self.releaseTracedPipelines(device, pipelines);
+        }
+        self.modified.deinit(self.allocator);
+        if (self.modifier_fragments) |fragments| {
+            sdl_c.SDL_ReleaseGPUShader(device, fragments.lit);
+            if (fragments.traced) |shader| sdl_c.SDL_ReleaseGPUShader(device, shader);
+        }
         for (self.meshes.items) |entry| Self.releaseMesh(device, entry);
         self.meshes.deinit(self.allocator);
         for (self.textures.items) |entry| sdl_c.SDL_ReleaseGPUTexture(device, entry.texture);
@@ -421,7 +600,11 @@ pub const SceneRenderer = struct {
             log.warn("scene's textures not listed: {s}", .{@errorName(err)});
             return false;
         };
-        if (!self.prepare(arena, command_buffer, frame, meshes, textures)) return false;
+        var cookie: ?mod.SceneRayCookie = null;
+        var environment: ?mod.SceneRayEnvironment = null;
+        // A cookie and an environment are read only by a ray tracer that binds them, in a scene asking for rays.
+        const reads_planes = mod.SceneRayTracer.reads_planes and self.ray_tracer != null and scene.lighting_technique == .rayTraced;
+        if (!self.prepare(arena, command_buffer, frame, meshes, textures, reads_planes, &cookie, &environment)) return false;
         if (!self.ensureDepth(target_width, target_height)) return false;
 
         var lights = self.lightUniforms(frame);
@@ -451,7 +634,7 @@ pub const SceneRenderer = struct {
         sdl_c.SDL_SetGPUScissor(pass, &scissor);
         // Bound on SDL's encoder once the pass is open; should that fail, the
         // lit shaders draw, unshadowed (the blank map answers every test).
-        const traced = prepared and self.ray_tracer.?.bind(command_buffer, pass, Self.skyOf(scene, frame), self.white_texture.?, self.base_sampler);
+        const traced = prepared and self.ray_tracer.?.bind(command_buffer, pass, Self.skyOf(scene, frame), cookie, environment, Self.softRays(scene.soft_shadow_rays), self.white_texture.?, self.base_sampler);
         if (prepared and !traced) lights = self.lightUniforms(frame);
         sdl_c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &lights, @sizeOf(LightUniforms));
         if (!traced) {
@@ -464,7 +647,27 @@ pub const SceneRenderer = struct {
         const view_projection = Self.fittedProjection(frame.projection, step.rect, viewport).multiply(frame.view);
         for (frame.draws, meshes, textures, 0..) |shape, mesh, texture, index| {
             const entry = mesh orelse continue;
-            sdl_c.SDL_BindGPUGraphicsPipeline(pass, if (index < frame.opaque_count) lit_pipeline else blended_pipeline);
+            // Its shadow alone: in the shadow maps or the rays' structure, never drawn.
+            if (shape.shadow_only) continue;
+            const opaque_shape = index < frame.opaque_count;
+            const modified = if (shape.material.shader_modifier) |modifier| self.modifiedPipeline(modifier, traced, opaque_shape) else null;
+            sdl_c.SDL_BindGPUGraphicsPipeline(pass, modified orelse if (opaque_shape) lit_pipeline else blended_pipeline);
+            if (modified != null) {
+                const modifier = shape.material.shader_modifier.?;
+                sdl_c.SDL_PushGPUVertexUniformData(command_buffer, 1, &modifier.values, @sizeOf(@TypeOf(modifier.values)));
+                // Its textures, uploaded in `prepare` (white where it has none), for both its bodies.
+                var bindings: [scenes.SceneShaderModifier.max_textures]sdl_c.SDL_GPUTextureSamplerBinding = undefined;
+                for (&bindings, modifier.textures) |*binding, wanted| {
+                    const found = if (wanted) |modifier_texture| self.findTexture(modifier_texture.key()) else null;
+                    binding.* = .{ .texture = found orelse self.white_texture.?, .sampler = self.base_sampler };
+                }
+                sdl_c.SDL_BindGPUVertexSamplers(pass, 0, &bindings, bindings.len);
+                if (modifier.surface.len > 0) {
+                    sdl_c.SDL_PushGPUFragmentUniformData(command_buffer, 2, &modifier.values, @sizeOf(@TypeOf(modifier.values)));
+                    // After the base texture, and the shadow maps where they're bound.
+                    sdl_c.SDL_BindGPUFragmentSamplers(pass, if (traced) 1 else 1 + scenes.SceneFrame.max_directional_lights, &bindings, bindings.len);
+                }
+            }
             sdl_c.SDL_BindGPUVertexBuffers(pass, 0, &.{ .buffer = entry.vertex_buffer, .offset = 0 }, 1);
             sdl_c.SDL_BindGPUIndexBuffer(pass, &.{ .buffer = entry.index_buffer, .offset = 0 }, sdl_c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
             sdl_c.SDL_BindGPUFragmentSamplers(pass, 0, &.{ .texture = texture, .sampler = self.base_sampler }, 1);
@@ -474,11 +677,194 @@ pub const SceneRenderer = struct {
             const surface = SurfaceUniforms{
                 .base_color = .{ base.x, base.y, base.z, std.math.clamp(shape.material.base_color.a, 0, 1) },
                 .surface = .{ @max(shape.material.specular, 0), shape.material.shininess, if (shape.receives_shadows) 1 else 0, if (traced) Self.reflectivityOf(shape.material) else 0 },
+                .emission = .{ shape.material.emissionShare(), Self.strengthOf(shape.material), 0, 0 },
             };
             sdl_c.SDL_PushGPUFragmentUniformData(command_buffer, 1, &surface, @sizeOf(SurfaceUniforms));
             sdl_c.SDL_DrawGPUIndexedPrimitives(pass, entry.index_count, 1, 0, 0, 0);
         }
         return true;
+    }
+
+    /// A lit pipeline's create info: scene vertices, no face culled, depth
+    /// tested and written into one color target. The blended, traced and
+    /// modified pipelines start from it.
+    ///
+    /// - `vertex`: the vertex shader.
+    /// - `fragment`: the fragment shader.
+    /// - `color_target`: the color target; must outlive the info's use.
+    /// - `depth_format`: the depth buffer's format.
+    /// - Returns: the create info.
+    fn litPipelineInfo(vertex: *sdl_c.SDL_GPUShader, fragment: *sdl_c.SDL_GPUShader, color_target: *const sdl_c.SDL_GPUColorTargetDescription, depth_format: sdl_c.SDL_GPUTextureFormat) sdl_c.SDL_GPUGraphicsPipelineCreateInfo {
+        return .{
+            .vertex_shader = vertex,
+            .fragment_shader = fragment,
+            .vertex_input_state = Self.vertexInput(),
+            .primitive_type = sdl_c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+            // Neither face is culled: a plane shows from both sides, and the
+            // winding then never depends on a backend's clip-space flips.
+            .rasterizer_state = .{ .fill_mode = sdl_c.SDL_GPU_FILLMODE_FILL, .cull_mode = sdl_c.SDL_GPU_CULLMODE_NONE, .front_face = sdl_c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE },
+            .multisample_state = .{},
+            .depth_stencil_state = .{ .compare_op = sdl_c.SDL_GPU_COMPAREOP_LESS, .enable_depth_test = true, .enable_depth_write = true },
+            .target_info = .{ .color_target_descriptions = color_target, .num_color_targets = 1, .depth_stencil_format = depth_format, .has_depth_stencil_target = true },
+            .props = 0,
+        };
+    }
+
+    /// The scene vertex's input layout.
+    ///
+    /// - Returns: the layout, over constants that outlive it.
+    fn vertexInput() sdl_c.SDL_GPUVertexInputState {
+        return .{
+            .vertex_buffer_descriptions = &vertex_buffer_description,
+            .num_vertex_buffers = 1,
+            .vertex_attributes = &vertex_attributes,
+            .num_vertex_attributes = vertex_attributes.len,
+        };
+    }
+
+    /// The pipeline a shape with a geometry modifier draws with, its
+    /// pipelines made on its code's first draw; null draws it unmodified
+    /// (off Metal, or where they could not be made, logged).
+    ///
+    /// - `self`: the renderer.
+    /// - `modifier`: the shape's modifier.
+    /// - `traced`: whether this frame traces rays.
+    /// - `opaque_shape`: whether the shape is opaque.
+    /// - Returns: the pipeline, or null.
+    fn modifiedPipeline(self: *Self, modifier: *const scenes.SceneShaderModifier, traced: bool, opaque_shape: bool) ?*sdl_c.SDL_GPUGraphicsPipeline {
+        const key = modifier.key();
+        const pipelines = for (self.modified.items) |entry| {
+            if (entry.key == key) break entry;
+        } else self.makeModifiedPipelines(modifier) orelse return null;
+        if (traced) {
+            const traced_pipelines = pipelines.traced orelse return null;
+            return if (opaque_shape) traced_pipelines.lit else traced_pipelines.blended;
+        }
+        return if (opaque_shape) pipelines.lit else pipelines.blended;
+    }
+
+    /// Compiles a geometry modifier's vertex shader and makes its pipelines,
+    /// keeping them (or, when they cannot be made, that they cannot) by its key.
+    ///
+    /// - `self`: the renderer.
+    /// - `modifier`: the modifier.
+    /// - Returns: the pipelines, or null when they could not be kept.
+    fn makeModifiedPipelines(self: *Self, modifier: *const scenes.SceneShaderModifier) ?ModifiedPipelines {
+        // Room to keep them first: pipelines made and then not kept would leak, and be made again every frame.
+        self.modified.ensureUnusedCapacity(self.allocator, 1) catch |err| {
+            log.warn("geometry modifier drawn unmodified: {s}", .{@errorName(err)});
+            return null;
+        };
+        var pipelines = ModifiedPipelines{ .key = modifier.key() };
+        defer self.modified.appendAssumeCapacity(pipelines);
+        const msl = self.msl orelse {
+            if (!self.modifier_warned) log.warn("geometry modifiers apply on Metal only: drawn unmodified", .{});
+            self.modifier_warned = true;
+            return pipelines;
+        };
+        const fragments = self.modifierFragments() orelse return pipelines;
+        // A surface body brings its own fragment functions: compiled over the traced source too where rays are traced.
+        const shaded = modifier.surface.len > 0;
+        const traced_source = if (self.traced_pipelines != null) self.traced_msl else null;
+        const base = if (shaded) traced_source orelse msl else msl;
+        const surface_parts = [_][]const u8{
+            if (shaded) surface_prefix else "",
+            modifier.surface,
+            if (shaded) surface_suffix else "",
+            if (shaded and traced_source != null) surface_traced_suffix else "",
+        };
+        const source = self.allocator.printSentinel("{s}\n{s}\n{s}{s}{s}{s}{s}{s}{s}", .{ base, modifier.declarations, modifier_prefix, modifier.geometry, modifier_suffix, surface_parts[0], surface_parts[1], surface_parts[2], surface_parts[3] }, 0) catch |err| {
+            log.warn("shader modifier not compiled: {s}", .{@errorName(err)});
+            return pipelines;
+        };
+        defer self.allocator.free(source);
+        const vertex = Self.createMsl(self.device, source, "scene_vertex_modified", sdl_c.SDL_GPU_SHADERSTAGE_VERTEX, scenes.SceneShaderModifier.max_textures, 2) orelse {
+            log.warn("shader modifier not compiled [{s}]", .{sdl_c.SDL_GetError()});
+            return pipelines;
+        };
+        defer sdl_c.SDL_ReleaseGPUShader(self.device, vertex);
+        var lit_fragment = fragments.lit;
+        var traced_fragment = fragments.traced;
+        if (shaded) {
+            lit_fragment = Self.createMsl(self.device, source, "scene_fragment_modified", sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT, 1 + scenes.SceneFrame.max_directional_lights + scenes.SceneShaderModifier.max_textures, 3) orelse {
+                log.warn("shader modifier's surface not compiled [{s}]", .{sdl_c.SDL_GetError()});
+                return pipelines;
+            };
+            traced_fragment = null;
+            if (traced_source != null) {
+                traced_fragment = Self.createMsl(self.device, source, "scene_traced_fragment_modified", sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT, 1 + scenes.SceneShaderModifier.max_textures, 3);
+                if (traced_fragment == null) log.warn("shader modifier drawn unmodified in ray-traced scenes: its surface not compiled [{s}]", .{sdl_c.SDL_GetError()});
+            }
+        }
+        // The surface's own fragment shaders: the pipelines keep what they need.
+        defer if (shaded) {
+            sdl_c.SDL_ReleaseGPUShader(self.device, lit_fragment);
+            if (traced_fragment) |shader| sdl_c.SDL_ReleaseGPUShader(self.device, shader);
+        };
+
+        var color_target = sdl_c.SDL_GPUColorTargetDescription{ .format = self.target_format, .blend_state = .{} };
+        var create_info = Self.litPipelineInfo(vertex, lit_fragment, &color_target, self.depth_format);
+        const lit_info = create_info;
+        const lit = sdl_c.SDL_CreateGPUGraphicsPipeline(self.device, &create_info) orelse {
+            log.warn("geometry modifier's pipeline not made [{s}]", .{sdl_c.SDL_GetError()});
+            return pipelines;
+        };
+        color_target.blend_state = over_blend;
+        create_info.depth_stencil_state.enable_depth_write = false;
+        const blended = sdl_c.SDL_CreateGPUGraphicsPipeline(self.device, &create_info) orelse {
+            log.warn("geometry modifier's pipeline not made [{s}]", .{sdl_c.SDL_GetError()});
+            sdl_c.SDL_ReleaseGPUGraphicsPipeline(self.device, lit);
+            return pipelines;
+        };
+        pipelines.lit = lit;
+        pipelines.blended = blended;
+        if (traced_fragment) |fragment| pipelines.traced = Self.makeTracedPipelines(self.device, lit_info, self.target_format, fragment);
+        return pipelines;
+    }
+
+    /// The fragment shaders the modifiers' pipelines share, compiled on first need.
+    ///
+    /// - `self`: the renderer.
+    /// - Returns: the shaders, or null when they could not be made (logged).
+    fn modifierFragments(self: *Self) ?ModifierFragments {
+        if (self.modifier_fragments) |fragments| return fragments;
+        const msl = self.msl orelse return null;
+        const lit = Self.createMsl(self.device, msl, "scene_fragment", sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT, 1 + scenes.SceneFrame.max_directional_lights, 2) orelse {
+            log.warn("geometry modifiers drawn unmodified: no lit fragment shader [{s}]", .{sdl_c.SDL_GetError()});
+            return null;
+        };
+        var fragments = ModifierFragments{ .lit = lit };
+        if (self.traced_pipelines != null) if (self.traced_msl) |traced_msl| {
+            fragments.traced = Self.createMsl(self.device, traced_msl, "scene_traced_fragment", sdl_c.SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 2);
+            if (fragments.traced == null) log.warn("geometry modifiers drawn unmodified in ray-traced scenes: no traced fragment shader [{s}]", .{sdl_c.SDL_GetError()});
+        };
+        self.modifier_fragments = fragments;
+        return fragments;
+    }
+
+    /// A shader compiled from Metal source.
+    ///
+    /// - `device`: the GPU device.
+    /// - `source`: the source.
+    /// - `entry`: its entry point.
+    /// - `stage`: vertex or fragment.
+    /// - `samplers`: how many samplers it takes.
+    /// - `uniform_buffers`: how many uniform buffers it takes.
+    /// - Returns: the shader, or null when it did not compile.
+    fn createMsl(device: *sdl_c.SDL_GPUDevice, source: []const u8, entry: [:0]const u8, stage: sdl_c.SDL_GPUShaderStage, samplers: u32, uniform_buffers: u32) ?*sdl_c.SDL_GPUShader {
+        const create_info = sdl_c.SDL_GPUShaderCreateInfo{
+            .code = source.ptr,
+            .code_size = source.len,
+            .entrypoint = entry.ptr,
+            .format = sdl_c.SDL_GPU_SHADERFORMAT_MSL,
+            .stage = stage,
+            .num_samplers = samplers,
+            .num_storage_textures = 0,
+            .num_storage_buffers = 0,
+            .num_uniform_buffers = uniform_buffers,
+            .props = 0,
+        };
+        return sdl_c.SDL_CreateGPUShader(device, &create_info);
     }
 
     /// The lit and blended pipelines over the traced fragment shader, made as
@@ -526,7 +912,8 @@ pub const SceneRenderer = struct {
     /// reflective shape. The lights' uniforms then carry what the traced
     /// shader reads: a shadowing directional light names its own index (one
     /// with none stays -1) and its cone's width, a point light its source's
-    /// radius (-1 for one casting none).
+    /// radius (-1 for one casting none), the distance its shadows are traced
+    /// within and its soft rays.
     ///
     /// - `self`: the renderer.
     /// - `arena`: the frame's arena, for the shapes' list.
@@ -559,6 +946,7 @@ pub const SceneRenderer = struct {
                 .material = shape.material,
                 .texture = if (shape.material.texture != null) texture else null,
                 .casts_shadows = shape.casts_shadows,
+                .reflected = shape.reflected,
             }) catch |err| {
                 log.warn("scene not ray traced: {s}", .{@errorName(err)});
                 return false;
@@ -571,8 +959,35 @@ pub const SceneRenderer = struct {
         }
         for (frame.point_lights, 0..) |light, index| {
             lights.point_color[index][3] = if (light.casts_shadows) light.radius else -1;
+            lights.point_shadow[index] = .{ light.shadow_range, @floatFromInt(Self.softRays(light.shadow_rays orelse scene.soft_shadow_rays)), 0, 0 };
         }
         return true;
+    }
+
+    /// How strongly a surface gives off its own color: its emission strength
+    /// (`factorOf`).
+    ///
+    /// - `material`: the surface.
+    /// - Returns: the strength.
+    fn strengthOf(material: scenes.SceneMaterial) f32 {
+        return Self.factorOf(material.emission_strength);
+    }
+
+    /// A light's multiplier as the shaders take it: 1 for one that is not a
+    /// finite number above 0 (an emission's or an environment's strength).
+    ///
+    /// - `factor`: the multiplier asked for.
+    /// - Returns: the multiplier used.
+    fn factorOf(factor: f32) f32 {
+        return if (factor > 0 and std.math.isFinite(factor)) factor else 1;
+    }
+
+    /// The most rays a soft shadow sends: 4 to 32, in fours (rounded down).
+    ///
+    /// - `rays`: the rays asked for.
+    /// - Returns: the rays sent.
+    fn softRays(rays: u32) u32 {
+        return std.math.clamp(rays / 4 * 4, 4, 32);
     }
 
     /// How much a surface reflects, 0 to 1; 0 for a reflectivity that is not
@@ -672,6 +1087,7 @@ pub const SceneRenderer = struct {
             lights.point_color[index] = .{ light.color.x, light.color.y, light.color.z, 0 };
         }
         lights.shadow_parameters = .{ 1.0 / @as(f32, shadow_map_side), shadow_bias, if (self.encode_srgb) 1 else 0, 0 };
+        lights.tone = .{ frame.exposure, if (frame.tone_mapping == .filmic) 1 else 0, 0, 0 };
         return lights;
     }
 
@@ -723,8 +1139,11 @@ pub const SceneRenderer = struct {
     /// - `frame`: the frame.
     /// - `meshes`: filled with each shape's mesh, null for one that cannot be drawn.
     /// - `textures`: filled with each shape's texture (the white texel for none).
+    /// - `reads_planes`: whether the frame's cookie and environment will be read; else they are not uploaded.
+    /// - `cookie`: set to the first directional light's cookie that has one, its texture on the GPU.
+    /// - `environment`: set to the frame's environment, its textures on the GPU.
     /// - Returns: false when the copy pass could not begin.
-    fn prepare(self: *Self, arena: std.mem.Allocator, command_buffer: *sdl_c.SDL_GPUCommandBuffer, frame: scenes.SceneFrame, meshes: []?MeshEntry, textures: []*sdl_c.SDL_GPUTexture) bool {
+    fn prepare(self: *Self, arena: std.mem.Allocator, command_buffer: *sdl_c.SDL_GPUCommandBuffer, frame: scenes.SceneFrame, meshes: []?MeshEntry, textures: []*sdl_c.SDL_GPUTexture, reads_planes: bool, cookie: *?mod.SceneRayCookie, environment: *?mod.SceneRayEnvironment) bool {
         var copy: ?*sdl_c.SDL_GPUCopyPass = null;
         var made: std.ArrayList(*sdl_c.SDL_GPUTexture) = .empty;
         for (frame.draws, meshes, textures) |shape, *mesh, *texture| {
@@ -732,18 +1151,76 @@ pub const SceneRenderer = struct {
                 if (copy == null) copy = sdl_c.SDL_BeginGPUCopyPass(command_buffer) orelse return false;
                 break :made_mesh self.uploadMesh(arena, copy.?, shape.geometry);
             };
-            texture.* = self.white_texture.?;
-            const material_texture = shape.material.texture orelse continue;
-            texture.* = self.findTexture(material_texture.key()) orelse made_texture: {
-                if (copy == null) copy = sdl_c.SDL_BeginGPUCopyPass(command_buffer) orelse return false;
-                const uploaded = self.uploadTexture(copy.?, material_texture) orelse break :made_texture self.white_texture.?;
-                made.append(arena, uploaded) catch |err| log.warn("texture's mipmaps not made: {s}", .{@errorName(err)});
-                break :made_texture uploaded;
+            // A modifier's textures only where modifiers apply (Metal); found again as the shape draws.
+            if (self.msl != null) if (shape.material.shader_modifier) |modifier| for (modifier.textures) |wanted| {
+                const modifier_texture = wanted orelse continue;
+                _ = self.textureFor(arena, command_buffer, &copy, &made, modifier_texture) orelse return false;
             };
+            const material_texture = shape.material.texture orelse {
+                texture.* = self.white_texture.?;
+                continue;
+            };
+            texture.* = (self.textureFor(arena, command_buffer, &copy, &made, material_texture) orelse return false) orelse self.white_texture.?;
         }
+        if (reads_planes) for (frame.directional_lights, 0..) |light, index| {
+            const light_cookie = light.cookie orelse continue;
+            const plane = self.planeFor(arena, command_buffer, &copy, &made, light_cookie) orelse return false;
+            if (plane) |uploaded| cookie.* = .{ .plane = uploaded, .light = @intCast(index) };
+            break;
+        };
+        if (reads_planes) if (frame.environment) |surroundings| {
+            const sky_texture = self.textureFor(arena, command_buffer, &copy, &made, surroundings.texture) orelse return false;
+            if (sky_texture) |sky| {
+                var found = mod.SceneRayEnvironment{ .texture = sky, .max_polar = std.math.degreesToRadians(std.math.clamp(surroundings.max_polar_deg, 1, 180)), .strength = Self.factorOf(surroundings.strength), .blur = @max(surroundings.blur, 0) };
+                for (surroundings.overlays) |overlay| {
+                    if (found.overlay_count == mod.SceneRayEnvironment.max_overlays) break;
+                    if (!overlay.isUsable()) continue;
+                    const plane = self.planeFor(arena, command_buffer, &copy, &made, overlay) orelse return false;
+                    if (plane) |uploaded| {
+                        found.overlays[found.overlay_count] = uploaded;
+                        found.overlay_count += 1;
+                    }
+                }
+                environment.* = found;
+            }
+        };
         if (copy) |pass| sdl_c.SDL_EndGPUCopyPass(pass);
         for (made.items) |texture| sdl_c.SDL_GenerateMipmapsForGPUTexture(command_buffer, texture);
         return true;
+    }
+
+    /// A texture on the GPU (a material's, a modifier's, a cookie's, an
+    /// environment's), found or uploaded in the frame's copy pass (begun if need be), its
+    /// mipmaps to be made.
+    ///
+    /// - `self`: the renderer.
+    /// - `arena`: the frame's arena, for the made list.
+    /// - `command_buffer`: the command buffer, outside any pass.
+    /// - `copy`: the frame's copy pass, begun here if not yet.
+    /// - `made`: the textures uploaded this frame, whose mipmaps are made after the pass.
+    /// - `texture`: the texture.
+    /// - Returns: the texture on the GPU, null inside when it couldn't be uploaded (logged), or null when the copy pass couldn't begin.
+    fn textureFor(self: *Self, arena: std.mem.Allocator, command_buffer: *sdl_c.SDL_GPUCommandBuffer, copy: *?*sdl_c.SDL_GPUCopyPass, made: *std.ArrayList(*sdl_c.SDL_GPUTexture), texture: scenes.SceneTexture) ??*sdl_c.SDL_GPUTexture {
+        if (self.findTexture(texture.key())) |found| return found;
+        if (copy.* == null) copy.* = sdl_c.SDL_BeginGPUCopyPass(command_buffer) orelse return null;
+        const uploaded = self.uploadTexture(copy.*.?, texture) orelse return @as(?*sdl_c.SDL_GPUTexture, null);
+        made.append(arena, uploaded) catch |err| log.warn("texture's mipmaps not made: {s}", .{@errorName(err)});
+        return uploaded;
+    }
+
+    /// A texture on a plane on the GPU (`textureFor`), with the plane's equations.
+    ///
+    /// - `self`: the renderer.
+    /// - `arena`: the frame's arena, for the made list.
+    /// - `command_buffer`: the command buffer, outside any pass.
+    /// - `copy`: the frame's copy pass, begun here if not yet.
+    /// - `made`: the textures uploaded this frame.
+    /// - `plane`: the plane texture; usable.
+    /// - Returns: the plane on the GPU, null inside when its texture couldn't be uploaded, or null when the copy pass couldn't begin.
+    fn planeFor(self: *Self, arena: std.mem.Allocator, command_buffer: *sdl_c.SDL_GPUCommandBuffer, copy: *?*sdl_c.SDL_GPUCopyPass, made: *std.ArrayList(*sdl_c.SDL_GPUTexture), plane: scenes.ScenePlaneTexture) ??mod.SceneRayPlane {
+        const texture = self.textureFor(arena, command_buffer, copy, made, plane.texture) orelse return null;
+        const uploaded = texture orelse return @as(?mod.SceneRayPlane, null);
+        return @as(?mod.SceneRayPlane, .{ .texture = uploaded, .equations = plane.equations() });
     }
 
     /// A geometry's mesh on the GPU, marked used this frame.
@@ -794,13 +1271,35 @@ pub const SceneRenderer = struct {
             sdl_c.SDL_ReleaseGPUBuffer(self.device, vertex_buffer);
             return null;
         };
-        const entry = MeshEntry{ .key = geometry.key(), .vertex_buffer = vertex_buffer, .index_buffer = index_buffer, .index_count = @intCast(data.indices.len), .used_in = self.frame_counter };
+        const entry = MeshEntry{ .key = geometry.key(), .source = geometry.source(), .vertex_buffer = vertex_buffer, .index_buffer = index_buffer, .index_count = @intCast(data.indices.len), .used_in = self.frame_counter };
+        if (entry.source != 0) self.releaseReplaced(entry.source);
         self.meshes.append(self.allocator, entry) catch |err| {
             log.warn("mesh not kept: {s}", .{@errorName(err)});
             Self.releaseMesh(self.device, entry);
             return null;
         };
         return entry;
+    }
+
+    /// Frees the earlier uploads of a mesh's arrays that a new generation
+    /// replaces, rather than keeping each for `idle_frames`: a mesh animated
+    /// every frame would otherwise hold that many copies. One drawn this
+    /// frame is kept (another shape may show that generation); SDL frees a
+    /// released buffer once the GPU is done with it.
+    ///
+    /// - `self`: the renderer.
+    /// - `source`: the mesh's arrays (`SceneGeometry.source`).
+    fn releaseReplaced(self: *Self, source: u64) void {
+        var index: usize = 0;
+        while (index < self.meshes.items.len) {
+            const entry = self.meshes.items[index];
+            if (entry.source != source or entry.used_in == self.frame_counter) {
+                index += 1;
+                continue;
+            }
+            Self.releaseMesh(self.device, entry);
+            _ = self.meshes.swapRemove(index);
+        }
     }
 
     /// A buffer filled with bytes through a transfer buffer released once
@@ -824,7 +1323,9 @@ pub const SceneRenderer = struct {
         return buffer;
     }
 
-    /// Uploads a material's texture as sRGB, with room for its mipmaps.
+    /// Uploads a texture in its format, with room for its mipmaps: into the
+    /// GPU texture an earlier generation of its pixels made, when one not
+    /// drawn this frame holds them, else into a new one.
     ///
     /// - `self`: the renderer.
     /// - `copy`: the open copy pass.
@@ -833,11 +1334,26 @@ pub const SceneRenderer = struct {
     ///   could not be made (logged).
     fn uploadTexture(self: *Self, copy: *sdl_c.SDL_GPUCopyPass, texture: scenes.SceneTexture) ?*sdl_c.SDL_GPUTexture {
         const image = texture.image;
-        if (image.width == 0 or image.height == 0 or !image.isWhole()) return null;
+        if (image.width == 0 or image.height == 0 or !texture.isWhole()) return null;
+        const bytes = image.pixels[0..@intCast(texture.byteLength())];
+        // Its pixels changed in place (a new generation): refreshed into the texture they made, no new one,
+        // unless that one is still drawn this frame (two generations of one image shown at once
+        // would otherwise take turns overwriting it, uploading it every frame).
+        const source = texture.source();
+        for (self.textures.items) |*entry| {
+            if (entry.source != source or entry.used_in == self.frame_counter) continue;
+            if (!self.fillTransfer(copy, bytes, .{ .texture = .{ .texture = entry.texture, .width = image.width, .height = image.height, .cycle = true } })) return null;
+            entry.key = texture.key();
+            entry.used_in = self.frame_counter;
+            return entry.texture;
+        }
         const levels: u32 = std.math.log2_int(u32, @max(image.width, image.height)) + 1;
         const made = sdl_c.SDL_CreateGPUTexture(self.device, &.{
             .type = sdl_c.SDL_GPU_TEXTURETYPE_2D,
-            .format = sdl_c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,
+            .format = switch (texture.format) {
+                .srgb8 => sdl_c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,
+                .float16 => sdl_c.SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+            },
             .usage = sdl_c.SDL_GPU_TEXTUREUSAGE_SAMPLER | sdl_c.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
             .width = image.width,
             .height = image.height,
@@ -847,12 +1363,11 @@ pub const SceneRenderer = struct {
             log.warn("scene texture not made [{s}]", .{sdl_c.SDL_GetError()});
             return null;
         };
-        const bytes = image.pixels[0..@intCast(image.byteLength())];
         if (!self.fillTransfer(copy, bytes, .{ .texture = .{ .texture = made, .width = image.width, .height = image.height } })) {
             sdl_c.SDL_ReleaseGPUTexture(self.device, made);
             return null;
         }
-        self.textures.append(self.allocator, .{ .key = texture.key(), .texture = made, .used_in = self.frame_counter }) catch |err| {
+        self.textures.append(self.allocator, .{ .key = texture.key(), .source = source, .texture = made, .used_in = self.frame_counter }) catch |err| {
             log.warn("scene texture not kept: {s}", .{@errorName(err)});
             sdl_c.SDL_ReleaseGPUTexture(self.device, made);
             return null;
@@ -887,7 +1402,7 @@ pub const SceneRenderer = struct {
                 copy,
                 &.{ .transfer_buffer = transfer, .offset = 0, .pixels_per_row = texture.width, .rows_per_layer = texture.height },
                 &.{ .texture = texture.texture, .w = texture.width, .h = texture.height, .d = 1 },
-                false,
+                texture.cycle,
             ),
         }
         return true;
@@ -1007,28 +1522,6 @@ pub const SceneRenderer = struct {
     }
 };
 
-/// A texture's first level as an upload's destination.
-const TextureDestination = struct {
-    const Self = @This();
-
-    /// The texture.
-    texture: *sdl_c.SDL_GPUTexture,
-    /// Its width.
-    width: u32,
-    /// Its height.
-    height: u32,
-};
-
-/// Where an upload goes.
-const UploadDestination = union(enum) {
-    const Self = @This();
-
-    /// A buffer, from its start.
-    buffer: *sdl_c.SDL_GPUBuffer,
-    /// A texture's first level.
-    texture: TextureDestination,
-};
-
 // -----------------------------------------------------------------------------
 // Unit Tests
 
@@ -1037,7 +1530,7 @@ test {
 }
 
 test "the light uniforms match the shaders' std140 layout" {
-    try std.testing.expectEqual(@as(usize, 688), @sizeOf(LightUniforms));
+    try std.testing.expectEqual(@as(usize, 832), @sizeOf(LightUniforms));
     try std.testing.expectEqual(@as(usize, 192), @sizeOf(VertexUniforms));
     try std.testing.expectEqual(@as(usize, 32), @sizeOf(scenes.SceneVertex));
 }
@@ -1257,6 +1750,17 @@ const TracingGpu = struct {
         return self;
     }
 
+    /// Whether the device compiles Metal from source: what geometry
+    /// modifiers need, and what draws emission until the committed SPIR-V is
+    /// compiled again (`compile.sh`).
+    ///
+    /// - `self`: the GPU.
+    /// - Returns: true on Metal.
+    fn compilesMetal(self: *const Self) bool {
+        const formats = sdl_c.SDL_GetGPUShaderFormats(self.gpu.device);
+        return formats & sdl_c.SDL_GPU_SHADERFORMAT_MSL != 0 and formats & sdl_c.SDL_GPU_SHADERFORMAT_SPIRV == 0;
+    }
+
     /// Frees the GPU and stops SDL's video.
     ///
     /// - `self`: the GPU.
@@ -1301,12 +1805,17 @@ test "a ray-traced point light casts a shadow under a box, which shadow maps nev
     const sun = try TestDraw.shadowedBox(&scene);
     // The sun turned off; a bright lamp straight over the box casts instead.
     scene.node(sun).?.hidden = true;
-    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .point = .{ .range = 20, .casts_shadows = true } }, .intensity = 3 }, .transform = .{ .position = scenes.Vec3.init(0, 3, 0) } });
+    const lamp = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .point = .{ .range = 20, .casts_shadows = true } }, .intensity = 3 }, .transform = .{ .position = scenes.Vec3.init(0, 3, 0) } });
     const shaded = try tracing.redAt(&scene, scenes.Vec3.init(0, -1, 0.3));
     const lit = try tracing.redAt(&scene, scenes.Vec3.init(1.8, -1, 0.3));
     try std.testing.expect(lit > 150);
     // The ambient light alone (0.1, linear) is 89 in sRGB.
     try std.testing.expect(shaded < 100);
+    // Its shadows traced only within 2 units: the floor, 4 below, is lit unshadowed.
+    scene.node(lamp).?.light.?.kind = .{ .point = .{ .range = 20, .casts_shadows = true, .shadow_range = 2 } };
+    try std.testing.expect(try tracing.redAt(&scene, scenes.Vec3.init(0, -1, 0.3)) > 150);
+    scene.node(lamp).?.light.?.kind = .{ .point = .{ .range = 20, .casts_shadows = true, .radius = 0.2, .shadow_rays = 8 } };
+    try std.testing.expect(try tracing.redAt(&scene, scenes.Vec3.init(0, -1, 0.3)) < 100);
     scene.lighting_technique = .rasterized;
     const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
     defer std.testing.allocator.free(drawn.pixels);
@@ -1345,6 +1854,276 @@ test "a ray-traced mirror shows the box behind the camera, and the sky where not
     try std.testing.expect(edge[2] > 200 and edge[0] < 60);
 }
 
+test "an emissive surface shows its own color in the dark, and so does its reflection" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    if (!tracing.compilesMetal()) return error.SkipZigTest;
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    try TracingGpu.mirrorAndBox(&scene, .{ .base_color = renderer.Color.red, .specular = 0, .emission = 1 });
+    // No light at all: only what the box gives off itself shows.
+    scene.ambient_intensity = 0;
+    const mirrored = try tracing.redAt(&scene, scenes.Vec3.zero);
+    try std.testing.expect(mirrored > 200);
+    // An emissive face seen directly, rasterized, in the dark.
+    var lamp = try scenes.Scene.init(std.testing.allocator);
+    defer lamp.deinit();
+    lamp.ambient_intensity = 0;
+    _ = try lamp.addChild(lamp.root(), .{ .geometry = .{ .plane = .{ .width = 4, .height = 4 } }, .material = .{ .base_color = renderer.Color.red, .emission = 1 } });
+    const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &lamp) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(drawn.pixels);
+    try std.testing.expect((try drawn.at(tracing.arena.allocator(), &lamp, scenes.Vec3.zero))[0] > 200);
+}
+
+test "a geometry modifier moves and recolors a surface on the GPU from values the app sets" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    if (!tracing.compilesMetal()) return error.SkipZigTest;
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    scene.ambient_intensity = 0;
+    // Red then green; the modifier picks the texel with values[0].x and lifts the surface by values[0].y.
+    const strip = [_]u8{ 255, 0, 0, 255, 0, 255, 0, 255 };
+    var modifier = scenes.SceneShaderModifier{ .geometry = "uv = float2(values[0].x, 0.5); position.y += values[0].y;" };
+    modifier.values[0] = .{ 0.75, 0, 0, 0 };
+    _ = try scene.addChild(scene.root(), .{ .geometry = .{ .plane = .{ .width = 4, .height = 4 } }, .material = .{ .texture = .{ .image = .{ .width = 2, .height = 1, .pixels = &strip } }, .emission = 1, .shader_modifier = &modifier } });
+    // A light casting shadows, so the traced pass really traces (an unlit scene draws rasterized).
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .directional = .{} } }, .transform = .{ .position = scenes.Vec3.init(0, 4, 4) } });
+    for ([_]scenes.SceneLightingTechnique{ .rasterized, .rayTraced }) |technique| {
+        scene.lighting_technique = technique;
+        modifier.values[0] = .{ 0.75, 0, 0, 0 };
+        const green = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+        defer std.testing.allocator.free(green.pixels);
+        const center = try green.at(tracing.arena.allocator(), &scene, scenes.Vec3.zero);
+        try std.testing.expect(center[1] > 200 and center[0] < 60);
+        // Lifted far above the view: the center shows what is behind.
+        modifier.values[0] = .{ 0.25, 50, 0, 0 };
+        const moved = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+        defer std.testing.allocator.free(moved.pixels);
+        const behind = try moved.at(tracing.arena.allocator(), &scene, scenes.Vec3.zero);
+        try std.testing.expect(behind[0] < 100);
+    }
+}
+
+test "a modifier's surface body recomputes texture coordinates per pixel from values the app sets" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    if (!tracing.compilesMetal()) return error.SkipZigTest;
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    scene.ambient_intensity = 0;
+    // Red then green; the surface picks red left of x 0 and green right of it,
+    // a split no blend of the plane's four corners makes, then tints by values[0].
+    const strip = [_]u8{ 255, 0, 0, 255, 0, 255, 0, 255 };
+    var modifier = scenes.SceneShaderModifier{ .surface = "uv = float2(world.x < 0.0 ? 0.25 : 0.75, 0.5); tint = values[0]; normal = normalize(eye - world);" };
+    modifier.values[0] = .{ 1, 0, 1, 1 };
+    _ = try scene.addChild(scene.root(), .{ .geometry = .{ .plane = .{ .width = 4, .height = 4 } }, .material = .{ .texture = .{ .image = .{ .width = 2, .height = 1, .pixels = &strip } }, .emission = 1, .shader_modifier = &modifier } });
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .directional = .{} } }, .transform = .{ .position = scenes.Vec3.init(0, 4, 4) } });
+    for ([_]scenes.SceneLightingTechnique{ .rasterized, .rayTraced }) |technique| {
+        scene.lighting_technique = technique;
+        const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+        defer std.testing.allocator.free(drawn.pixels);
+        const left = try drawn.at(tracing.arena.allocator(), &scene, scenes.Vec3.init(-0.2, 0, 0));
+        const right = try drawn.at(tracing.arena.allocator(), &scene, scenes.Vec3.init(0.2, 0, 0));
+        // Red, untinted; green, its green tinted away.
+        try std.testing.expect(left[0] > 200 and left[1] < 60);
+        try std.testing.expect(right[0] < 60 and right[1] < 60);
+    }
+}
+
+test "a modifier reads a float texture per vertex and per pixel, hands a value on, and sees it refreshed in place" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    if (!tracing.compilesMetal()) return error.SkipZigTest;
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    scene.ambient_intensity = 0;
+    // One texel, red 0.25: above what eight bits hold once scaled by 4, it shows the float's precision.
+    var texel = [4]f16{ 0.25, 0, 0, 1 };
+    var modifier = scenes.SceneShaderModifier{
+        .geometry = "custom = textures[0].sample(samplers[0], float2(0.5), level(0.0));",
+        .surface = "tint = float4(custom.x * 4.0, 0.0, textures[0].sample(samplers[0], float2(0.5)).x * 4.0, 1.0);",
+    };
+    modifier.textures[0] = .{ .image = .{ .width = 1, .height = 1, .pixels = std.mem.sliceAsBytes(&texel) }, .format = .float16 };
+    _ = try scene.addChild(scene.root(), .{ .geometry = .{ .plane = .{ .width = 4, .height = 4 } }, .material = .{ .emission = 1, .shader_modifier = &modifier } });
+    const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(drawn.pixels);
+    const full = try drawn.at(tracing.arena.allocator(), &scene, scenes.Vec3.zero);
+    // Read per vertex (red) and per pixel (blue): 0.25 × 4, white.
+    try std.testing.expect(full[0] > 245 and full[2] > 245);
+    // Rewritten in place, a new generation: both see the new value (0.0625 × 4 = 0.25 linear, about 137 in sRGB).
+    texel[0] = 0.0625;
+    modifier.textures[0].?.generation += 1;
+    const refreshed = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(refreshed.pixels);
+    const quarter = try refreshed.at(tracing.arena.allocator(), &scene, scenes.Vec3.zero);
+    try std.testing.expect(quarter[0] > 120 and quarter[0] < 155);
+    try std.testing.expect(quarter[2] > 120 and quarter[2] < 155);
+}
+
+test "a geometry modifier's tint multiplies the surface's color" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    if (!tracing.compilesMetal()) return error.SkipZigTest;
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    scene.ambient_intensity = 0;
+    var modifier = scenes.SceneShaderModifier{ .geometry = "tint = blue_of(values[0]);", .declarations = "static float4 blue_of(float4 v) { return float4(v.xyz, 1.0); }" };
+    modifier.values[0] = .{ 0, 0, 1, 0 };
+    _ = try scene.addChild(scene.root(), .{ .geometry = .{ .plane = .{ .width = 4, .height = 4 } }, .material = .{ .emission = 1, .shader_modifier = &modifier } });
+    _ = try scene.addChild(scene.root(), .{ .light = .{ .kind = .{ .directional = .{} } }, .transform = .{ .position = scenes.Vec3.init(0, 4, 4) } });
+    for ([_]scenes.SceneLightingTechnique{ .rasterized, .rayTraced }) |technique| {
+        scene.lighting_technique = technique;
+        const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+        defer std.testing.allocator.free(drawn.pixels);
+        const center = try drawn.at(tracing.arena.allocator(), &scene, scenes.Vec3.zero);
+        // White, tinted blue.
+        try std.testing.expect(center[2] > 200 and center[0] < 40 and center[1] < 40);
+    }
+}
+
+test "a ray-traced light shines through its cookie, which its origin slides" {
+    if (!sdl_c.SDL_Init(sdl_c.SDL_INIT_VIDEO)) return error.SkipZigTest;
+    defer sdl_c.SDL_Quit();
+    var gpu = mod.Gpu.init(std.testing.allocator, null) orelse return error.SkipZigTest;
+    defer gpu.deinit();
+    if (!mod.SceneRayTracer.supported(gpu.device)) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    const light = try TestDraw.shadowedBox(&scene);
+    scene.lighting_technique = .rayTraced;
+    // Black then white across a 6-unit tile, on a plane above the floor: black over x in 0–3.
+    const stripes = [_]u8{ 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255 };
+    const cookie = scenes.ScenePlaneTexture.level(.{ .image = .{ .width = 4, .height = 1, .pixels = &stripes } }, scenes.Vec3.init(0, 10, 0), 6);
+    scene.node(light).?.light.?.kind = .{ .directional = .{ .cookie = cookie } };
+    const drawn = TestDraw.render(&gpu, arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(drawn.pixels);
+    const under_black = try drawn.at(arena.allocator(), &scene, scenes.Vec3.init(1.8, -1, 0.3));
+    const under_white = try drawn.at(arena.allocator(), &scene, scenes.Vec3.init(-1.8, -1, 0.3));
+    try std.testing.expect(under_white[0] > 200);
+    try std.testing.expect(under_black[0] < 100);
+    // Moved half a tile: the stripes swap.
+    var moved_cookie = cookie;
+    moved_cookie.origin.x = -3;
+    scene.node(light).?.light.?.kind = .{ .directional = .{ .cookie = moved_cookie } };
+    const moved = TestDraw.render(&gpu, arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(moved.pixels);
+    try std.testing.expect((try moved.at(arena.allocator(), &scene, scenes.Vec3.init(1.8, -1, 0.3)))[0] > 200);
+    try std.testing.expect((try moved.at(arena.allocator(), &scene, scenes.Vec3.init(-1.8, -1, 0.3)))[0] < 100);
+}
+
+test "a shadow-only shape casts its shadow, rasterized or traced, but is not drawn" {
+    if (!sdl_c.SDL_Init(sdl_c.SDL_INIT_VIDEO)) return error.SkipZigTest;
+    defer sdl_c.SDL_Quit();
+    var gpu = mod.Gpu.init(std.testing.allocator, null) orelse return error.SkipZigTest;
+    defer gpu.deinit();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    _ = try TestDraw.shadowedBox(&scene);
+    // The box (the third node: camera, floor, box), red and seen only by its shadow.
+    const visits = try scene.walk(std.testing.allocator);
+    defer std.testing.allocator.free(visits);
+    for (visits) |visit| if (visit.node.geometry) |geometry| if (geometry == .box) {
+        const box = scene.node(visit.id).?;
+        box.shadow_only = true;
+        box.material.base_color = renderer.Color.rgb(1, 0, 0);
+    };
+    const techniques = [_]scenes.SceneLightingTechnique{ .rasterized, .rayTraced };
+    for (techniques) |technique| {
+        if (technique == .rayTraced and !mod.SceneRayTracer.supported(gpu.device)) continue;
+        scene.lighting_technique = technique;
+        const drawn = TestDraw.render(&gpu, arena.allocator(), &scene) orelse return error.SkipZigTest;
+        defer std.testing.allocator.free(drawn.pixels);
+        const shaded = try drawn.at(arena.allocator(), &scene, scenes.Vec3.init(0, -1, 0.3));
+        try std.testing.expect(shaded[0] < 100);
+        // Where the box's top would be: whatever is behind it, not the red box.
+        const top = try drawn.at(arena.allocator(), &scene, scenes.Vec3.init(0, 0.5, 0));
+        try std.testing.expect(@as(i32, top[0]) - @as(i32, top[1]) < 40);
+    }
+}
+
+test "a rasterized scene uploads no cookie or environment, which only a ray tracer reads" {
+    if (!sdl_c.SDL_Init(sdl_c.SDL_INIT_VIDEO)) return error.SkipZigTest;
+    defer sdl_c.SDL_Quit();
+    var gpu = mod.Gpu.init(std.testing.allocator, null) orelse return error.SkipZigTest;
+    defer gpu.deinit();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    const light = try TestDraw.shadowedBox(&scene);
+    const plain = TestDraw.render(&gpu, arena.allocator(), &scene) orelse return error.SkipZigTest;
+    std.testing.allocator.free(plain.pixels);
+    const textures_before = gpu.scene_renderer.?.textures.items.len;
+    const gray = [_]u8{ 128, 128, 128, 255 };
+    const texture = scenes.SceneTexture{ .image = .{ .width = 1, .height = 1, .pixels = &gray } };
+    const sky = [_]u8{ 0, 0, 255, 255 };
+    scene.environment = .{ .texture = .{ .image = .{ .width = 1, .height = 1, .pixels = &sky } } };
+    scene.node(light).?.light.?.kind = .{ .directional = .{ .cookie = scenes.ScenePlaneTexture.level(texture, scenes.Vec3.init(0, 10, 0), 4) } };
+    const rasterized = TestDraw.render(&gpu, arena.allocator(), &scene) orelse return error.SkipZigTest;
+    std.testing.allocator.free(rasterized.pixels);
+    try std.testing.expectEqual(textures_before, gpu.scene_renderer.?.textures.items.len);
+    if (!mod.SceneRayTracer.reads_planes or !gpu.scene_renderer.?.tracesRays()) return;
+    scene.lighting_technique = .rayTraced;
+    const traced = TestDraw.render(&gpu, arena.allocator(), &scene) orelse return error.SkipZigTest;
+    std.testing.allocator.free(traced.pixels);
+    try std.testing.expectEqual(textures_before + 2, gpu.scene_renderer.?.textures.items.len);
+}
+
+test "a ray-traced mirror shows the environment where nothing is, and its overlay over it" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    scene.background = renderer.Color.blue;
+    try TracingGpu.mirrorAndBox(&scene, .{ .base_color = renderer.Color.red, .specular = 0 });
+    scene.lighting_technique = .rayTraced;
+    // A green sky everywhere: the mirror's edge, past the box, shows it rather than the blue.
+    const green = [_]u8{ 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255 };
+    scene.environment = .{ .texture = .{ .image = .{ .width = 2, .height = 2, .pixels = &green } }, .blur = 0 };
+    const drawn = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(drawn.pixels);
+    const edge = try drawn.at(tracing.arena.allocator(), &scene, scenes.Vec3.init(2.8, 2.8, 0));
+    try std.testing.expect(edge[1] > 200 and edge[2] < 60);
+    // An opaque red overlay on a level plane high above: the edge, looking up past the box, sees it.
+    const red = [_]u8{ 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255 };
+    const overlays = [_]scenes.ScenePlaneTexture{scenes.ScenePlaneTexture.level(.{ .image = .{ .width = 2, .height = 2, .pixels = &red } }, scenes.Vec3.init(0, 50, 0), 10)};
+    scene.environment.?.overlays = &overlays;
+    const covered = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(covered.pixels);
+    const overlaid = try covered.at(tracing.arena.allocator(), &scene, scenes.Vec3.init(2.8, 2.8, 0));
+    try std.testing.expect(overlaid[0] > 200 and overlaid[1] < 60);
+}
+
+test "a scene's exposure brightens it, a filmic curve rolls light past white off below it" {
+    var tracing = try TracingGpu.start();
+    defer tracing.stop();
+    if (!tracing.compilesMetal()) return error.SkipZigTest;
+    var scene = try scenes.Scene.init(std.testing.allocator);
+    defer scene.deinit();
+    scene.ambient_intensity = 0;
+    // A wholly emissive surface, its color a mid gray (0.21 linear) at twice its strength.
+    _ = try scene.addChild(scene.root(), .{ .geometry = .{ .plane = .{ .width = 4, .height = 4 } }, .material = .{ .base_color = renderer.Color.rgb(0.5, 0.5, 0.5), .emission = 1, .emission_strength = 2 } });
+    const plain = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(plain.pixels);
+    const at_strength = (try plain.at(tracing.arena.allocator(), &scene, scenes.Vec3.zero))[0];
+    // 0.43 linear: about 175 in sRGB.
+    try std.testing.expect(at_strength > 160 and at_strength < 190);
+    scene.exposure = 4;
+    const blown = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(blown.pixels);
+    try std.testing.expect((try blown.at(tracing.arena.allocator(), &scene, scenes.Vec3.zero))[0] > 250);
+    scene.tone_mapping = .filmic;
+    const filmic = TestDraw.render(&tracing.gpu, tracing.arena.allocator(), &scene) orelse return error.SkipZigTest;
+    defer std.testing.allocator.free(filmic.pixels);
+    const rolled = (try filmic.at(tracing.arena.allocator(), &scene, scenes.Vec3.zero))[0];
+    try std.testing.expect(rolled > 230 and rolled < 252);
+}
+
 test "a ray-traced mirror samples the reflected shape's texture, not its average" {
     var tracing = try TracingGpu.start();
     defer tracing.stop();
@@ -1368,6 +2147,20 @@ test "a reflectivity is kept between 0 and 1, and one that is not a number refle
     try std.testing.expectEqual(@as(f32, 1), SceneRenderer.reflectivityOf(.{ .reflectivity = 3 }));
     try std.testing.expectEqual(@as(f32, 0), SceneRenderer.reflectivityOf(.{ .reflectivity = -1 }));
     try std.testing.expectEqual(@as(f32, 0), SceneRenderer.reflectivityOf(.{ .reflectivity = std.math.nan(f32) }));
+}
+
+test "a light's multiplier is 1 unless it is a finite number above 0" {
+    try std.testing.expectEqual(@as(f32, 2.5), SceneRenderer.factorOf(2.5));
+    try std.testing.expectEqual(@as(f32, 1), SceneRenderer.factorOf(0));
+    try std.testing.expectEqual(@as(f32, 1), SceneRenderer.factorOf(-3));
+    try std.testing.expectEqual(@as(f32, 1), SceneRenderer.factorOf(std.math.nan(f32)));
+    try std.testing.expectEqual(@as(f32, 1), SceneRenderer.factorOf(std.math.inf(f32)));
+}
+
+test "a soft shadow sends 4 to 32 rays, in fours" {
+    try std.testing.expectEqual(@as(u32, 4), SceneRenderer.softRays(0));
+    try std.testing.expectEqual(@as(u32, 16), SceneRenderer.softRays(18));
+    try std.testing.expectEqual(@as(u32, 32), SceneRenderer.softRays(1000));
 }
 
 test "two ray-traced scenes a frame keep one triangle buffer from frame to frame" {

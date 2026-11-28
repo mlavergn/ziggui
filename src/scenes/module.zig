@@ -52,12 +52,22 @@ pub const SceneBounds = @import("model/module.zig").SceneBounds;
 pub const SceneMaterial = @import("model/module.zig").SceneMaterial;
 /// A material's base-color texture.
 pub const SceneTexture = @import("model/module.zig").SceneTexture;
+/// How a texture's pixels are stored.
+pub const SceneTextureFormat = @import("model/module.zig").SceneTextureFormat;
+/// GPU code that moves a material's vertices, or shades its pixels, as it is drawn.
+pub const SceneShaderModifier = @import("model/module.zig").SceneShaderModifier;
 /// A light a node carries.
 pub const SceneLight = @import("model/module.zig").SceneLight;
 /// What kind of light it is.
 pub const SceneLightKind = @import("model/module.zig").SceneLightKind;
 /// A directional light's settings.
 pub const SceneDirectionalLight = @import("model/module.zig").SceneDirectionalLight;
+/// A texture laid on a plane: a light's cookie, an environment's overlay.
+pub const ScenePlaneTexture = @import("model/module.zig").ScenePlaneTexture;
+/// How a scene's light is brought into the display's range.
+pub const SceneToneMapping = @import("model/module.zig").SceneToneMapping;
+/// What a scene's reflections see where they meet nothing.
+pub const SceneEnvironment = @import("model/module.zig").SceneEnvironment;
 /// A point light's settings.
 pub const ScenePointLight = @import("model/module.zig").ScenePointLight;
 /// A camera a node carries.

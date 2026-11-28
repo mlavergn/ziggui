@@ -194,8 +194,12 @@ fn WindowFrame(comptime AppState: type) type {
             var scaled_width: u32 = @intFromFloat(@round(float_pixel_width * supersample));
             var scaled_height: u32 = @intFromFloat(@round(float_pixel_height * supersample));
 
-            // Frame clock for time-based UI (auto-hiding scrollbars, etc.).
-            views.FrameClock.shared().setTime(sdl_c.SDL_GetTicks());
+            // Frame clock for time-based UI (auto-hiding scrollbars, etc.), and
+            // the display's refresh, which animating views keep pace with.
+            views.FrameClock.shared().beginFrame(sdl_c.SDL_GetTicks());
+            if (sdl_c.SDL_GetCurrentDisplayMode(sdl_c.SDL_GetDisplayForWindow(self.window))) |mode| {
+                if (mode.*.refresh_rate > 1) views.FrameClock.shared().setFrameInterval(@intFromFloat(@floor(1000.0 / mode.*.refresh_rate)));
+            }
 
             // Live theme: query the provider (if any) so light/dark switches take
             // effect without a restart. Read it after `body` builds the tree so the
@@ -450,16 +454,18 @@ const EventRouter = struct {
     ///
     /// - `self`: the router.
     /// - `timeout_ms`: how long to wait, in milliseconds.
-    fn waitThenDrain(self: *const Self, timeout_ms: c_int) void {
+    /// - Returns: true when it stopped at a press, which wants a frame before the rest (`endsBatch`).
+    fn waitThenDrain(self: *const Self, timeout_ms: c_int) bool {
         var event: sdl_c.SDL_Event = undefined;
         if (Self.wait(&event, timeout_ms)) {
             self.handle(&event);
-            if (Self.endsBatch(&event)) return;
+            if (Self.endsBatch(&event)) return true;
         }
         while (sdl_c.SDL_PollEvent(&event)) {
             self.handle(&event);
-            if (Self.endsBatch(&event)) return;
+            if (Self.endsBatch(&event)) return true;
         }
+        return false;
     }
 
     /// Whether the rest of the queue waits for the next frame after `event`:
@@ -645,8 +651,10 @@ const EventRouter = struct {
             sdl_c.SDL_EVENT_QUIT => app.hooks.requestQuit(self.running),
             // Clicking anywhere else dismisses the popover, like a native popover window.
             sdl_c.SDL_EVENT_WINDOW_FOCUS_LOST => if (on_popover_window) popover_window.hide() else {
-                // A release outside a window that lost focus may never arrive.
+                // A release outside a window that lost focus may never arrive:
+                // end what the press armed (a drag, a slider's edit) as one would.
                 app.press_point = null;
+                views.PointerInput.shared().endDrag();
                 if (app.focus_handler) |handler| handler(false);
             },
             sdl_c.SDL_EVENT_WINDOW_FOCUS_GAINED => if (event.window.windowID != popover_window.id) if (app.focus_handler) |handler| handler(true),
@@ -1269,7 +1277,7 @@ pub fn EventLoop(comptime AppState: type) type {
                     // views' requests (an animating `SceneView`'s) bring the retry
                     // at the next frame's time, not the idle wake's.
                     const busy_ms = app.busyIntervalMs();
-                    router.waitThenDrain(@intCast(Self.requestedWait(if (busy_ms != 0) busy_ms else @intCast(mod.App.idle_wake_ms))));
+                    _ = router.waitThenDrain(@intCast(Self.requestedWait(if (busy_ms != 0) busy_ms else @intCast(mod.App.idle_wake_ms))));
                     continue;
                 }
                 self.waitAfterFrame(&router);
@@ -1294,13 +1302,31 @@ pub fn EventLoop(comptime AppState: type) type {
             // A frame a view asked for (a hover hint's delay) caps the wait.
             busy_ms = Self.requestedWait(busy_ms);
             if (busy_ms != 0) {
-                router.waitThenDrain(@intCast(busy_ms));
+                _ = router.waitThenDrain(@intCast(busy_ms));
                 const now = sdl_c.SDL_GetTicks();
                 const delta_seconds: f32 = @as(f32, @floatFromInt(now - self.last_ms)) / 1000.0;
                 self.last_ms = now;
                 self.animator.tick(delta_seconds);
             } else {
                 self.waitIdle(router);
+            }
+            self.holdForCap(router);
+        }
+
+        /// Under a frame-rate cap (`FrameClock.earliestFrame`), holds the next
+        /// frame until its turn though events come sooner (a pointer moving
+        /// over an animating scene would otherwise draw it at the pointer's
+        /// rate): they're handled as they come, and drawn at the cap. A press
+        /// doesn't wait, so a second click meets the regions its first made.
+        ///
+        /// - `self`: the loop.
+        /// - `router`: handles the events that come.
+        fn holdForCap(self: *Self, router: *const EventRouter) void {
+            const earliest = views.FrameClock.shared().earliestFrame() orelse return;
+            while (self.running) {
+                const now = sdl_c.SDL_GetTicks();
+                if (now >= earliest) return;
+                if (router.waitThenDrain(@intCast(earliest - now))) return;
             }
         }
 

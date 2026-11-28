@@ -28,11 +28,24 @@ pub const SceneNode = struct {
     receives_shadows: bool = true,
     /// Whether it and its children are left out of the scene.
     hidden: bool = false,
+    /// Whether its shape only casts its shadow: not drawn, nor shown in
+    /// reflections (the body of a first-person viewer, say, whose eyes
+    /// are inside it).
+    shadow_only: bool = false,
+    /// Whether reflection rays meet its shape (a sky dome an environment
+    /// stands in for need not be met).
+    reflected: bool = true,
     /// How opaque its shape and its children's are, 0 to 1, multiplied down
     /// the tree (SceneKit's `opacity`): below 1 its shape blends as a
     /// translucent one (drawn back to front, casting no shadow), at 0 it is
     /// not drawn. Its light and camera are unaffected.
     opacity: f32 = 1,
+    /// When its shape draws among the others (SceneKit's `renderingOrder`):
+    /// lower first. Translucent shapes draw by it, then back to front among
+    /// those of one order, so a sky's layers (stars behind clouds) keep their
+    /// order whatever their distance; opaque shapes draw by it too (their
+    /// depth test settles what shows). Not inherited by its children.
+    rendering_order: i32 = 0,
 
     /// Turns the node so its -Z looks at a point, its +Y leaning up, both in
     /// its parent's space (SceneKit's `look(at:)`). A point at the node's own

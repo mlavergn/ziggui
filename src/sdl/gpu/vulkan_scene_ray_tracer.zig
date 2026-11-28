@@ -63,8 +63,8 @@ const HitInstance = extern struct {
     shininess: f32,
     /// Which reflected texture it samples, -1 for none.
     texture: i32,
-    /// Padding to the shader's layout.
-    unused: f32 = 0,
+    /// How much of its color it gives off itself (`SceneMaterial.emissionShare`).
+    emission: f32 = 0,
 };
 
 /// What the traced shader reads at uniform slot 2, as `SceneTracing` (std140:
@@ -192,6 +192,9 @@ pub const VulkanSceneRayTracer = struct {
     /// Frames a frame's own objects are kept before they are freed or used
     /// again: past the frames SDL lets be in flight.
     pub const retire_frames = 4;
+    /// Whether `bind` reads a light's cookie and the scene's environment:
+    /// not yet (Metal only), so they are never uploaded for it.
+    pub const reads_planes = false;
     /// The most objects `prepare` retires for each shape: a new mesh's
     /// vertex and index buffer, the mesh scratch it outgrew, and its
     /// structure and storage should it not be kept (3), with room to spare.
@@ -379,7 +382,7 @@ pub const VulkanSceneRayTracer = struct {
         for (shapes, records, places) |shape, *record, *place| {
             const primitive = self.primitiveFor(arena, vulkan_command_buffer, &self.sets.items[set_index], shape, &built) orelse return self.abandonBuilds(vulkan_command_buffer, built);
             place.* = self.placeIndex(primitive.structure) orelse return self.abandonBuilds(vulkan_command_buffer, built);
-            const mask = reflection_mask | (if (shape.casts_shadows) shadow_mask else 0);
+            const mask = (if (shape.reflected) reflection_mask else 0) | (if (shape.casts_shadows) shadow_mask else 0);
             record.* = .{
                 .transform = Self.rowTransform(shape.world),
                 .custom_index_and_mask = mask << 24,
@@ -414,10 +417,16 @@ pub const VulkanSceneRayTracer = struct {
     /// - `command_buffer`: the frame's command buffer, the lit pass open on it.
     /// - `pass`: the lit pass.
     /// - `sky`: what a reflection that meets nothing shows, linear.
+    /// - `cookie`: unused: cookies apply on Metal only.
+    /// - `environment`: unused: environments apply on Metal only.
+    /// - `soft_rays`: unused: Vulkan's shader sends 16.
     /// - `blank`: a texture bound in the slots no texture fills.
     /// - `sampler`: what the textures are sampled with.
     /// - Returns: false when nothing was prepared.
-    pub fn bind(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, pass: *sdl_c.SDL_GPURenderPass, sky: scenes.Vec3, blank: *sdl_c.SDL_GPUTexture, sampler: *sdl_c.SDL_GPUSampler) bool {
+    pub fn bind(self: *Self, command_buffer: *sdl_c.SDL_GPUCommandBuffer, pass: *sdl_c.SDL_GPURenderPass, sky: scenes.Vec3, cookie: ?mod.SceneRayCookie, environment: ?mod.SceneRayEnvironment, soft_rays: u32, blank: *sdl_c.SDL_GPUTexture, sampler: *sdl_c.SDL_GPUSampler) bool {
+        _ = soft_rays;
+        _ = environment;
+        _ = cookie;
         if (comptime !mod.has_vulkan_interop) return false;
         if (self.instances == null) return false;
         const surfaces = self.surfaces orelse return false;
@@ -818,6 +827,7 @@ pub const VulkanSceneRayTracer = struct {
                 .first_triangle = self.first_triangles.items[place],
                 .shininess = shape.material.shininess,
                 .texture = sampled,
+                .emission = shape.material.emissionShare(),
             };
         }
         const frame_set = &self.sets.items[set_index];

@@ -33,6 +33,10 @@ pub const Kit = @import("kit.zig").Kit;
 pub const Media = @import("media.zig").Media;
 /// The Scenes section's 3D card: a `SceneView` and its scene.
 pub const SceneDemo = @import("scene_demo.zig").SceneDemo;
+/// The cards for view modifiers no component's card shows: text styling, plain fields, frames, hover rows, fills, accessibility.
+pub const ModifiersDemo = @import("modifiers_demo.zig").ModifiersDemo;
+/// The Scenes section's sky card: shader modifiers, a light cookie, an environment, tone mapping.
+pub const SkyDemo = @import("sky_demo.zig").SkyDemo;
 /// The Charts section's cards: `LineChart` and its options.
 pub const ChartsDemo = @import("charts_demo.zig").ChartsDemo;
 /// The Forms & Settings section's Touch ID card: an `AuthenticationContext` and its prompt.

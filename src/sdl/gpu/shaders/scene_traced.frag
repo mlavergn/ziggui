@@ -7,7 +7,8 @@
 // shadow, softened over a cone `directional_color.w` (its angular radius's
 // tangent) wide; a point light whose `point_color.w` is not -1 casts one,
 // softened over a sphere that radius wide. A soft shadow sends
-// `soft_samples` rays spread over the light's source (a golden-angle disc,
+// up to `soft_samples` rays spread over the light's source (a quarter of them
+// first, the rest only where those disagree: a penumbra) (a golden-angle disc,
 // turned per pixel), so it is sharp where a shadow meets its caster and
 // blurs away from it. A surface whose `surface.w` (its reflectivity) is above
 // 0 sends a ray along its mirror direction and mixes in what it meets, lit by
@@ -51,6 +52,7 @@ layout(set = 3, binding = 0) uniform SceneLights {
 layout(set = 3, binding = 1) uniform SceneSurface {
     vec4 base_color; // linear rgb; a the alpha
     vec4 surface;    // x the specular; y the shininess; z 1 when it receives shadows; w the reflectivity
+    vec4 emission;   // x the share of its color it gives off itself
 } surface;
 
 // One instance's surface, as a reflection ray meets it; in the instances'
@@ -61,7 +63,7 @@ struct SceneHitInstance {
     uint first_triangle; // where its mesh's triangles start
     float shininess;
     int texture;         // the reflected texture it samples, -1 for none
-    float unused;
+    float emission;      // the share of its color it gives off itself
 };
 
 // A mesh triangle's three vertex normals, in the mesh's space, and their
@@ -98,6 +100,7 @@ const uint shadow_mask = 1u;
 // The instance mask bit of the shapes reflections show (every opaque one).
 const uint reflection_mask = 2u;
 // How many rays a soft shadow sends a light.
+// At most; a quarter first, the rest only in a penumbra. Keep it a multiple of four.
 const int soft_samples = 16;
 // No ray reaches past this.
 const float far_reach = 1.0e30;
@@ -153,9 +156,15 @@ float directionalLit(int index, vec3 to_light, vec3 world, vec3 normal, vec2 pix
     squareTo(to_light, across, up);
     float turn = pixelNoise(pixel);
     float lit = 0.0;
-    for (int sample_index = 0; sample_index < soft_samples; sample_index++) {
-        vec2 offset = discSample(sample_index, soft_samples, turn) * spread;
-        lit += blocked(origin, normalize(to_light + across * offset.x + up * offset.y), far_reach) ? 0.0 : 1.0;
+    // Every fourth sample first, spread over the source: where they agree the
+    // point is wholly lit or shadowed (as most are) and the rest would agree.
+    for (int pass_index = 0; pass_index < 2; pass_index++) {
+        for (int sample_index = 0; sample_index < soft_samples; sample_index++) {
+            if ((sample_index % 4 == 0) != (pass_index == 0)) continue;
+            vec2 offset = discSample(sample_index, soft_samples, turn) * spread;
+            lit += blocked(origin, normalize(to_light + across * offset.x + up * offset.y), far_reach) ? 0.0 : 1.0;
+        }
+        if (pass_index == 0 && (lit <= 0.0 || lit >= float(soft_samples / 4))) return lit / float(soft_samples / 4);
     }
     return lit / float(soft_samples);
 }
@@ -176,12 +185,17 @@ float pointLit(int index, vec3 world, vec3 normal, vec2 pixel) {
     squareTo(toward / reach, across, up);
     float turn = pixelNoise(pixel);
     float lit = 0.0;
-    for (int sample_index = 0; sample_index < soft_samples; sample_index++) {
-        vec2 offset = discSample(sample_index, soft_samples, turn) * radius;
-        vec3 to_target = center + across * offset.x + up * offset.y - origin;
-        float distance = length(to_target);
-        // A sample on the point itself lights it, as a light at the point does (no ray: its direction would be NaN).
-        lit += (distance <= 0.0 || !blocked(origin, to_target / distance, distance)) ? 1.0 : 0.0;
+    // Every fourth sample first; the rest only in a penumbra, as for a directional light.
+    for (int pass_index = 0; pass_index < 2; pass_index++) {
+        for (int sample_index = 0; sample_index < soft_samples; sample_index++) {
+            if ((sample_index % 4 == 0) != (pass_index == 0)) continue;
+            vec2 offset = discSample(sample_index, soft_samples, turn) * radius;
+            vec3 to_target = center + across * offset.x + up * offset.y - origin;
+            float distance = length(to_target);
+            // A sample on the point itself lights it, as a light at the point does (no ray: its direction would be NaN).
+            lit += (distance <= 0.0 || !blocked(origin, to_target / distance, distance)) ? 1.0 : 0.0;
+        }
+        if (pass_index == 0 && (lit <= 0.0 || lit >= float(soft_samples / 4))) return lit / float(soft_samples / 4);
     }
     return lit / float(soft_samples);
 }
@@ -252,7 +266,8 @@ vec3 litHit(uint instance_id, uint primitive_id, vec2 barycentric, vec3 world, v
         albedo *= reflectedTexel(instance.texture, uv);
     }
     vec3 color = lightPoint(albedo, world, normal, to_viewer, instance.color.w, max(instance.shininess, 1.0), false, false, vec2(0.0));
-    return clamp(color, 0.0, 1.0);
+    // An emissive surface shows its own color, unlit, by its share.
+    return clamp(mix(color, albedo, instance.emission), 0.0, 1.0);
 }
 
 // `color` with what a reflective surface mirrors mixed in, by Schlick's
@@ -294,6 +309,13 @@ void main() {
     vec4 texel = texture(base_texture, v_uv);
     vec3 albedo = surface.base_color.rgb * texel.rgb;
     float alpha = surface.base_color.a * texel.a;
+    // Wholly emissive: its own color, without the lighting it would discard.
+    if (surface.emission.x >= 1.0) {
+        vec3 shown = clamp(albedo, 0.0, 1.0);
+        if (lights.shadow_parameters.z > 0.5) shown = encodeSrgb(shown);
+        out_color = vec4(shown, alpha);
+        return;
+    }
     float specular = surface.surface.x;
     float shininess = max(surface.surface.y, 1.0);
     bool receives = surface.surface.z > 0.5;
@@ -301,6 +323,8 @@ void main() {
     vec3 color = lightPoint(albedo, v_world, normal, to_eye, specular, shininess, receives, true, gl_FragCoord.xy);
     color = reflected(color, v_world, normal, to_eye);
 
+    // An emissive surface shows its own color, unlit, by its share.
+    color = mix(color, albedo, surface.emission.x);
     color = clamp(color, 0.0, 1.0);
     if (lights.shadow_parameters.z > 0.5) color = encodeSrgb(color);
     out_color = vec4(color, alpha);

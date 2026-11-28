@@ -16,6 +16,13 @@ pub const SceneDirectionalLight = struct {
     /// where a shadow meets its caster and soften away from it; 0 for hard
     /// shadows. Shadow maps ignore it.
     angular_diameter: f32 = 0,
+    /// A texture it shines through (a light cookie), or null: a point is lit
+    /// by the light that passes the plane on its way there, its texels'
+    /// colors scaling it (white passes it all, black none). Ray-traced scenes
+    /// on Metal only (`SceneLightingTechnique.rayTraced`), on what the light
+    /// lights directly and what reflections show; elsewhere it shines
+    /// unfiltered. Only the first directional light's cookie in the graph applies.
+    cookie: ?mod.ScenePlaneTexture = null,
 };
 
 /// Light from the node's position in every direction, fading to nothing at
@@ -32,6 +39,15 @@ pub const ScenePointLight = struct {
     /// The radius of the light's source, a sphere, in scene units: its
     /// ray-traced shadows soften away from their caster; 0 for hard shadows.
     radius: f32 = 0,
+    /// How far from the light its shadows are traced, or null for its whole
+    /// `range`: past it what it lights is lit unshadowed, the shadows fading
+    /// out over its last fifth. A light's glow far off is faint, its shadows
+    /// fainter, and every pixel it reaches costs rays: a fire's shadows
+    /// traced only near it cost a fraction.
+    shadow_range: ?f32 = null,
+    /// The most rays one of its soft shadows sends, 4 to 32 in fours, or
+    /// null for the scene's (`Scene.soft_shadow_rays`).
+    shadow_rays: ?u32 = null,
 };
 
 /// What kind of light it is.
